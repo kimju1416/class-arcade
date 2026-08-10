@@ -427,6 +427,12 @@ function toast(msg, ms = 2500) {
   clearTimeout(toast._t); toast._t = setTimeout(() => $('toast').style.display = 'none', ms);
 }
 function serverNow() { return Date.now() + timeOffset; }
+// 학생이 정한 별명·단어를 화면에 넣기 전에 태그 문자를 무해하게 바꾼다
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 function goHome() {
   phase = 'closed';
   try { ws && ws.close(); } catch {}
@@ -502,7 +508,8 @@ function handle(m) {
       phase = m.state;
       if (isHost && phase === 'lobby') renderHostLobby();
       break;
-    case 'phase':
+    case 'phase': {
+      const prev = phase;
       phase = m.state; phaseEndAt = m.endAt || 0;
       if (m.gameType) gameType = m.gameType;
       if (phase === 'countdown' || phase === 'playing') {
@@ -510,12 +517,14 @@ function handle(m) {
           snaps = []; wasAlive = true; lastWordJson = '';
           sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0 };
         }
-        if (phase === 'playing') SFX.go();
+        // 시작 효과음은 카운트다운에서 넘어올 때만 (재접속 복귀 때는 울리지 않게)
+        if (phase === 'playing' && prev === 'countdown') SFX.go();
         enterGameView();
       } else if (phase === 'lobby') {
         show(isHost ? 'hostLobby' : 'playerLobby');
       }
       break;
+    }
     case 'state':
       if (m.mode === 'word' || m.mode === 'cho') { renderWord(m); break; }
       snaps.push({ rt: performance.now(), m });
@@ -651,7 +660,7 @@ function renderHostLobby() {
   list.forEach(p => {
     const el = document.createElement('div');
     el.className = 'chip' + (p.connected ? '' : ' off');
-    el.innerHTML = `<span class="dot" style="background:${COLORS[p.ci % COLORS.length]}"></span>${p.nick}`;
+    el.innerHTML = `<span class="dot" style="background:${COLORS[p.ci % COLORS.length]}"></span>${esc(p.nick)}`;
     el.onclick = () => { if (confirm(`${p.nick} 님을 내보낼까요?`)) send({ type: 'kick', playerId: p.id }); };
     $('chips').appendChild(el);
   });
@@ -675,13 +684,13 @@ function showResult(ranking) {
     $('resultHost').style.display = 'flex';
     $('resultPlayer').style.display = 'none';
     const top = ranking.filter(r => r.rank === 1);
-    $('podium').innerHTML = top.length ? `🏆 우승: ${top.map(r => r.nick).join(', ')}` : '게임 종료!';
+    $('podium').innerHTML = top.length ? `🏆 우승: ${top.map(r => esc(r.nick)).join(', ')}` : '게임 종료!';
     $('rankList').innerHTML = ranking.map(r => `
       <div class="rank-row">
         <span class="r">${r.rank}위</span>
         <span class="dot" style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${COLORS[r.ci % COLORS.length]}"></span>
-        <span>${r.nick}</span>
-        <span class="t">${r.label}</span>
+        <span>${esc(r.nick)}</span>
+        <span class="t">${esc(r.label)}</span>
       </div>`).join('');
   } else {
     $('resultHost').style.display = 'none';
@@ -738,7 +747,7 @@ function renderWord(m) {
     else $('wordBig').textContent = m.round >= m.totalRounds ? '결과 계산 중…' : '다음 라운드 준비…';
     $('choClaimed').innerHTML = (m.claimed || []).map(([w, id]) => {
       const meta = roster.get(id) || { nick: '?' };
-      return `<span class="cw">${w} <small>${meta.nick}</small></span>`;
+      return `<span class="cw">${esc(w)} <small>${esc(meta.nick)}</small></span>`;
     }).join('');
   } else {
     $('choCat').style.display = 'none';
@@ -756,7 +765,7 @@ function renderWord(m) {
     $('wordList').innerHTML = rows.map(r => `
       <div class="word-row">
         <span class="dot" style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${COLORS[r.meta.ci % COLORS.length]}"></span>
-        <span>${r.meta.nick}</span>
+        <span>${esc(r.meta.nick)}</span>
         ${r.ord ? `<span style="color:#ffb03a;font-size:13px">${r.ord}등!</span>` : ''}
         <span class="pts">${r.score}점</span>
       </div>`).join('');

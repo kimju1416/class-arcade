@@ -235,6 +235,16 @@ function sendRoster(room) {
   });
 }
 
+// 새로 붙은(또는 다시 붙은) 접속에게 지금 진행 중인 판 상태를 알려준다.
+// 이게 없으면 새로고침한 교사 화면이 로비에 머물고, 학생 화면은 남은 시간이 0초로 보인다.
+function sendCurrentPhase(room, ws) {
+  if (room.state === 'lobby') return;
+  roomSend(ws, {
+    type: 'phase', state: room.state, gameType: room.gameType,
+    endAt: room.phaseEndAt, st: Date.now(),
+  });
+}
+
 function closeRoom(room, reason) {
   if (room.timer) clearInterval(room.timer);
   broadcast(room, { type: 'room_closed', msg: reason });
@@ -852,6 +862,7 @@ wss.on('connection', (ws) => {
         r.hostWs = ws; ws.roomCode = r.code; ws.isHost = true;
         roomSend(ws, { type: 'room_created', code: r.code, hostToken: r.hostToken });
         sendRoster(r);
+        sendCurrentPhase(r, ws); // 게임 중이었다면 TV를 게임 화면으로 되돌린다
         break;
       }
 
@@ -866,6 +877,7 @@ wss.on('connection', (ws) => {
             ws.roomCode = r.code; ws.playerId = old.id;
             roomSend(ws, { type: 'join_ok', id: old.id, token: old.token, code: r.code, nick: old.nick, ci: old.ci, state: r.state, gameType: r.gameType });
             sendRoster(r);
+            sendCurrentPhase(r, ws); // 남은 시간·화면을 진행 중인 판에 맞춘다
             return;
           }
         }
@@ -889,6 +901,7 @@ wss.on('connection', (ws) => {
         ws.roomCode = r.code; ws.playerId = p.id;
         roomSend(ws, { type: 'join_ok', id: p.id, token: p.token, code: r.code, nick: p.nick, ci: p.ci, state: r.state, gameType: r.gameType });
         sendRoster(r);
+        sendCurrentPhase(r, ws);
         break;
       }
 
