@@ -23,6 +23,20 @@
     text-shadow: 0 3px 0 #0b1024, 0 0 26px rgba(255,176,58,.35);
   }
   h1.logo .accent { color: #ffb03a; }
+  .pix-logo { image-rendering: pixelated; filter: drop-shadow(0 6px 18px rgba(255,176,58,.25)); }
+  #homeLogo { width: min(320px, 78vw); }
+  #lobbyLogo { width: 190px; }
+  body.host #lobbyLogo { width: 240px; }
+  .gc-ico { width: 40px; height: 40px; image-rendering: pixelated; flex-shrink: 0; }
+  .gc-head { display: flex; align-items: center; gap: 9px; }
+  .gc-head b { white-space: nowrap; }
+  .gc-head .badge { white-space: nowrap; }
+  #trophyImg {
+    width: 130px; image-rendering: pixelated;
+    animation: trophyPop .6s cubic-bezier(.2, 1.6, .4, 1);
+  }
+  body.host #trophyImg { width: 170px; }
+  @keyframes trophyPop { 0% { transform: scale(0) rotate(-16deg); } 100% { transform: scale(1) rotate(0); } }
   /* 아케이드 기계 상단 조명 느낌 */
   body::before {
     content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
@@ -106,7 +120,7 @@
     transform: translateY(-2px);
   }
   .game-card b { font-size: 17px; }
-  .game-card .badge { float: right; color: #93a0c4; font-size: 12px; font-weight: 600; }
+  .game-card .badge { color: #93a0c4; font-size: 12px; font-weight: 600; }
   .game-card p { color: #93a0c4; font-size: 13px; margin-top: 5px; line-height: 1.45; }
 
   /* 게임 화면 (캔버스형) */
@@ -277,11 +291,12 @@
     body.host #hostLobby.on {
       display: grid;
       grid-template-columns: 420px minmax(0, 1fr);
-      grid-template-areas: "sub sub" "code right" "qr right" "url right" "count right" "close right";
+      grid-template-areas: "sub sub" "logo right" "code right" "qr right" "url right" "count right" "close right";
       align-content: start; justify-items: center; align-items: start;
       column-gap: 56px; row-gap: 14px; padding: 30px 60px;
     }
     body.host #hostLobby .sub { grid-area: sub; }
+    body.host #lobbyLogo { grid-area: logo; }
     body.host #codeBig { grid-area: code; font-size: 92px; }
     body.host #hostLobby .qr-wrap { grid-area: qr; padding: 16px; }
     body.host #joinUrl { grid-area: url; font-size: 15px; }
@@ -304,7 +319,9 @@
 
 <!-- 첫 화면 -->
 <div class="view on" id="home">
-  <h1 class="logo">교실 <span class="accent">아케이드</span></h1>
+  <img id="homeLogo" class="pix-logo" src="sprites/logo.png" alt="교실 아케이드"
+       onerror="this.remove(); document.getElementById('homeTitle').style.display='block'">
+  <h1 class="logo" id="homeTitle" style="display:none">교실 <span class="accent">아케이드</span></h1>
   <p class="sub">우리 반이 한 방에 모여 실시간 미니게임!</p>
   <div class="role-card teacher" id="btnCreate">
     <b>🎮 방 만들기</b> <span style="float:right;color:#ffb03a;font-size:13px;font-weight:700">선생님용</span>
@@ -329,6 +346,7 @@
 
 <!-- 호스트 로비 -->
 <div class="view" id="hostLobby">
+  <img id="lobbyLogo" class="pix-logo" src="sprites/logo.png" alt="교실 아케이드" onerror="this.remove()">
   <div class="sub">휴대폰 카메라로 QR을 찍거나, 사이트에서 <b>게임 들어가기</b> → 코드 입력</div>
   <div class="code-big" id="codeBig">0000</div>
   <div class="qr-wrap"><canvas id="qr"></canvas></div>
@@ -388,6 +406,7 @@
 <!-- 결과 -->
 <div class="view" id="result">
   <div id="resultHost" style="display:none; flex-direction:column; align-items:center; gap:16px; width:100%;">
+    <img id="trophyImg" src="sprites/trophy.png" alt="" onerror="this.remove()">
     <div class="podium" id="podium"></div>
     <div class="rank-list" id="rankList"></div>
     <div class="result-actions">
@@ -803,10 +822,14 @@ function setupHostLobby() {
 
 function renderGameGrid() {
   $('gameGrid').innerHTML = '';
+  const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
+                     race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     const el = document.createElement('div');
     el.className = 'game-card' + (key === selectedGame ? ' sel' : '');
-    el.innerHTML = `<b>${meta.icon} ${meta.name}</b><span class="badge">${meta.badge}</span><p>${meta.desc}</p>`;
+    el.innerHTML = `<div class="gc-head"><img class="gc-ico" src="sprites/${CARD_SPR[key]}.png" alt=""
+        onerror="this.outerHTML='<span style=font-size:30px>${meta.icon}</span>'">
+      <b>${meta.name}</b><span class="badge" style="margin-left:auto">${meta.badge}</span></div><p>${meta.desc}</p>`;
     el.onclick = () => { selectedGame = key; renderGameGrid(); };
     $('gameGrid').appendChild(el);
   }
@@ -844,7 +867,7 @@ function showResult(ranking) {
     $('resultHost').style.display = 'flex';
     $('resultPlayer').style.display = 'none';
     const top = ranking.filter(r => r.rank === 1);
-    $('podium').innerHTML = top.length ? `🏆 우승: ${top.map(r => esc(r.nick)).join(', ')}` : '게임 종료!';
+    $('podium').innerHTML = top.length ? `우승: ${top.map(r => esc(r.nick)).join(', ')}` : '게임 종료!';
     $('rankList').innerHTML = ranking.map(r => `
       <div class="rank-row">
         <span class="r">${r.rank}위</span>
