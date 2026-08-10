@@ -161,35 +161,55 @@ const RACE_BOOST_MULT = 1.55;
 const RACE_CAR_R = 19;
 const RACE_AFTER_FIRST_MS = 30000; // 1등 완주 후 나머지에게 주는 시간
 
-// 트랙 중심선: 모서리가 둥근 직사각형 루프를 점으로 샘플링
+// 트랙 중심선: 제어점을 카트무-롬 스플라인으로 이어 만든 서킷
 // (차의 진행도·트랙 이탈 판정·클라이언트 트랙 그리기가 전부 이 점 목록 하나로 돌아간다)
-function buildTrack(w, h) {
-  const m = 185, r = 205;                  // 바깥 여백, 모서리 반경
-  const x0 = m, y0 = m, x1 = w - m, y1 = h - m;
+function crSpline(ctrl, step) {
   const pts = [];
-  const seg = (fx, fy, tx, ty) => {
-    const d = Math.hypot(tx - fx, ty - fy), n = Math.max(2, Math.round(d / 22));
-    for (let i = 0; i < n; i++) pts.push([fx + (tx - fx) * i / n, fy + (ty - fy) * i / n]);
-  };
-  const arc = (cx, cy, a0, a1) => {
-    const n = Math.max(4, Math.round(Math.abs(a1 - a0) * r / 22));
-    for (let i = 0; i < n; i++) { const a = a0 + (a1 - a0) * i / n; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
-  };
-  // 시계 방향 한 바퀴 (출발선 = 위쪽 변의 시작점, 진행 방향 →)
-  seg(x0 + r, y0, x1 - r, y0);
-  arc(x1 - r, y0 + r, -Math.PI / 2, 0);
-  seg(x1, y0 + r, x1, y1 - r);
-  arc(x1 - r, y1 - r, 0, Math.PI / 2);
-  seg(x1 - r, y1, x0 + r, y1);
-  arc(x0 + r, y1 - r, Math.PI / 2, Math.PI);
-  seg(x0, y1 - r, x0, y0 + r);
-  arc(x0 + r, y0 + r, Math.PI, Math.PI * 1.5);
+  const n = ctrl.length;
+  for (let i = 0; i < n; i++) {
+    const p0 = ctrl[(i - 1 + n) % n], p1 = ctrl[i], p2 = ctrl[(i + 1) % n], p3 = ctrl[(i + 2) % n];
+    const steps = Math.max(4, Math.round(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+    for (let j = 0; j < steps; j++) {
+      const t = j / steps, t2 = t * t, t3 = t2 * t;
+      pts.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3),
+      ]);
+    }
+  }
+  return pts;
+}
+
+function buildTrack(w, h) {
+  // 시계 방향 서킷: 위 직선(출발) → 오른쪽 내리막 S → 아래 시케인 → 왼쪽 오르막
+  const ctrl = [
+    [380, 150], [950, 130], [1330, 190], [1480, 420],
+    [1350, 640], [1180, 560],            // 오른쪽 S자 (안으로 파고드는 코너)
+    [1290, 790], [1050, 910],
+    [860, 750],                          // 아래 시케인 (위로 솟는 굽이)
+    [650, 905], [380, 880],
+    [170, 690], [150, 380], [255, 200],
+  ];
+  const pts = crSpline(ctrl, 20);
   const cum = [0];
   for (let i = 1; i <= pts.length; i++) {
     const a = pts[i - 1], bb = pts[i % pts.length];
     cum.push(cum[i - 1] + Math.hypot(bb[0] - a[0], bb[1] - a[1]));
   }
-  return { pts, cum, total: cum[pts.length], halfW: 95 };
+  const t = { pts, cum, total: cum[pts.length], halfW: 92 };
+  // 함정: 트랙 위 고정 위치(진행률·좌우 오프셋으로 지정) — 피해서 가야 한다
+  // water=밟으면 크게 감속, oil=밟으면 빙글 스핀
+  t.hazards = [
+    ['water', 0.20, 30, 55], ['oil', 0.335, -25, 42],
+    ['water', 0.50, -20, 58], ['oil', 0.645, 30, 42],
+    ['water', 0.77, 25, 55], ['oil', 0.90, -30, 40],
+  ].map(([type, frac, off, r]) => {
+    const at = trackPointAt(t, t.total * frac);
+    return { type, r,
+      x: at.x + Math.cos(at.ang + Math.PI / 2) * off,
+      y: at.y + Math.sin(at.ang + Math.PI / 2) * off };
+  });
+  return t;
 }
 // 중심선을 따라 s만큼 간 지점과 그 방향
 function trackPointAt(t, s) {
@@ -322,7 +342,11 @@ function sendCurrentPhase(room, ws) {
 
 // 클라이언트가 트랙을 그릴 수 있게 중심선을 통째로 보낸다 (시작할 때 한 번만)
 function trackForClient(t) {
-  return { pts: t.pts.map(p => [Math.round(p[0]), Math.round(p[1])]), halfW: t.halfW, total: Math.round(t.total) };
+  return {
+    pts: t.pts.map(p => [Math.round(p[0]), Math.round(p[1])]),
+    halfW: t.halfW, total: Math.round(t.total),
+    hazards: t.hazards.map(h => [h.type === 'water' ? 0 : 1, Math.round(h.x), Math.round(h.y), h.r]),
+  };
 }
 
 function closeRoom(room, reason) {
@@ -354,6 +378,7 @@ function startGame(room, type) {
     p.clawState = 'move'; p.clawT = 0; p.clawGot = null; p.clawJudged = false;
     p.gotAt = 0; p.missAt = 0;
     p.angle = 0; p.boostsLeft = 0; p.boostUntil = 0;
+    p.spinUntil = 0; p.spinImmuneUntil = 0; p.inWater = false;
     p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
   }
 
@@ -412,7 +437,7 @@ function startGame(room, type) {
     g.usedPatterns = new Set(); g.claimed = [];
   } else if (type === 'race') {
     g.roundMs = RACE_ROUND_MS;
-    g.arenaW = 1500; g.arenaH = 1000;        // 레이싱은 넓은 고정 맵
+    g.arenaW = 1600; g.arenaH = 1050;        // 레이싱은 넓은 고정 맵
     g.track = buildTrack(g.arenaW, g.arenaH);
     g.finishCount = 0; g.firstFinishAt = 0;
     // 출발선 바로 뒤에 4열 격자로 배치 (트랙 진행 방향 기준)
@@ -876,21 +901,42 @@ function raceTick(room, now, dt) {
 
   for (const p of racers) {
     if (p.finishedAt) continue;
-    // 조향: 조이스틱이 가리키는 방향으로 서서히 회전 (차라서 즉시 못 꺾는다)
-    const len = Math.hypot(p.dirX, p.dirY);
-    if (len > 0.25) {
-      const target = Math.atan2(p.dirY, p.dirX);
-      let d = target - p.angle;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      const maxTurn = RACE_TURN * dt;
-      p.angle += Math.max(-maxTurn, Math.min(maxTurn, d));
+    const spinning = now < (p.spinUntil || 0);
+    // 기름을 밟으면 0.9초간 빙글 돌며 조종 불능
+    if (spinning) {
+      p.angle += 10 * dt;
+    } else {
+      // 조향: 조이스틱이 가리키는 방향으로 서서히 회전 (차라서 즉시 못 꺾는다)
+      const len = Math.hypot(p.dirX, p.dirY);
+      if (len > 0.25) {
+        const target = Math.atan2(p.dirY, p.dirX);
+        let d = target - p.angle;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        const maxTurn = RACE_TURN * dt;
+        p.angle += Math.max(-maxTurn, Math.min(maxTurn, d));
+      }
+    }
+    // 함정 판정
+    let inWater = false;
+    for (const hz of t.hazards) {
+      const dx = p.x - hz.x, dy = p.y - hz.y;
+      if (dx * dx + dy * dy > (hz.r + RACE_CAR_R * 0.5) * (hz.r + RACE_CAR_R * 0.5)) continue;
+      if (hz.type === 'water') inWater = true;
+      else if (hz.type === 'oil' && !spinning && now >= (p.spinImmuneUntil || 0)) {
+        p.spinUntil = now + 900;
+        p.spinImmuneUntil = now + 2400;  // 스핀 직후 같은 기름에 연속으로 안 걸리게
+      }
     }
     const boosting = now < p.boostUntil;
     const off = p.trackDist > t.halfW;               // 잔디에 빠졌나
-    const sp = RACE_SPEED * (off ? RACE_OFF_MULT : 1) * (boosting ? RACE_BOOST_MULT : 1);
+    let mult = off ? RACE_OFF_MULT : 1;
+    if (inWater) mult = Math.min(mult, 0.38);
+    if (now < (p.spinUntil || 0)) mult = Math.min(mult, 0.32);
+    const sp = RACE_SPEED * mult * (boosting ? RACE_BOOST_MULT : 1);
     p.x = Math.max(RACE_CAR_R, Math.min(g.arenaW - RACE_CAR_R, p.x + Math.cos(p.angle) * sp * dt));
     p.y = Math.max(RACE_CAR_R, Math.min(g.arenaH - RACE_CAR_R, p.y + Math.sin(p.angle) * sp * dt));
+    p.inWater = inWater;
   }
 
   // 차끼리 부드럽게 밀어내기 (완주한 차는 유령이 된다)
@@ -1040,13 +1086,14 @@ function sendState(room, now) {
                  now - (p.gotAt || 0) < 700 ? (p.clawGot || 0) : 0,
                  now - (p.missAt || 0) < 500 ? 1 : 0);
       }
-      // 레이싱: 방향각·랩·부스터·완주 순위
+      // 레이싱: 방향각·랩·부스터·완주 순위·스핀/물 상태
       if (type === 'race') {
         row.push(Math.round((p.angle || 0) * 180 / Math.PI),
                  Math.max(1, Math.min(RACE_LAPS, (p.crossings || 0) + 1)),
                  p.boostsLeft || 0,
                  now < (p.boostUntil || 0) ? 1 : 0,
-                 p.finishedAt ? (p.finishRank || 0) : 0);
+                 p.finishedAt ? (p.finishRank || 0) : 0,
+                 now < (p.spinUntil || 0) ? 1 : (p.inWater ? 2 : 0));
       }
       return row;
     }),
