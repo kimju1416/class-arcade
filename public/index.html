@@ -422,6 +422,8 @@ const GAMES_META = {
   claw: { icon: '🧸', name: '인형 뽑기', desc: '좌우로 움직이는 집게를 버튼으로 딱 멈춰 인형을 뽑자. 큰 인형일수록 고득점, 갈수록 빨라진다!', badge: '60초', rule: '집게가 인형 위에 왔을 때 버튼을 누르세요!\n큰 인형일수록 높은 점수' },
   word: { icon: '📝', name: '낱말 빨리치기', desc: 'TV의 제시어를 폰에 빨리, 정확히 입력! 5라운드 합산 점수로 승부.', badge: '5라운드', rule: '제시어를 똑같이 입력하고 제출!\n빠를수록 높은 점수' },
   race: { icon: '🏎️', name: '레이싱', desc: '왼손 핸들, 오른손 부스터! 물웅덩이는 느려지고 기름을 밟으면 빙글~ 함정을 피해 3바퀴 먼저 돌면 우승.', badge: '3랩', rule: '왼손: 핸들 · 오른손: 부스터(3번)\n💧물·🛢️기름 함정을 피하세요!' },
+  gala: { icon: '🚀', name: '갤러그', desc: '반 전체가 함대가 되어 외계인 편대를 격추! 맞으면 그대로 끝. 웨이브가 갈수록 빨라진다.', badge: '협동 슈팅', rule: '왼손: 이동 · 오른손: 발사!\n적 탄에 맞으면 부활 없음 — 끝까지 살아남으세요' },
+  dodge: { icon: '💥', name: '탄막 피하기', desc: '사방에서 쏟아지는 탄막을 피하는 극한 생존! 한 발이라도 맞으면 끝. 시간이 갈수록 거세진다.', badge: '서바이벌', rule: '조이스틱으로 탄막을 피하세요!\n한 발이라도 맞으면 탈락 — 최후의 1인은?' },
   cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 단어를 입력!\n이미 나온 단어는 안 돼요 — 다른 단어를 찾으세요' },
 };
 
@@ -712,9 +714,10 @@ function enterGameView() {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기) / 버튼(인형뽑기)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race');
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala');
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
-    $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥' : '집게<br>내리기';
+    $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
+      : gameType === 'gala' ? '발사<br>🔸' : '집게<br>내리기';
     $('btnAction').classList.remove('wait');
     if (!isHost) initInput();
   }
@@ -947,7 +950,8 @@ let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 // 이미지가 아직 안 왔거나 실패하면 예전 원형 그리기로 자동 대체된다.
 const SPR = {};
 ['player', 'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
- 'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil'].forEach(name => {
+ 'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
+ 'ship', 'alien', 'alien2'].forEach(name => {
   const im = new Image();
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
@@ -1020,9 +1024,10 @@ function initInput() {
       if (navigator.vibrate) navigator.vibrate(12);
       return;
     }
-    const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin' || gameType === 'race';
+    const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
+      || gameType === 'race' || gameType === 'gala' || gameType === 'dodge';
     if (!usesStick) return;
-    if (gameType === 'race' && e.clientX > innerWidth * 0.62) return; // 오른쪽은 부스터 영역
+    if ((gameType === 'race' || gameType === 'gala') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
     stickPid = e.pointerId;
@@ -1043,8 +1048,19 @@ function initInput() {
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (isHost || phase !== 'playing') return;
-  if (gameType !== 'claw' && gameType !== 'race') return;
+  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala') return;
   send({ type: 'action' });
+  // 갤러그: 누르고 있는 동안 연사
+  if (gameType === 'gala') {
+    clearInterval(window.__fireIv);
+    window.__fireIv = setInterval(() => {
+      if (phase !== 'playing' || gameType !== 'gala') { clearInterval(window.__fireIv); return; }
+      send({ type: 'action' });
+    }, 270);
+    const stop = () => clearInterval(window.__fireIv);
+    $('btnAction').addEventListener('pointerup', stop, { once: true });
+    $('btnAction').addEventListener('pointercancel', stop, { once: true });
+  }
   if (navigator.vibrate) navigator.vibrate(15);   // 학생 폰은 무음이라 진동으로 손맛
 });
 function moveStick(x, y) {
@@ -1069,7 +1085,8 @@ function keyDir() {
   const l = Math.hypot(x, y); return l ? { x: x / l, y: y / l } : null;
 }
 setInterval(() => {
-  const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin' || gameType === 'race';
+  const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
+    || gameType === 'race' || gameType === 'gala' || gameType === 'dodge';
   if (isHost || !moves || (phase !== 'playing' && phase !== 'countdown')) return;
   const kd = keyDir();
   const d = kd || curDir;
@@ -1127,6 +1144,8 @@ function draw() {
     if (grassReady) ctx.drawImage(GRASS_IMG, ox, oy, aw, ah);
     else { ctx.fillStyle = '#2c5a2e'; ctx.fillRect(ox, oy, aw, ah); }
     if (raceTrack) drawRaceTrack(ox, oy, scale, dpr);
+  } else if (gameType === 'gala') {
+    drawSpace(ox, oy, aw, ah, dpr);
   } else if (floorReady) {
     ctx.drawImage(FLOOR_IMG, ox, oy, aw, ah);
   } else {
@@ -1231,6 +1250,64 @@ function draw() {
     }
   }
   // 모기 잡기
+  // 갤러그: 적 편대·총알·격추 폭발
+  if (latest.mode === 'gala') {
+    // 격추 폭발 잔상 (로컬 파티클 350ms)
+    if (latest.kills) for (const [kx, ky] of latest.kills) {
+      if (!window.__galaFx) window.__galaFx = [];
+      if (!latest.__fxDone) window.__galaFx.push({ x: kx, y: ky, t: performance.now() });
+    }
+    latest.__fxDone = true;
+    if (window.__galaFx) {
+      window.__galaFx = window.__galaFx.filter(f => performance.now() - f.t < 380);
+      for (const f of window.__galaFx) {
+        const age = (performance.now() - f.t) / 380;
+        if (SPR.boom) {
+          ctx.globalAlpha = 1 - age;
+          drawSpr(SPR.boom, ox + f.x * scale, oy + f.y * scale, (30 + age * 46) * scale);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    // 적 편대 (둥실거림, 정예는 보라 말벌)
+    for (const [ex, ey, elite, dive] of (latest.enemies || [])) {
+      const x = ox + ex * scale, y = oy + ey * scale;
+      const bob = dive ? 0 : Math.sin(performance.now() / 300 + ex * 0.05) * 3 * scale;
+      const img = elite ? SPR.alien2 : SPR.alien;
+      const sz = (elite ? 52 : 44) * scale;
+      if (img) drawSpr(img, x, y + bob, sz);
+      else { ctx.fillStyle = elite ? '#a05aff' : '#4cd94c'; ctx.beginPath(); ctx.arc(x, y, 20 * scale, 0, 7); ctx.fill(); }
+    }
+    // 내 총알 (노란 트레이서) — [x1,y1,x2,y2,...] 평탄 배열
+    ctx.fillStyle = '#ffe45c';
+    const pb = latest.pb || [];
+    for (let i = 0; i < pb.length; i += 2) {
+      const x = ox + pb[i] * scale, y = oy + pb[i + 1] * scale;
+      ctx.fillRect(x - 2 * scale, y - 9 * scale, 4 * scale, 18 * scale);
+    }
+    // 적 총알 (붉은 구슬 + 흰 심)
+    const eb = latest.eb || [];
+    for (let i = 0; i < eb.length; i += 2) {
+      const x = ox + eb[i] * scale, y = oy + eb[i + 1] * scale;
+      ctx.fillStyle = '#ff5d7a';
+      ctx.beginPath(); ctx.arc(x, y, 7 * scale, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ffd9e0';
+      ctx.beginPath(); ctx.arc(x, y, 3 * scale, 0, 7); ctx.fill();
+    }
+  }
+  // 탄막 서바이벌: 마젠타 탄
+  if (latest.mode === 'dodge' && latest.db) {
+    const db = latest.db;
+    for (let i = 0; i < db.length; i += 2) {
+      const x = ox + db[i] * scale, y = oy + db[i + 1] * scale;
+      ctx.fillStyle = 'rgba(255,80,180,.35)';
+      ctx.beginPath(); ctx.arc(x, y, 12 * scale, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ff64c8';
+      ctx.beginPath(); ctx.arc(x, y, 7 * scale, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ffe3f5';
+      ctx.beginPath(); ctx.arc(x, y, 2.8 * scale, 0, 7); ctx.fill();
+    }
+  }
   if (latest.mode === 'mos' && latest.mos) {
     for (const [mx, my, gold] of latest.mos) {
       const x = ox + mx * scale, y = oy + my * scale;
@@ -1330,9 +1407,11 @@ function draw() {
 
     ctx.globalAlpha = alive ? 1 : 0.25;
     const rr = infected ? r * 1.4 : r;
-    // 발밑 그림자 — 캐릭터가 바닥에 서 있는 느낌
-    ctx.fillStyle = 'rgba(0,0,0,.28)';
-    ctx.beginPath(); ctx.ellipse(px, py + rr * .92, rr * .72, rr * .26, 0, 0, 7); ctx.fill();
+    // 발밑 그림자 — 우주(갤러그)에서는 생략
+    if (latest.mode !== 'gala') {
+      ctx.fillStyle = 'rgba(0,0,0,.28)';
+      ctx.beginPath(); ctx.ellipse(px, py + rr * .92, rr * .72, rr * .26, 0, 0, 7); ctx.fill();
+    }
     if (infected) {
       const blink = 0.45 + 0.45 * Math.sin(performance.now() / 190);
       ctx.strokeStyle = `rgba(255,59,59,${blink})`; ctx.lineWidth = 4 * dpr;
@@ -1340,10 +1419,21 @@ function draw() {
     }
     // 살짝 통통 튀는 움직임 (걸을 때만)
     const bob = alive ? Math.sin(performance.now() / 170 + id * 1.7) * rr * .06 : 0;
-    const body = infected ? SPR.zombie : tintedPlayer(COLORS[meta.ci % COLORS.length]);
+    const body = latest.mode === 'gala' ? tintSprite('ship', COLORS[meta.ci % COLORS.length])
+      : infected ? SPR.zombie : tintedPlayer(COLORS[meta.ci % COLORS.length]);
     if (body) {
       drawSpr(body, px, py + bob, rr * 2.35);
-      if (alive) {  // 눈은 코드로 그려 표정을 살린다
+      // 갤러그 함선: 엔진 불꽃 깜빡임 (눈은 안 그린다)
+      if (latest.mode === 'gala' && alive) {
+        const fl = (0.6 + Math.random() * 0.4) * rr;
+        ctx.fillStyle = 'rgba(120,200,255,.8)';
+        ctx.beginPath();
+        ctx.moveTo(px - rr * .3, py + rr * 1.05);
+        ctx.lineTo(px, py + rr * 1.05 + fl);
+        ctx.lineTo(px + rr * .3, py + rr * 1.05);
+        ctx.closePath(); ctx.fill();
+      }
+      if (alive && latest.mode !== 'gala') {  // 눈은 코드로 그려 표정을 살린다
         const ey = py + bob - rr * .18;
         ctx.fillStyle = '#fff';
         ctx.beginPath(); ctx.arc(px - r * .32, ey, r * .24, 0, 7); ctx.fill();
@@ -1404,6 +1494,15 @@ function draw() {
       if (sndPrev.infected >= 0 && inf > sndPrev.infected) SFX.zombie();
       sndPrev.infected = inf;
     }
+    if (latest.mode === 'gala') {
+      if (latest.kills && latest.kills.length) SFX.boom();
+      if ((latest.wave || 0) > (sndPrev.wave || 0)) { SFX.fanfare(); sndPrev.wave = latest.wave; }
+    }
+    if (latest.mode === 'dodge' || latest.mode === 'gala') {
+      const al = latest.players.filter(pp => pp[3] === 1 && !pp[4]).length;
+      if (sndPrev.dodgeAlive >= 0 && al < sndPrev.dodgeAlive) SFX.miss();
+      sndPrev.dodgeAlive = al;
+    }
   }
 
   // 교사 화면: 좌우 여백이 비어 있으므로 실시간 순위를 크게 띄운다
@@ -1413,6 +1512,8 @@ function draw() {
   const hudText = tapHud !== null ? tapHud
     : latest.mode === 'tag' ? '남은 사람 ' + humanCount
     : latest.mode === 'coin' ? (isHost ? '💣 폭탄 조심!' : '내 돈 ' + myScore + '원')
+    : latest.mode === 'gala' ? ('🌊 웨이브 ' + (latest.wave || 1) + (isHost ? ' · 생존 ' + aliveCount : ' · 내 격추 ' + myScore))
+    : latest.mode === 'dodge' ? ((latest.elapsed || 0) + '초 버팀 · 생존 ' + aliveCount)
     : '생존 ' + aliveCount;
   setText($('hudLeft'), hudText);
   if (phase === 'playing') {
@@ -1495,10 +1596,10 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
     return;
   }
 
-  const scoreGame = latest.mode === 'coin' || latest.mode === 'mos' || latest.mode === 'claw';
+  const scoreGame = latest.mode === 'coin' || latest.mode === 'mos' || latest.mode === 'claw' || latest.mode === 'gala';
 
   if (scoreGame) {
-    const unit = latest.mode === 'mos' ? '마리' : latest.mode === 'coin' ? '원' : '점';
+    const unit = latest.mode === 'mos' ? '마리' : latest.mode === 'coin' ? '원' : latest.mode === 'gala' ? '격추' : '점';
     rows.sort((a, c) => c.extra - a.extra);
     ctx.fillStyle = '#93a0c4';
     ctx.font = `700 ${20 * dpr}px Pretendard, sans-serif`;
@@ -1534,6 +1635,25 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
       ctx.fillText(`🧟 좀비 ${infected}명`, x0, y);
     }
   }
+}
+
+// 갤러그 우주 배경: 고정 시드 별밭 + 느린 스크롤
+const STARS = Array.from({ length: 90 }, (_, i) => {
+  const h = (i * 2654435761) % 4294967296;
+  return { x: (h % 1000) / 1000, y: ((h >> 10) % 1000) / 1000, s: 1 + (i % 3), tw: (i % 7) / 7 };
+});
+function drawSpace(ox, oy, aw, ah, dpr) {
+  ctx.fillStyle = '#070b1c';
+  ctx.fillRect(ox, oy, aw, ah);
+  const scroll = (performance.now() / 60) % 1000;
+  for (const st of STARS) {
+    const y = (st.y * 1000 + scroll * st.s * 0.35) % 1000 / 1000;
+    const tw = 0.35 + 0.65 * Math.abs(Math.sin(performance.now() / 700 + st.tw * 6.28));
+    ctx.fillStyle = `rgba(210,225,255,${tw * (st.s === 3 ? 0.9 : 0.5)})`;
+    ctx.fillRect(ox + st.x * aw, oy + y * ah, st.s * dpr * 0.8, st.s * dpr * 0.8);
+  }
+  ctx.strokeStyle = '#3a4680'; ctx.lineWidth = 5 * dpr;
+  ctx.strokeRect(ox - 2 * dpr, oy - 2 * dpr, aw + 4 * dpr, ah + 4 * dpr);
 }
 
 // ---------- 레이싱 렌더링 ----------

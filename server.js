@@ -223,7 +223,20 @@ function trackPointAt(t, s) {
            ang: Math.atan2(bb[1] - a[1], bb[0] - a[0]), idx: i };
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race'];
+// 갤러그 (협동 슈팅 — 죽으면 끝, 웨이브가 갈수록 강해짐)
+const GALA_MAX_MS = 240000;
+const GALA_SHIP_R = 15;
+const GALA_FIRE_CD = 260;        // 발사 쿨타임
+const GALA_MAX_SHOTS = 2;        // 내 총알 동시 2발 (갤러그 전통)
+const GALA_PB_SPEED = 540;       // 내 총알 속도 (위로)
+const GALA_ENEMY_R = 24;
+
+// 탄막 서바이벌 (죽으면 끝, 시간이 갈수록 탄막이 거세짐)
+const DODGE_MAX_MS = 150000;
+const DODGE_BULLET_R = 8;
+const DODGE_MAX_BULLETS = 130;
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -379,6 +392,7 @@ function startGame(room, type) {
     p.gotAt = 0; p.missAt = 0;
     p.angle = 0; p.boostsLeft = 0; p.boostUntil = 0;
     p.spinUntil = 0; p.spinImmuneUntil = 0; p.inWater = false;
+    p.fireReadyAt = 0;
     p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
   }
 
@@ -435,6 +449,27 @@ function startGame(room, type) {
     g.roundMs = 0;
     g.round = 0; g.wordPhase = 'idle'; g.correctOrder = [];
     g.usedPatterns = new Set(); g.claimed = [];
+  } else if (type === 'gala') {
+    g.roundMs = GALA_MAX_MS;
+    g.arenaW = 950; g.arenaH = 1150;
+    g.wave = 0; g.enemies = []; g.pb = []; g.eb = []; g.kills = [];
+    g.nextWaveAt = 0; g.nextDiveAt = 0; g.nextEnemyId = 1;
+    // 함선은 아래쪽 구역에 가로로 배치
+    actives.forEach((p, i) => {
+      p.x = 80 + (i % 10) * ((g.arenaW - 160) / 9);
+      p.y = g.arenaH - 120 - Math.floor(i / 10) * 70;
+      p.alive = true; p.waiting = false;
+    });
+  } else if (type === 'dodge') {
+    g.roundMs = DODGE_MAX_MS;
+    const size = Math.round(Math.min(1000, 560 + n * 25));
+    g.arenaW = size; g.arenaH = size;
+    g.bullets = []; g.nextRingAt = 0; g.nextAimAt = 0; g.spiralAngle = 0; g.nextSpiralAt = 0;
+    actives.forEach((p, i) => {
+      const ang = (i / n) * Math.PI * 2;
+      p.x = size / 2 + Math.cos(ang) * size * 0.3;
+      p.y = size / 2 + Math.sin(ang) * size * 0.3;
+    });
   } else if (type === 'race') {
     g.roundMs = RACE_ROUND_MS;
     g.arenaW = 1600; g.arenaH = 1050;        // 레이싱은 넓은 고정 맵
@@ -480,6 +515,8 @@ function tick(room) {
       if (room.gameType === 'coin') { g.nextCoinAt = now + 500; g.nextMineAt = now + 6000; }
       if (room.gameType === 'word') startWordRound(room, now);
       if (room.gameType === 'cho') startChoRound(room, now);
+      if (room.gameType === 'gala') { g.nextWaveAt = now + 800; g.nextDiveAt = now + 16000; }
+      if (room.gameType === 'dodge') { g.nextRingAt = now + 2500; g.nextAimAt = now + 9000; g.nextSpiralAt = now + 20000; }
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
     }
     sendState(room, now);
@@ -503,6 +540,8 @@ function tick(room) {
   else if (room.gameType === 'word') wordTick(room, now);
   else if (room.gameType === 'cho') choTick(room, now);
   else if (room.gameType === 'race') raceTick(room, now, dt);
+  else if (room.gameType === 'gala') galaTick(room, now, dt);
+  else if (room.gameType === 'dodge') dodgeTick(room, now, dt);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -894,6 +933,206 @@ function choTick(room, now) {
   sendState(room, now);
 }
 
+// ---------- 갤러그 ----------
+function galaSpawnWave(g, now) {
+  g.wave++;
+  const w = g.wave;
+  const cols = Math.min(10, 5 + w), rows = Math.min(4, 1 + Math.ceil(w / 2));
+  const gapX = (g.arenaW - 140) / (cols - 1);
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      g.enemies.push({
+        id: g.nextEnemyId++,
+        x: 70 + c * gapX, y: 80 + r * 64,
+        mode: 'form',                        // form=편대 행진, dive=급강하
+        elite: r === 0 && (c + w) % 3 === 0, // 맨 앞줄 일부는 정예(3점)
+        vx: 0, vy: 0, fireAt: now + 3000 + Math.random() * 4000,
+      });
+  g.formDir = 1;
+  g.formSpeed = 46 + w * 9;                  // 웨이브마다 편대가 빨라진다
+  g.fireGap = Math.max(450, 2400 - w * 200); // 발사도 잦아진다
+  g.diveGap = Math.max(3000, 10000 - w * 700);
+  g.ebSpeed = Math.min(320, 140 + w * 18);
+}
+
+function galaTick(room, now, dt) {
+  const g = room.game;
+  const alivePs = [...room.players.values()].filter(p => p.alive);
+
+  // 웨이브 시작/클리어
+  if (!g.enemies.length) {
+    if (!g.nextWaveAt) g.nextWaveAt = now + 1600;
+    if (now >= g.nextWaveAt) { galaSpawnWave(g, now); g.nextWaveAt = 0; }
+  }
+
+  // 함선 이동 (아래쪽 구역 안에서만)
+  for (const p of room.players.values()) {
+    if (!p.alive) continue;
+    p.x = Math.max(GALA_SHIP_R, Math.min(g.arenaW - GALA_SHIP_R, p.x + p.dirX * SPEED * dt));
+    p.y = Math.max(g.arenaH * 0.55, Math.min(g.arenaH - 30, p.y + p.dirY * SPEED * dt));
+  }
+
+  // 편대 행진 (좌우 왕복 + 벽에서 한 칸 내려옴)
+  let hitWall = false;
+  for (const e of g.enemies) {
+    if (e.mode !== 'form') continue;
+    e.x += g.formDir * g.formSpeed * dt;
+    if (e.x < 50 || e.x > g.arenaW - 50) hitWall = true;
+  }
+  if (hitWall) {
+    g.formDir *= -1;
+    for (const e of g.enemies) if (e.mode === 'form') { e.y += 20; e.x += g.formDir * 4; }
+  }
+
+  // 급강하: 주기적으로 한 마리가 대열을 이탈해 함선을 향해 돌진
+  if (now >= g.nextDiveAt && g.enemies.length && alivePs.length) {
+    const formers = g.enemies.filter(e => e.mode === 'form');
+    if (formers.length) {
+      const e = formers[Math.floor(Math.random() * formers.length)];
+      const target = alivePs[Math.floor(Math.random() * alivePs.length)];
+      const ang = Math.atan2(target.y - e.y, target.x - e.x);
+      const sp = 200 + g.wave * 22;
+      e.mode = 'dive'; e.vx = Math.cos(ang) * sp; e.vy = Math.sin(ang) * sp;
+      e.fireAt = now + 300;
+    }
+    g.nextDiveAt = now + g.diveGap;
+  }
+  for (const e of g.enemies) {
+    if (e.mode !== 'dive') continue;
+    e.x += e.vx * dt; e.y += e.vy * dt;
+    e.vx += Math.sin(now / 130 + e.id) * 60 * dt;   // 살짝 흔들리며 내려온다
+  }
+  g.enemies = g.enemies.filter(e => e.mode !== 'dive' || e.y < g.arenaH + 40);
+
+  // 적 발사 (조준탄)
+  for (const e of g.enemies) {
+    if (now < e.fireAt || !alivePs.length) continue;
+    e.fireAt = now + g.fireGap * (0.7 + Math.random() * 0.8) * (e.mode === 'dive' ? 0.5 : 1);
+    const target = alivePs[Math.floor(Math.random() * alivePs.length)];
+    const ang = Math.atan2(target.y - e.y, target.x - e.x) + (Math.random() - 0.5) * 0.25;
+    g.eb.push({ x: e.x, y: e.y, vx: Math.cos(ang) * g.ebSpeed, vy: Math.sin(ang) * g.ebSpeed });
+  }
+
+  // 총알 이동
+  for (const bl of g.pb) bl.y -= GALA_PB_SPEED * dt;
+  for (const bl of g.eb) { bl.x += bl.vx * dt; bl.y += bl.vy * dt; }
+  g.pb = g.pb.filter(bl => bl.y > -20);
+  g.eb = g.eb.filter(bl => bl.x > -20 && bl.x < g.arenaW + 20 && bl.y > -20 && bl.y < g.arenaH + 20);
+
+  // 명중 판정: 내 총알 → 적
+  g.kills = [];
+  for (const bl of g.pb) {
+    for (const e of g.enemies) {
+      const dx = bl.x - e.x, dy = bl.y - e.y;
+      if (dx * dx + dy * dy <= GALA_ENEMY_R * GALA_ENEMY_R) {
+        bl.hit = true; e.dead = true;
+        g.kills.push([Math.round(e.x), Math.round(e.y)]);
+        const owner = room.players.get(bl.owner);
+        if (owner) owner.score += e.elite ? 3 : 1;
+        break;
+      }
+    }
+  }
+  g.pb = g.pb.filter(bl => !bl.hit);
+  g.enemies = g.enemies.filter(e => !e.dead);
+
+  // 피격 판정: 적탄·급강하 몸통 → 함선 (죽으면 끝)
+  for (const p of alivePs) {
+    for (const bl of g.eb) {
+      const dx = bl.x - p.x, dy = bl.y - p.y;
+      if (dx * dx + dy * dy <= (GALA_SHIP_R + 6) * (GALA_SHIP_R + 6)) { p.alive = false; p.deadAt = now; bl.hitP = true; break; }
+    }
+    if (!p.alive) continue;
+    for (const e of g.enemies) {
+      if (e.mode !== 'dive') continue;
+      const dx = e.x - p.x, dy = e.y - p.y;
+      if (dx * dx + dy * dy <= (GALA_SHIP_R + GALA_ENEMY_R * 0.8) * (GALA_SHIP_R + GALA_ENEMY_R * 0.8)) { p.alive = false; p.deadAt = now; break; }
+    }
+  }
+  g.eb = g.eb.filter(bl => !bl.hitP);
+
+  const stillAlive = [...room.players.values()].filter(p => p.alive);
+  if (!stillAlive.length || now >= room.phaseEndAt) { endGala(room, now); return; }
+  sendState(room, now);
+}
+
+function endGala(room, now) {
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const ad = a.alive ? Infinity : a.deadAt, bd = b.alive ? Infinity : b.deadAt;
+    return bd - ad;
+  });
+  finishGame(room, sorted,
+    p => p.score + '격추' + (p.alive ? ' · 생존' : ''),
+    p => p.score + '|' + (p.alive ? 'a' : p.deadAt));
+}
+
+// ---------- 탄막 서바이벌 ----------
+function dodgeTick(room, now, dt) {
+  const g = room.game;
+  const el = now - g.startedAt;              // 경과 시간 = 난이도
+  const W = g.arenaW, H = g.arenaH;
+  movePlayers(room, dt);
+  const alivePs = [...room.players.values()].filter(p => p.alive);
+
+  const bSpeed = Math.min(300, 105 + el / 220);  // 탄속: 105 → 300
+
+  // 패턴 1: 가장자리 링 폭발 (점점 잦고 촘촘하게)
+  if (now >= g.nextRingAt) {
+    const side = Math.floor(Math.random() * 4);
+    const px = side === 0 ? 0 : side === 1 ? W : Math.random() * W;
+    const py = side < 2 ? Math.random() * H : (side === 2 ? 0 : H);
+    const cnt = Math.min(24, 7 + Math.floor(el / 5000));
+    for (let i = 0; i < cnt; i++) {
+      const ang = (i / cnt) * Math.PI * 2;
+      g.bullets.push({ x: px, y: py, vx: Math.cos(ang) * bSpeed, vy: Math.sin(ang) * bSpeed });
+    }
+    g.nextRingAt = now + Math.max(650, 2600 - el / 35);
+  }
+  // 패턴 2: 조준탄 3연발
+  if (now >= g.nextAimAt && alivePs.length) {
+    const t = alivePs[Math.floor(Math.random() * alivePs.length)];
+    const srcs = [[0, Math.random() * H], [W, Math.random() * H], [Math.random() * W, 0], [Math.random() * W, H]];
+    const src = srcs[Math.floor(Math.random() * 4)];
+    const ang = Math.atan2(t.y - src[1], t.x - src[0]);
+    for (let k = -1; k <= 1; k++) {
+      const a2 = ang + k * 0.09;
+      g.bullets.push({ x: src[0], y: src[1], vx: Math.cos(a2) * bSpeed * 1.25, vy: Math.sin(a2) * bSpeed * 1.25 });
+    }
+    g.nextAimAt = now + Math.max(450, 1800 - el / 50);
+  }
+  // 패턴 3: 15초부터 중앙 회오리
+  if (el > 15000 && now >= g.nextSpiralAt) {
+    g.spiralAngle += 0.55;
+    for (const off of [0, Math.PI]) {
+      const a2 = g.spiralAngle + off;
+      g.bullets.push({ x: W / 2, y: H / 2, vx: Math.cos(a2) * bSpeed * 0.9, vy: Math.sin(a2) * bSpeed * 0.9 });
+    }
+    g.nextSpiralAt = now + Math.max(70, 160 - el / 1000);
+  }
+
+  // 탄 이동·정리
+  for (const bl of g.bullets) { bl.x += bl.vx * dt; bl.y += bl.vy * dt; }
+  g.bullets = g.bullets.filter(bl => bl.x > -25 && bl.x < W + 25 && bl.y > -25 && bl.y < H + 25);
+  if (g.bullets.length > DODGE_MAX_BULLETS) g.bullets.splice(0, g.bullets.length - DODGE_MAX_BULLETS);
+
+  // 피격 = 즉사 (죽으면 끝)
+  for (const p of alivePs) {
+    for (const bl of g.bullets) {
+      const dx = bl.x - p.x, dy = bl.y - p.y;
+      if (dx * dx + dy * dy <= (DODGE_BULLET_R + 12) * (DODGE_BULLET_R + 12)) { p.alive = false; p.deadAt = now; break; }
+    }
+  }
+
+  const alive = [...room.players.values()].filter(p => p.alive);
+  if (now >= room.phaseEndAt || (g.startingCount >= 2 && alive.length <= 1) || !alive.length) {
+    endBomb(room, now);   // 순위 규칙이 폭탄 피하기와 같다 (생존자 → 늦게 죽은 순)
+    return;
+  }
+  sendState(room, now);
+}
+
 // ---------- 레이싱 ----------
 function raceTick(room, now, dt) {
   const g = room.game, t = g.track;
@@ -1068,7 +1307,7 @@ function sendState(room, now) {
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
-        : (type === 'coin' || type === 'mos' || type === 'claw') ? p.score
+        : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala') ? p.score
         : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0) : 0;
       const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
       // 폭탄 밟은 직후 1초간 "0원!" 연출
@@ -1109,6 +1348,22 @@ function sendState(room, now) {
     msg.mines = g.mines.map(m => [Math.round(m.x), Math.round(m.y), now >= m.liveAt ? 1 : 0]);
   }
   if (type === 'mos') msg.mos = g.mos.map(m => [Math.round(m.x), Math.round(m.y), m.gold ? 1 : 0]);
+  if (type === 'gala') {
+    msg.wave = g.wave;
+    msg.enemies = g.enemies.map(e => [Math.round(e.x), Math.round(e.y), e.elite ? 1 : 0, e.mode === 'dive' ? 1 : 0]);
+    // 총알은 [x1,y1,x2,y2,...] 평탄한 배열로 (용량 절약)
+    const pb = [], eb = [];
+    for (const bl of g.pb) { pb.push(Math.round(bl.x), Math.round(bl.y)); }
+    for (const bl of g.eb) { eb.push(Math.round(bl.x), Math.round(bl.y)); }
+    msg.pb = pb; msg.eb = eb;
+    if (g.kills.length) msg.kills = g.kills;
+  }
+  if (type === 'dodge') {
+    const db = [];
+    for (const bl of g.bullets) { db.push(Math.round(bl.x), Math.round(bl.y)); }
+    msg.db = db;
+    msg.elapsed = Math.round((now - g.startedAt) / 1000);
+  }
   if (type === 'claw') msg.dolls = g.dolls.map(d => [Math.round(d.x), Math.round(d.y), d.v]);
   broadcast(room, msg);
 }
@@ -1257,6 +1512,13 @@ wss.on('connection', (ws) => {
         const p = room.players.get(ws.playerId);
         if (!p) return;
         if (room.gameType === 'claw') clawDrop(room, p);
+        else if (room.gameType === 'gala' && room.state === 'playing' && p.alive) {
+          const g2 = room.game, now2 = Date.now();
+          if (now2 >= (p.fireReadyAt || 0) && g2.pb.filter(bl => bl.owner === p.id).length < GALA_MAX_SHOTS) {
+            p.fireReadyAt = now2 + GALA_FIRE_CD;
+            g2.pb.push({ x: p.x, y: p.y - GALA_SHIP_R - 4, owner: p.id });
+          }
+        }
         else if (room.gameType === 'race' && room.state === 'playing'
                  && p.alive && !p.finishedAt && (p.boostsLeft || 0) > 0
                  && Date.now() >= (p.boostUntil || 0)) {
