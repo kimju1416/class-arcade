@@ -18,8 +18,19 @@
   .view { display: none; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 24px; gap: 16px; overflow-y: auto; }
   .view.on { display: flex; }
 
-  h1.logo { font-size: 34px; font-weight: 800; letter-spacing: -1px; }
+  h1.logo {
+    font-size: 38px; font-weight: 800; letter-spacing: -1px;
+    text-shadow: 0 3px 0 #0b1024, 0 0 26px rgba(255,176,58,.35);
+  }
   h1.logo .accent { color: #ffb03a; }
+  /* 아케이드 기계 상단 조명 느낌 */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(1200px 420px at 50% -12%, rgba(90,120,255,.16), transparent 70%),
+      radial-gradient(900px 380px at 50% 112%, rgba(255,176,58,.07), transparent 70%);
+  }
+  .view, #game { position: relative; z-index: 1; }
   .sub { color: #93a0c4; font-size: 15px; text-align: center; line-height: 1.5; }
 
   .btn {
@@ -27,11 +38,16 @@
     font-family: inherit; font-size: 18px; font-weight: 700;
     padding: 16px 28px; width: 100%; max-width: 340px;
     color: #10162b; background: #ffb03a;
-    transition: transform .08s; flex-shrink: 0;
+    transition: transform .07s, box-shadow .07s; flex-shrink: 0;
+    box-shadow: 0 5px 0 #c9871f;
   }
-  .btn:active { transform: scale(.97); }
-  .btn.ghost { background: #232c4d; color: #eef1fa; }
-  .btn.green { background: #3ddc84; }
+  .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #c9871f; }
+  .btn.ghost { background: #2b3563; color: #eef1fa; box-shadow: 0 5px 0 #1a2144; }
+  .btn.ghost:active { box-shadow: 0 1px 0 #1a2144; }
+  .btn.green { background: #3ddc84; box-shadow: 0 5px 0 #2aa762; }
+  .btn.green:active { box-shadow: 0 1px 0 #2aa762; }
+  .btn.danger-ghost { box-shadow: none; }
+  .btn.danger-ghost:active { transform: none; box-shadow: none; }
   .btn.small { font-size: 14px; padding: 10px 18px; width: auto; }
   .btn.danger-ghost { background: none; color: #93a0c4; font-size: 15px; padding: 13px 18px; min-height: 46px; width: auto; }
   .btn:disabled { opacity: .4; cursor: default; }
@@ -61,7 +77,10 @@
 
   /* 호스트 로비 */
   #hostLobby { justify-content: flex-start; padding-top: 3vh; }
-  .code-big { font-size: 56px; font-weight: 800; letter-spacing: 10px; color: #ffb03a; }
+  .code-big {
+    font-size: 56px; font-weight: 800; letter-spacing: 12px; color: #ffb03a;
+    text-shadow: 0 0 24px rgba(255,176,58,.5), 0 4px 0 #7a5210;
+  }
   .qr-wrap { background: #fff; border-radius: 16px; padding: 12px; }
   .join-url { color: #93a0c4; font-size: 13px; word-break: break-all; text-align: center; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 720px; }
@@ -81,7 +100,11 @@
     padding: 14px 16px; cursor: pointer; text-align: left; transition: transform .08s;
   }
   .game-card:active { transform: scale(.98); }
-  .game-card.sel { border-color: #3ddc84; background: #1d2b46; }
+  .game-card.sel {
+    border-color: #3ddc84; background: #1d2b46;
+    box-shadow: 0 0 0 3px rgba(61,220,132,.18), 0 8px 22px rgba(0,0,0,.35);
+    transform: translateY(-2px);
+  }
   .game-card b { font-size: 17px; }
   .game-card .badge { float: right; color: #93a0c4; font-size: 12px; font-weight: 600; }
   .game-card p { color: #93a0c4; font-size: 13px; margin-top: 5px; line-height: 1.45; }
@@ -169,7 +192,13 @@
     background: linear-gradient(to top, #10162b 70%, rgba(16,22,43,0));
   }
   body.host .result-actions .btn { max-width: 320px; }
-  .podium { font-size: 26px; font-weight: 800; text-align: center; line-height: 1.6; }
+  .podium {
+    font-size: 26px; font-weight: 800; text-align: center; line-height: 1.6;
+    text-shadow: 0 0 30px rgba(255,176,58,.4);
+  }
+  .rank-row:nth-child(1) { background: linear-gradient(90deg, #2a2445, #1a2140); border-left: 4px solid #ffd700; }
+  .rank-row:nth-child(2) { border-left: 4px solid #c6ccd8; }
+  .rank-row:nth-child(3) { border-left: 4px solid #cd7f32; }
   .rank-list { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 6px; }
   .rank-row { display: flex; align-items: center; gap: 12px; background: #1a2140; border-radius: 12px; padding: 10px 16px; font-size: 16px; }
   .rank-row .r { font-weight: 800; width: 40px; color: #ffb03a; flex-shrink: 0; }
@@ -875,6 +904,42 @@ function renderWord(m) {
 let stickActive = false, stickCx = 0, stickCy = 0, stickPid = null;
 let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 
+// ---- 픽셀 아트 스프라이트 ----
+// 흰 몸통 하나를 색만 바꿔 30명에게 쓴다(이미지 30장을 받을 필요가 없다).
+// 이미지가 아직 안 왔거나 실패하면 예전 원형 그리기로 자동 대체된다.
+const SPR = {};
+['player', 'zombie', 'bomb', 'coin', 'mos', 'doll'].forEach(name => {
+  const im = new Image();
+  im.src = 'sprites/' + name + '.png';
+  im.onload = () => { SPR[name] = im; };
+});
+const FLOOR_IMG = new Image();
+let floorReady = false;
+FLOOR_IMG.src = 'sprites/floor.jpg';
+FLOOR_IMG.onload = () => { floorReady = true; };
+
+const tintCache = new Map();
+function tintedPlayer(color) {
+  if (!SPR.player) return null;
+  if (tintCache.has(color)) return tintCache.get(color);
+  const src = SPR.player;
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'multiply';   // 흰 몸통 → 원하는 색, 검은 테두리는 그대로
+  g.fillStyle = color;
+  g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'destination-in'; // 원래 모양 밖은 잘라낸다
+  g.drawImage(src, 0, 0);
+  tintCache.set(color, c);
+  return c;
+}
+// 스프라이트를 중심 기준으로 그린다
+function drawSpr(img, x, y, size) {
+  ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+}
+
 // 화면 좌표 → 아레나 좌표 (draw()가 매 프레임 갱신하는 view 사용)
 function toArena(clientX, clientY) {
   const dpr = devicePixelRatio;
@@ -977,14 +1042,22 @@ function draw() {
   view = { ox, oy, scale };
   window.__view = view;  // 자동 검증용 훅
 
-  ctx.fillStyle = '#1a2140';
-  ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
-  ctx.strokeStyle = '#2c3763'; ctx.lineWidth = 3 * dpr;
-  ctx.strokeRect(ox, oy, arena.w * scale, arena.h * scale);
-  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
-  const grid = 80 * scale;
-  for (let x = ox + grid; x < ox + arena.w * scale; x += grid) { ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + arena.h * scale); ctx.stroke(); }
-  for (let y = oy + grid; y < oy + arena.h * scale; y += grid) { ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + arena.w * scale, y); ctx.stroke(); }
+  const aw = arena.w * scale, ah = arena.h * scale;
+  if (floorReady) {
+    ctx.drawImage(FLOOR_IMG, ox, oy, aw, ah);
+  } else {
+    ctx.fillStyle = '#1a2140';
+    ctx.fillRect(ox, oy, aw, ah);
+    ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
+    const grid = 80 * scale;
+    for (let x = ox + grid; x < ox + aw; x += grid) { ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + ah); ctx.stroke(); }
+    for (let y = oy + grid; y < oy + ah; y += grid) { ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + aw, y); ctx.stroke(); }
+  }
+  // 경기장 테두리 (아케이드 기계 느낌의 두꺼운 프레임)
+  ctx.strokeStyle = '#3a4680'; ctx.lineWidth = 5 * dpr;
+  ctx.strokeRect(ox - 2 * dpr, oy - 2 * dpr, aw + 4 * dpr, ah + 4 * dpr);
+  ctx.strokeStyle = 'rgba(120,150,255,.22)'; ctx.lineWidth = 2 * dpr;
+  ctx.strokeRect(ox + 3 * dpr, oy + 3 * dpr, aw - 6 * dpr, ah - 6 * dpr);
 
   // 아직 상태가 안 왔어도 카운트다운·안내는 보여야 한다 (학생이 규칙을 보는 유일한 화면)
   if (snaps.length === 0) { drawOverlay(null); return; }
@@ -1004,35 +1077,50 @@ function draw() {
     for (const [bx, by, br, boom, prog] of latest.bombs) {
       const x = ox + bx * scale, y = oy + by * scale, r = br * scale;
       if (!boom) {
-        ctx.fillStyle = 'rgba(255,80,80,.15)';
+        // 위험 구역 표시 + 그 위에 폭탄이 놓인다
+        ctx.fillStyle = 'rgba(255,80,80,.14)';
         ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,80,80,.8)'; ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = 'rgba(255,80,80,.85)'; ctx.lineWidth = 3 * dpr;
+        ctx.setLineDash([9 * dpr, 7 * dpr]);
         ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
-        ctx.fillStyle = 'rgba(255,80,80,.35)';
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255,80,80,.32)';
         ctx.beginPath(); ctx.arc(x, y, r * (prog / 100), 0, 7); ctx.fill();
+        if (SPR.bomb) {
+          const puff = 1 + Math.sin(performance.now() / 90) * 0.06;   // 도화선 타는 느낌
+          drawSpr(SPR.bomb, x, y, r * 0.95 * puff);
+        }
       } else {
-        ctx.fillStyle = 'rgba(255,170,60,.9)';
-        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-        ctx.fillStyle = 'rgba(255,240,180,.9)';
-        ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, 7); ctx.fill();
+        // 폭발: 바깥 불꽃 → 중심 백열 → 튀는 파편
+        const t = Math.min(1, prog / 100);
+        const rad = r * (0.75 + t * 0.45);
+        ctx.fillStyle = `rgba(255,120,40,${0.95 - t * 0.5})`;
+        ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill();
+        ctx.fillStyle = `rgba(255,205,90,${0.95 - t * 0.4})`;
+        ctx.beginPath(); ctx.arc(x, y, rad * 0.66, 0, 7); ctx.fill();
+        ctx.fillStyle = `rgba(255,255,235,${0.9 - t * 0.7})`;
+        ctx.beginPath(); ctx.arc(x, y, rad * 0.34, 0, 7); ctx.fill();
+        ctx.fillStyle = `rgba(255,170,60,${0.8 - t * 0.8})`;
+        for (let k = 0; k < 8; k++) {
+          const a2 = (k / 8) * Math.PI * 2;
+          const d2 = rad * (0.95 + t * 0.7);
+          ctx.beginPath(); ctx.arc(x + Math.cos(a2) * d2, y + Math.sin(a2) * d2, rad * 0.14, 0, 7); ctx.fill();
+        }
       }
     }
   }
   if (latest.mode === 'coin' && latest.coins) {
     for (const [cx2, cy2, v] of latest.coins) {
       const x = ox + cx2 * scale, y = oy + cy2 * scale;
-      const r = (v === 3 ? 15 : 10) * scale;
-      ctx.fillStyle = v === 3 ? '#ffd700' : '#f5c542';
-      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 2 * dpr;
-      ctx.beginPath(); ctx.arc(x, y, r * 0.6, 0, 7); ctx.stroke();
-      if (v === 3) {
-        ctx.fillStyle = '#8a6d00';
-        ctx.font = `800 ${11 * dpr}px Pretendard, sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('3', x, y);
-        ctx.textBaseline = 'alphabetic';
+      const r = (v === 3 ? 17 : 11) * scale;
+      const float = Math.sin(performance.now() / 320 + cx2) * r * .12;  // 살짝 떠다니는 느낌
+      if (v === 3) {   // 금화는 빛나는 테를 두른다
+        ctx.strokeStyle = `rgba(255,215,0,${0.35 + 0.25 * Math.sin(performance.now() / 200)})`;
+        ctx.lineWidth = 3 * dpr;
+        ctx.beginPath(); ctx.arc(x, y + float, r * 1.5, 0, 7); ctx.stroke();
       }
+      if (SPR.coin) drawSpr(SPR.coin, x, y + float, r * 2.4);
+      else { ctx.fillStyle = v === 3 ? '#ffd700' : '#f5c542'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
     }
     // 동전 줍기의 폭탄: 깜빡이는 경고 → 활성
     for (const [mx, my, live] of (latest.mines || [])) {
@@ -1042,15 +1130,11 @@ function draw() {
         ctx.fillStyle = `rgba(255,80,80,${blink})`;
         ctx.beginPath(); ctx.arc(x, y, r * 1.5, 0, 7); ctx.fill();
       } else {
-        ctx.fillStyle = '#2b2f3d';
-        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-        ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 3 * dpr;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
-        ctx.fillStyle = '#ff6b6b';
-        ctx.font = `800 ${17 * scale}px Pretendard, sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('💣', x, y);
-        ctx.textBaseline = 'alphabetic';
+        ctx.strokeStyle = `rgba(255,80,80,${0.4 + 0.3 * Math.sin(performance.now() / 220)})`;
+        ctx.lineWidth = 3 * dpr;
+        ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, 7); ctx.stroke();
+        if (SPR.bomb) drawSpr(SPR.bomb, x, y, r * 2.6);
+        else { ctx.fillStyle = '#2b2f3d'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
       }
     }
   }
@@ -1058,38 +1142,45 @@ function draw() {
   if (latest.mode === 'mos' && latest.mos) {
     for (const [mx, my, gold] of latest.mos) {
       const x = ox + mx * scale, y = oy + my * scale;
-      const r = (gold ? 15 : 12) * scale;
-      // 날개
-      ctx.fillStyle = 'rgba(220,230,255,.45)';
-      const wob = Math.sin(performance.now() / 45 + mx) * r * .35;
-      ctx.beginPath(); ctx.ellipse(x - r * .8, y - r * .5 + wob, r * .75, r * .38, -0.5, 0, 7); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(x + r * .8, y - r * .5 - wob, r * .75, r * .38, 0.5, 0, 7); ctx.fill();
-      // 몸통
-      ctx.fillStyle = gold ? '#ffd700' : '#4b4a55';
-      ctx.beginPath(); ctx.ellipse(x, y, r * .55, r * .85, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = gold ? '#8a6d00' : '#2a2933';
-      ctx.beginPath(); ctx.arc(x, y - r * .7, r * .42, 0, 7); ctx.fill();
+      const r = (gold ? 17 : 13) * scale;
+      const wob = Math.sin(performance.now() / 60 + mx) * r * .18;   // 날갯짓하듯 흔들림
       if (gold) {
-        ctx.strokeStyle = 'rgba(255,215,0,.6)'; ctx.lineWidth = 2 * dpr;
-        ctx.beginPath(); ctx.arc(x, y, r * 1.6, 0, 7); ctx.stroke();
+        ctx.strokeStyle = `rgba(255,215,0,${0.4 + 0.3 * Math.sin(performance.now() / 160)})`;
+        ctx.lineWidth = 3 * dpr;
+        ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, 7); ctx.stroke();
+      }
+      if (SPR.mos) {
+        if (gold) {   // 황금 모기: 노랗게 물들여 구분
+          ctx.save();
+          ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 12 * dpr;
+          drawSpr(SPR.mos, x, y + wob, r * 2.6);
+          ctx.restore();
+        } else drawSpr(SPR.mos, x, y + wob, r * 2.4);
+      } else {
+        ctx.fillStyle = gold ? '#ffd700' : '#4b4a55';
+        ctx.beginPath(); ctx.ellipse(x, y, r * .55, r * .85, 0, 0, 7); ctx.fill();
       }
     }
   }
   // 인형 뽑기: 인형 더미
   if (latest.mode === 'claw' && latest.dolls) {
-    const FACES = ['🧸', '🐰', '🐻'];
     for (const [dx2, dy2, v] of latest.dolls) {
       const x = ox + dx2 * scale, y = oy + dy2 * scale;
-      const r = (v === 5 ? 26 : v === 3 ? 20 : 15) * scale;
-      ctx.fillStyle = v === 5 ? '#ff8fab' : v === 3 ? '#8ecae6' : '#c7d0e8';
-      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-      ctx.font = `${r * 1.4}px serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(FACES[v === 5 ? 0 : v === 3 ? 1 : 2], x, y);
-      ctx.fillStyle = '#c8d0e8';
-      ctx.font = `800 ${12 * dpr}px Pretendard, sans-serif`;
-      ctx.fillText(v + '점', x, y + r + 11 * dpr);
-      ctx.textBaseline = 'alphabetic';
+      const r = (v === 5 ? 28 : v === 3 ? 21 : 16) * scale;
+      // 값어치별 후광 (큰 인형이 눈에 띄게)
+      ctx.fillStyle = v === 5 ? 'rgba(255,143,171,.30)' : v === 3 ? 'rgba(142,202,230,.26)' : 'rgba(199,208,232,.16)';
+      ctx.beginPath(); ctx.arc(x, y, r * 1.25, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,.25)';
+      ctx.beginPath(); ctx.ellipse(x, y + r * .95, r * .66, r * .22, 0, 0, 7); ctx.fill();
+      if (SPR.doll) drawSpr(SPR.doll, x, y, r * 2.2);
+      else { ctx.fillStyle = '#c7d0e8'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+      if (v === 5) {   // 5점짜리만 점수 표시 (라벨이 겹치는 문제)
+        ctx.fillStyle = '#ffb03a';
+        ctx.font = `800 ${13 * dpr}px Pretendard, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('5점', x, y + r + 13 * dpr);
+        ctx.textBaseline = 'alphabetic';
+      }
     }
   }
   ctx.restore();
@@ -1117,27 +1208,33 @@ function draw() {
     if (id === myId) { myScore = extra; myAlive = { alive, infected }; }
 
     ctx.globalAlpha = alive ? 1 : 0.25;
-    // 좀비는 색만으로는 구분이 안 된다 — 더 크게 + 형광 라임 + 깜빡이는 붉은 링 + 얼굴 대신 이모지
-    const rr = infected ? r * 1.35 : r;
+    const rr = infected ? r * 1.4 : r;
+    // 발밑 그림자 — 캐릭터가 바닥에 서 있는 느낌
+    ctx.fillStyle = 'rgba(0,0,0,.28)';
+    ctx.beginPath(); ctx.ellipse(px, py + rr * .92, rr * .72, rr * .26, 0, 0, 7); ctx.fill();
     if (infected) {
       const blink = 0.45 + 0.45 * Math.sin(performance.now() / 190);
       ctx.strokeStyle = `rgba(255,59,59,${blink})`; ctx.lineWidth = 4 * dpr;
-      ctx.beginPath(); ctx.arc(px, py, rr + 6 * dpr, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, rr + 7 * dpr, 0, 7); ctx.stroke();
     }
-    ctx.fillStyle = infected ? '#8ED11F' : COLORS[meta.ci % COLORS.length];
-    ctx.beginPath(); ctx.arc(px, py, rr, 0, 7); ctx.fill();
-    if (alive && infected) {
-      ctx.font = `${rr * 1.25}px serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('🧟', px, py);
-      ctx.textBaseline = 'alphabetic';
-    } else if (alive) {
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(px - r * .3, py - r * .15, r * .22, 0, 7); ctx.fill();
-      ctx.beginPath(); ctx.arc(px + r * .3, py - r * .15, r * .22, 0, 7); ctx.fill();
-      ctx.fillStyle = '#222';
-      ctx.beginPath(); ctx.arc(px - r * .3, py - r * .12, r * .1, 0, 7); ctx.fill();
-      ctx.beginPath(); ctx.arc(px + r * .3, py - r * .12, r * .1, 0, 7); ctx.fill();
+    // 살짝 통통 튀는 움직임 (걸을 때만)
+    const bob = alive ? Math.sin(performance.now() / 170 + id * 1.7) * rr * .06 : 0;
+    const body = infected ? SPR.zombie : tintedPlayer(COLORS[meta.ci % COLORS.length]);
+    if (body) {
+      drawSpr(body, px, py + bob, rr * 2.35);
+      if (alive) {  // 눈은 코드로 그려 표정을 살린다
+        const ey = py + bob - rr * .18;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(px - r * .32, ey, r * .24, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(px + r * .32, ey, r * .24, 0, 7); ctx.fill();
+        ctx.fillStyle = infected ? '#c1121f' : '#222';
+        ctx.beginPath(); ctx.arc(px - r * .32, ey + r * .03, r * .11, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(px + r * .32, ey + r * .03, r * .11, 0, 7); ctx.fill();
+      }
+    } else {
+      // 스프라이트가 아직 안 왔을 때 (예전 방식)
+      ctx.fillStyle = infected ? '#8ED11F' : COLORS[meta.ci % COLORS.length];
+      ctx.beginPath(); ctx.arc(px, py, rr, 0, 7); ctx.fill();
     }
     if (id === myId) {
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * dpr;
