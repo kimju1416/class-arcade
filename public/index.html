@@ -166,11 +166,31 @@
     background: rgba(35,44,77,.85); color: #93a0c4; font-size: 14px; padding: 9px 16px;
   }
   .word-round { color: #93a0c4; font-size: 16px; font-weight: 700; }
+  /* 오락실 간판처럼: 두꺼운 테두리 + 안쪽 네온선 + 위아래 전구 */
   .word-big {
+    position: relative;
     font-size: clamp(28px, 6vw, 54px); font-weight: 800; text-align: center;
     line-height: 1.4; word-break: keep-all; max-width: 900px;
-    background: #1a2140; border: 2px solid #2c3763; border-radius: 20px; padding: 24px 32px;
+    background: linear-gradient(#1d2550, #161c3a);
+    border: 4px solid #3a4680; border-radius: 20px; padding: 24px 36px;
+    box-shadow: inset 0 0 0 2px rgba(120,150,255,.22), 0 10px 30px rgba(0,0,0,.4);
+    text-shadow: 0 3px 0 #0b1024;
   }
+  .word-big::before, .word-big::after {
+    content: ''; position: absolute; left: 18px; right: 18px; height: 6px;
+    background-image: radial-gradient(circle, #ffb03a 42%, transparent 44%);
+    background-size: 22px 6px; opacity: .75;
+  }
+  .word-big::before { top: 8px; }
+  .word-big::after { bottom: 8px; }
+  .word-stage { display: flex; align-items: center; justify-content: center; gap: 18px; width: 100%; }
+  #mascot { width: 92px; height: 92px; flex-shrink: 0; display: none; image-rendering: auto; }
+  body.host #mascot { width: 150px; height: 150px; }
+  #mascot.on { display: block; animation: mascotBob 1.6s ease-in-out infinite; }
+  #mascot.cheer { animation: mascotCheer .5s ease-out 2; }
+  @keyframes mascotBob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-9px) } }
+  @keyframes mascotCheer { 0% { transform: scale(1) rotate(0) } 35% { transform: scale(1.22) rotate(-9deg) } 70% { transform: scale(1.1) rotate(7deg) } 100% { transform: scale(1) rotate(0) } }
+  @media (max-width: 700px) { #mascot { width: 64px; height: 64px; } .word-stage { gap: 10px; } }
   .word-timer { height: 8px; width: 100%; max-width: 500px; background: #232c4d; border-radius: 4px; overflow: hidden; }
   .word-timer > div { height: 100%; background: #ffb03a; border-radius: 4px; transition: width .2s linear; }
   .word-list { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 420px; }
@@ -348,7 +368,10 @@
 <div class="view" id="wordGame">
   <div class="word-round" id="wordRound">라운드 1 / 5</div>
   <div class="cho-cat" id="choCat" style="display:none"></div>
-  <div class="word-big" id="wordBig">준비하세요…</div>
+  <div class="word-stage">
+    <img id="mascot" src="sprites/mascot.png" alt="">
+    <div class="word-big" id="wordBig">준비하세요…</div>
+  </div>
   <div class="cho-claimed" id="choClaimed"></div>
   <div class="word-timer"><div id="wordTimerBar" style="width:100%"></div></div>
   <!-- 학생 전용 -->
@@ -630,6 +653,7 @@ function handle(m) {
         : `🎉 ${m.order}등! +${m.points}점`;
       $('wordFeedback').style.color = '#3ddc84';
       $('wordInput').readOnly = true; $('btnWordSubmit').disabled = true;
+      cheerMascot();
       break;
     case 'word_bad': {
       const msgs = {
@@ -676,6 +700,7 @@ function enterGameView() {
     }
     $('choCat').style.display = 'none';
     $('choClaimed').innerHTML = '';
+    $('mascot').classList.add('on');
     $('wordInput').placeholder = gameType === 'cho' ? '초성에 맞는 단어 입력!' : '여기에 똑같이 입력!';
   } else {
     show('game');
@@ -835,6 +860,11 @@ function submitWord() {
   send({ type: 'word_submit', text: t });
 }
 
+function cheerMascot() {
+  const el = $('mascot');
+  el.classList.remove('cheer'); void el.offsetWidth; el.classList.add('cheer');
+}
+
 function renderWord(m) {
   // 라운드가 바뀌면 학생 입력창 리셋
   const roundKey = m.round + '-' + m.wordPhase;
@@ -854,7 +884,7 @@ function renderWord(m) {
 
   // 정답 소리 (교사 화면): 정답자 수가 늘면 딩동
   const doneCount = m.scores.filter(s => s[2] > 0).length;
-  if (isHost && doneCount > sndPrev.done) SFX.ok();
+  if (isHost && doneCount > sndPrev.done) { SFX.ok(); cheerMascot(); }
   sndPrev.done = doneCount;
 
   const json = JSON.stringify([m.round, m.word, m.wordPhase, m.scores, m.claimed]);
@@ -908,7 +938,8 @@ let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 // 흰 몸통 하나를 색만 바꿔 30명에게 쓴다(이미지 30장을 받을 필요가 없다).
 // 이미지가 아직 안 왔거나 실패하면 예전 원형 그리기로 자동 대체된다.
 const SPR = {};
-['player', 'zombie', 'bomb', 'coin', 'mos', 'doll'].forEach(name => {
+['player', 'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
+ 'swatter', 'claw', 'boom', 'mascot'].forEach(name => {
   const im = new Image();
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
@@ -1090,8 +1121,16 @@ function draw() {
           const puff = 1 + Math.sin(performance.now() / 90) * 0.06;   // 도화선 타는 느낌
           drawSpr(SPR.bomb, x, y, r * 0.95 * puff);
         }
+      } else if (SPR.boom) {
+        // 폭발 스프라이트: 커지면서 옅어지고 살짝 회전
+        const t = Math.min(1, prog / 100);
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - t * 0.85);
+        ctx.translate(x, y);
+        ctx.rotate(t * 0.5);
+        drawSpr(SPR.boom, 0, 0, r * (1.7 + t * 1.1));
+        ctx.restore();
       } else {
-        // 폭발: 바깥 불꽃 → 중심 백열 → 튀는 파편
         const t = Math.min(1, prog / 100);
         const rad = r * (0.75 + t * 0.45);
         ctx.fillStyle = `rgba(255,120,40,${0.95 - t * 0.5})`;
@@ -1172,7 +1211,8 @@ function draw() {
       ctx.beginPath(); ctx.arc(x, y, r * 1.25, 0, 7); ctx.fill();
       ctx.fillStyle = 'rgba(0,0,0,.25)';
       ctx.beginPath(); ctx.ellipse(x, y + r * .95, r * .66, r * .22, 0, 0, 7); ctx.fill();
-      if (SPR.doll) drawSpr(SPR.doll, x, y, r * 2.2);
+      const dollImg = v === 5 ? SPR.doll3 : v === 3 ? SPR.doll2 : SPR.doll;
+      if (dollImg) drawSpr(dollImg, x, y, r * 2.2);
       else { ctx.fillStyle = '#c7d0e8'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
       if (v === 5) {   // 5점짜리만 점수 표시 (라벨이 겹치는 문제)
         ctx.fillStyle = '#ffb03a';
@@ -1413,16 +1453,27 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
       const [, , , , , , swatting, sx, sy, hit] = pb;
       if (swatting) {
         const x = ox + sx * scale, y = oy + sy * scale, r = 62 * scale;
+        // 때린 자리에 충격 링
         ctx.strokeStyle = color; ctx.lineWidth = 4 * dpr;
-        ctx.globalAlpha = .9;
+        ctx.globalAlpha = .75;
         ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
-        ctx.fillStyle = color; ctx.globalAlpha = .18;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
         ctx.globalAlpha = 1;
+        if (SPR.swatter) {
+          // 파리채가 살짝 기울어 내려친 모습
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(-0.35);
+          drawSpr(SPR.swatter, 0, 0, r * 2.3);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = color; ctx.globalAlpha = .18;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
         ctx.fillStyle = color;
-        ctx.font = `700 ${12 * dpr}px Pretendard, sans-serif`;
+        ctx.font = `700 ${(isHost ? 18 : 13) * dpr}px Pretendard, sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(meta.nick, x, y - r - 6 * dpr);
+        ctx.fillText(meta.nick, x, y - r - 8 * dpr);
       }
       if (hit) {
         const x = ox + sx * scale;
@@ -1456,16 +1507,25 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
       // 줄
       ctx.strokeStyle = 'rgba(200,208,232,.5)'; ctx.lineWidth = 2 * dpr;
       ctx.beginPath(); ctx.moveTo(x, topY); ctx.lineTo(x, tipY); ctx.stroke();
-      // 집게
-      ctx.strokeStyle = color; ctx.lineWidth = 4 * dpr;
-      const cw = 13 * scale, ch = 15 * scale;
-      const open = depth > .1 ? 0.35 : 1;
-      ctx.beginPath();
-      ctx.moveTo(x - cw * open, tipY); ctx.lineTo(x - cw * open * .6, tipY + ch);
-      ctx.moveTo(x + cw * open, tipY); ctx.lineTo(x + cw * open * .6, tipY + ch);
-      ctx.stroke();
+      // 집게: 스프라이트 + 소유자 색 레일
       ctx.fillStyle = color;
-      ctx.fillRect(x - cw, topY - 6 * scale, cw * 2, 8 * scale);
+      ctx.fillRect(x - 15 * scale, topY - 7 * scale, 30 * scale, 9 * scale);
+      if (SPR.claw) {
+        const grabW = 46 * scale * (depth > .1 ? 0.82 : 1);  // 내려가면 오므린 느낌
+        ctx.save();
+        ctx.translate(x, tipY + 16 * scale);
+        ctx.scale(depth > .1 ? 0.82 : 1, 1);
+        drawSpr(SPR.claw, 0, 0, grabW / (depth > .1 ? 0.82 : 1));
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = color; ctx.lineWidth = 4 * dpr;
+        const cw = 13 * scale, ch = 15 * scale;
+        const open = depth > .1 ? 0.35 : 1;
+        ctx.beginPath();
+        ctx.moveTo(x - cw * open, tipY); ctx.lineTo(x - cw * open * .6, tipY + ch);
+        ctx.moveTo(x + cw * open, tipY); ctx.lineTo(x + cw * open * .6, tipY + ch);
+        ctx.stroke();
+      }
       // 이름
       ctx.fillStyle = id === myId ? '#ffb03a' : '#c8d0e8';
       ctx.font = `${id === myId ? 800 : 500} ${12 * dpr}px Pretendard, sans-serif`;
