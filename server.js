@@ -49,7 +49,82 @@ const WORDS_LONG = [
   '무궁화 꽃이 피었습니다', '구슬이 서 말이라도 꿰어야 보배', '하늘이 무너져도 솟아날 구멍이 있다',
 ];
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word'];
+// ---------- 초성 퀴즈 데이터 ----------
+const CHO_ROUND_MS = 25000;
+const CHO_LIST = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+// 한글 음절의 초성만 추출 (공백·영문·숫자는 무시)
+function choseongOf(s) {
+  let out = '';
+  for (const ch of String(s)) {
+    const c = ch.codePointAt(0);
+    if (c >= 0xAC00 && c <= 0xD7A3) out += CHO_LIST[Math.floor((c - 0xAC00) / 588)];
+  }
+  return out;
+}
+
+const CHO_DATA = {
+  '음식': [
+    '김치','김밥','라면','떡볶이','순대','튀김','만두','짜장면','짬뽕','탕수육','피자','치킨','햄버거','감자튀김','스파게티',
+    '돈가스','카레','비빔밥','불고기','삼겹살','갈비','냉면','칼국수','수제비','김치찌개','된장찌개','미역국','떡국','삼계탕',
+    '설렁탕','갈비탕','육개장','잡채','파전','김치전','계란말이','계란찜','멸치볶음','소시지','치즈','요구르트','우유','주스',
+    '콜라','사이다','아이스크림','팥빙수','케이크','쿠키','초콜릿','사탕','젤리','도넛','붕어빵','호떡','호두과자','군고구마',
+    '옥수수','감자','고구마','사과','바나나','딸기','포도','수박','참외','복숭아','자두','오렌지','키위','망고','파인애플',
+    '토마토','오이','당근','양파','마늘','배추','상추','깻잎','버섯','두부','콩나물','시금치','브로콜리','파프리카','고추',
+    '계란','국수','샌드위치','토스트','시리얼','유부초밥','초밥','어묵','핫도그','솜사탕','슬러시','마카롱','와플','츄러스',
+  ],
+  '동물': [
+    '강아지','고양이','토끼','사자','호랑이','코끼리','기린','얼룩말','하마','코뿔소','원숭이','고릴라','침팬지','판다',
+    '북극곰','여우','늑대','사슴','다람쥐','두더지','고슴도치','너구리','수달','멧돼지','돼지','염소','오리','거위','타조',
+    '병아리','참새','비둘기','까치','까마귀','제비','독수리','부엉이','올빼미','딱따구리','앵무새','공작','두루미','백조',
+    '펭귄','갈매기','물개','돌고래','고래','상어','문어','오징어','낙지','새우','가재','조개','소라','불가사리','해파리',
+    '거북이','악어','도마뱀','이구아나','카멜레온','개구리','두꺼비','올챙이','금붕어','잉어','붕어','메기','장어','연어',
+    '고등어','갈치','멸치','나비','잠자리','메뚜기','사마귀','무당벌레','개미','거미','달팽이','지렁이','사슴벌레',
+    '장수풍뎅이','매미','귀뚜라미','반딧불이','모기','파리','낙타','캥거루','코알라','나무늘보','미어캣','알파카','순록','박쥐',
+  ],
+  '사물·장소': [
+    '지우개','연필','볼펜','색연필','크레파스','공책','스케치북','가방','필통','가위','테이프','책상','의자','칠판','분필',
+    '창문','교실','운동장','도서관','급식실','화장실','계단','복도','학교','학원','놀이터','미끄럼틀','그네','시소','철봉',
+    '축구공','농구공','야구공','배구공','줄넘기','자전거','킥보드','헬멧','우산','장화','우비','장갑','목도리','모자','안경',
+    '시계','달력','거울','칫솔','치약','비누','수건','샴푸','휴지','베개','이불','침대','소파','텔레비전','냉장고','세탁기',
+    '청소기','에어컨','선풍기','전자레인지','밥솥','냄비','프라이팬','주전자','접시','숟가락','젓가락','포크','도마','앞치마',
+    '휴대폰','컴퓨터','노트북','키보드','마우스','이어폰','헤드폰','충전기','카메라','텀블러','물통','운동화','슬리퍼','양말',
+    '티셔츠','바지','치마','원피스','점퍼','조끼','한복','무지개','구름','하늘','바다','계곡','폭포','사막','나무','장미',
+    '해바라기','튤립','민들레','벚꽃','단풍','소나무','대나무','눈사람','눈싸움','썰매','스키','얼음','고드름','지구','우주',
+    '로켓','비행기','헬리콥터','기차','지하철','버스','택시','트럭','소방차','구급차','경찰차','보트','요트','잠수함','등대',
+    '터널','신호등','횡단보도','병원','약국','은행','우체국','경찰서','소방서','시장','마트','편의점','문방구','서점','영화관',
+    '박물관','미술관','동물원','식물원','놀이공원','수영장','태권도','피아노','바이올린','기타','드럼','플루트','리코더',
+    '탬버린','트라이앵글','캐스터네츠','하모니카','마이크','무궁화','태극기',
+  ],
+  '영화': [
+    '겨울왕국','라이온킹','알라딘','인어공주','토이스토리','인사이드아웃','코코','니모를찾아서','몬스터주식회사','주토피아',
+    '모아나','엔칸토','라푼젤','슈렉','쿵푸팬더','마다가스카','미니언즈','슈퍼배드','하울의움직이는성','이웃집토토로',
+    '센과치히로의행방불명','마녀배달부키키','벼랑위의포뇨','너의이름은','날씨의아이','스즈메의문단속','극한직업','명량',
+    '국제시장','베테랑','부산행','신과함께','택시운전사','왕의남자','광해','관상','암살','도둑들','괴물','웰컴투동막골',
+    '미나리','기생충','어벤져스','아이언맨','스파이더맨','배트맨','슈퍼맨','캡틴아메리카','토르','블랙팬서','앤트맨',
+    '아쿠아맨','원더우먼','쥬라기공원','타이타닉','아바타','인터스텔라','해리포터','반지의제왕','나니아연대기',
+    '찰리와초콜릿공장','나홀로집에','백투더퓨처','킹콩','고질라','트랜스포머','스타워즈','알라딘과요술램프','정글북','덤보',
+  ],
+  '노래': [
+    '곰세마리','산토끼','나비야','학교종','반달','고향의봄','아기상어','퐁당퐁당','옹달샘','섬집아기','과수원길','노을',
+    '루돌프사슴코','징글벨','고요한밤거룩한밤','스승의은혜','어머님은혜','애국가','아리랑','도라지','강강술래',
+    '반짝반짝작은별','머리어깨무릎발','그대로멈춰라','꼬부랑할머니','네잎클로버','파란나라','아름다운나라','강남스타일',
+    '젠틀맨','벚꽃엔딩','봄날','다이너마이트','버터','아이돌','라일락','밤편지','좋은날','팔레트','넥스트레벨','하입보이',
+    '어텐션','디토','사건의지평선','거짓말','하루하루','붉은노을','소원을말해봐','너에게난나에게넌','당신은사랑받기위해태어난사람',
+  ],
+};
+// 카테고리별 초성 사전: 패턴 → 정답 단어 목록
+const CHO_INDEX = {};
+for (const [cat, words] of Object.entries(CHO_DATA)) {
+  CHO_INDEX[cat] = new Map();
+  for (const w of words) {
+    const key = choseongOf(w);
+    if (key.length < 2) continue;
+    if (!CHO_INDEX[cat].has(key)) CHO_INDEX[cat].set(key, []);
+    CHO_INDEX[cat].get(key).push(w.replace(/\s+/g, ''));
+  }
+}
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -67,6 +142,9 @@ const server = http.createServer((req, res) => {
         ({ nick: p.nick, x: Math.round(p.x), y: Math.round(p.y), alive: p.alive,
            infected: p.infected, score: p.score, connected: p.connected })),
       coins: r.game && r.game.coins ? r.game.coins.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), v: c.v })) : undefined,
+      cho: r.gameType === 'cho' && r.game && r.game.pattern
+        ? { category: r.game.category, pattern: r.game.pattern, answers: [...r.game.answers], claimed: r.game.claimed.map(c => c.w) }
+        : undefined,
     }))));
     return;
   }
@@ -183,6 +261,10 @@ function startGame(room, type) {
     const longs = [...WORDS_LONG].sort(() => Math.random() - 0.5);
     g.words = [...shorts.slice(0, 2), ...longs.slice(0, WORD_ROUNDS - 2)];
     g.round = 0; g.wordPhase = 'idle'; g.correctOrder = [];
+  } else if (type === 'cho') {
+    g.roundMs = 0;
+    g.round = 0; g.wordPhase = 'idle'; g.correctOrder = [];
+    g.usedPatterns = new Set(); g.claimed = [];
   }
 
   room.state = 'countdown';
@@ -208,6 +290,7 @@ function tick(room) {
       if (room.gameType === 'bomb') g.nextSpawnAt = now + 2500;
       if (room.gameType === 'coin') g.nextCoinAt = now + 500;
       if (room.gameType === 'word') startWordRound(room, now);
+      if (room.gameType === 'cho') startChoRound(room, now);
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
     }
     sendState(room, now);
@@ -220,6 +303,7 @@ function tick(room) {
   else if (room.gameType === 'tag') tagTick(room, now, dt);
   else if (room.gameType === 'coin') coinTick(room, now, dt);
   else if (room.gameType === 'word') wordTick(room, now);
+  else if (room.gameType === 'cho') choTick(room, now);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -403,6 +487,48 @@ function endWord(room) {
   finishGame(room, sorted, p => p.score + '점', p => String(p.score));
 }
 
+// ---------- 초성 퀴즈 ----------
+function startChoRound(room, now) {
+  const g = room.game;
+  g.round++;
+  // 아직 안 쓴 초성 패턴을 가진 문제를 랜덤 카테고리에서 뽑는다
+  const cats = Object.keys(CHO_INDEX);
+  for (let tryN = 0; tryN < 60; tryN++) {
+    const cat = cats[Math.floor(Math.random() * cats.length)];
+    const patterns = [...CHO_INDEX[cat].keys()];
+    const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+    if (g.usedPatterns.has(cat + ':' + pattern)) continue;
+    g.usedPatterns.add(cat + ':' + pattern);
+    g.category = cat; g.pattern = pattern;
+    g.answers = new Set(CHO_INDEX[cat].get(pattern));
+    break;
+  }
+  g.wordPhase = 'show';
+  g.roundEndAt = now + CHO_ROUND_MS;
+  g.correctOrder = []; g.claimed = [];
+  for (const p of room.players.values()) p.wordDone = false;
+}
+
+function choTick(room, now) {
+  const g = room.game;
+  const actives = [...room.players.values()].filter(p => p.alive && p.connected);
+  if (g.wordPhase === 'show') {
+    const allDone = actives.length > 0 && actives.every(p => p.wordDone);
+    // 정답 단어가 다 나왔으면 더 기다릴 필요 없음
+    const exhausted = g.claimed.length >= g.answers.size;
+    if (now >= g.roundEndAt || allDone || exhausted) {
+      g.wordPhase = 'break';
+      g.breakEndAt = now + WORD_BREAK_MS;
+    }
+  } else if (g.wordPhase === 'break') {
+    if (now >= g.breakEndAt) {
+      if (g.round >= WORD_ROUNDS) { endWord(room); return; }
+      startChoRound(room, now);
+    }
+  }
+  sendState(room, now);
+}
+
 // ---------- 공통 종료·상태 ----------
 function finishGame(room, sorted, labelOf, keyOf) {
   clearInterval(room.timer); room.timer = null;
@@ -420,13 +546,17 @@ function finishGame(room, sorted, labelOf, keyOf) {
 function sendState(room, now) {
   const g = room.game;
   const type = room.gameType;
-  if (type === 'word') {
+  if (type === 'word' || type === 'cho') {
     broadcast(room, {
-      type: 'state', mode: 'word', st: now,
+      type: 'state', mode: type, st: now,
       round: g.round, totalRounds: WORD_ROUNDS,
-      word: g.wordPhase === 'show' ? g.word : null,
+      word: g.wordPhase === 'show' ? (type === 'cho' ? g.pattern : g.word) : null,
+      category: type === 'cho' ? g.category : undefined,
+      claimed: type === 'cho' && g.claimed ? g.claimed.map(c => [c.w, c.id]) : undefined,
+      answerCount: type === 'cho' && g.answers ? g.answers.size : 0,
       wordPhase: g.wordPhase || 'idle',
       timeLeft: g.wordPhase === 'show' ? Math.max(0, g.roundEndAt - now) : 0,
+      roundTotal: type === 'cho' ? CHO_ROUND_MS : WORD_TIME_MS,
       scores: [...room.players.values()].filter(p => !p.waiting).map(p => {
         const ord = g.correctOrder.indexOf(p.id);
         return [p.id, p.score, p.wordDone ? ord + 1 : 0];
@@ -545,19 +675,40 @@ wss.on('connection', (ws) => {
       }
 
       case 'word_submit': {
-        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'word') return;
+        if (!room || ws.playerId == null || room.state !== 'playing') return;
         const g = room.game;
         const p = room.players.get(ws.playerId);
         if (!p || !p.alive || p.wordDone || g.wordPhase !== 'show') return;
-        if (normalizeWord(msg.text) === normalizeWord(g.word)) {
-          p.wordDone = true;
-          g.correctOrder.push(p.id);
-          const idx = g.correctOrder.length - 1;
-          const pts = WORD_POINTS[idx] != null ? WORD_POINTS[idx] : 1;
-          p.score += pts;
-          roomSend(ws, { type: 'word_ok', order: idx + 1, points: pts });
-        } else {
-          roomSend(ws, { type: 'word_bad' });
+
+        if (room.gameType === 'word') {
+          if (normalizeWord(msg.text) === normalizeWord(g.word)) {
+            p.wordDone = true;
+            g.correctOrder.push(p.id);
+            const idx = g.correctOrder.length - 1;
+            const pts = WORD_POINTS[idx] != null ? WORD_POINTS[idx] : 1;
+            p.score += pts;
+            roomSend(ws, { type: 'word_ok', order: idx + 1, points: pts });
+          } else {
+            roomSend(ws, { type: 'word_bad', reason: 'wrong' });
+          }
+        } else if (room.gameType === 'cho') {
+          const norm = normalizeWord(msg.text);
+          if (!norm) return;
+          if (choseongOf(norm) !== g.pattern) {
+            roomSend(ws, { type: 'word_bad', reason: 'cho' });
+          } else if (!g.answers.has(norm)) {
+            roomSend(ws, { type: 'word_bad', reason: 'list' });
+          } else if (g.claimed.some(c => c.w === norm)) {
+            roomSend(ws, { type: 'word_bad', reason: 'dup' });
+          } else {
+            p.wordDone = true;
+            g.claimed.push({ w: norm, id: p.id });
+            g.correctOrder.push(p.id);
+            const idx = g.correctOrder.length - 1;
+            const pts = WORD_POINTS[idx] != null ? WORD_POINTS[idx] : 1;
+            p.score += pts;
+            roomSend(ws, { type: 'word_ok', order: idx + 1, points: pts, word: norm });
+          }
         }
         break;
       }

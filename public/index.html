@@ -150,6 +150,58 @@
     background: #232c4d; border-radius: 12px; padding: 12px 20px;
     font-size: 14px; display: none; z-index: 50; text-align: center;
   }
+
+  /* 음소거 버튼 (교사 화면 전용) */
+  #btnMute {
+    position: fixed; bottom: 18px; right: 18px; z-index: 60; display: none;
+    width: 52px; height: 52px; border-radius: 50%; border: 0; cursor: pointer;
+    background: #232c4d; color: #eef1fa; font-size: 22px;
+  }
+  body.host #btnMute { display: block; }
+
+  /* 초성 퀴즈 */
+  .cho-cat {
+    background: #ffb03a; color: #10162b; font-weight: 800; font-size: 15px;
+    border-radius: 999px; padding: 6px 18px;
+  }
+  .cho-claimed { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 800px; }
+  .cho-claimed .cw {
+    background: #1d2b46; border: 1px solid #3ddc84; color: #3ddc84;
+    border-radius: 999px; padding: 6px 14px; font-size: 15px; font-weight: 700;
+  }
+  .cho-claimed .cw small { color: #93a0c4; font-weight: 500; }
+
+  /* ---------- 교사(TV/PC) 대형 레이아웃 ---------- */
+  body.host .sub { font-size: 17px; }
+  body.host .word-big { font-size: clamp(40px, 6vw, 80px); padding: 32px 48px; }
+  body.host .word-round { font-size: 20px; }
+  body.host .word-list { max-width: 520px; }
+  body.host .word-row { font-size: 18px; padding: 11px 18px; }
+  body.host .podium { font-size: 34px; }
+  body.host .rank-list { max-width: 560px; }
+  body.host .rank-row { font-size: 19px; padding: 13px 20px; }
+  body.host .chip { font-size: 16px; padding: 9px 18px; }
+  @media (min-width: 900px) {
+    body.host #hostLobby.on {
+      display: grid;
+      grid-template-columns: 420px minmax(0, 1fr);
+      grid-template-areas: "sub sub" "code right" "qr right" "url right" "count right" "close right";
+      align-content: start; justify-items: center; align-items: start;
+      column-gap: 56px; row-gap: 14px; padding: 30px 60px;
+    }
+    body.host #hostLobby .sub { grid-area: sub; }
+    body.host #codeBig { grid-area: code; font-size: 92px; }
+    body.host #hostLobby .qr-wrap { grid-area: qr; padding: 16px; }
+    body.host #joinUrl { grid-area: url; font-size: 15px; }
+    body.host #playerCount { grid-area: count; font-size: 18px; }
+    body.host #btnCloseRoom { grid-area: close; }
+    body.host #hostRight { grid-area: right; width: 100%; }
+    body.host .game-grid { grid-template-columns: 1fr 1fr; max-width: none; }
+    body.host .game-card b { font-size: 19px; }
+    body.host .game-card p { font-size: 14px; }
+    body.host #btnStart { max-width: none; font-size: 21px; padding: 18px; }
+  }
+  #hostRight { display: flex; flex-direction: column; gap: 14px; align-items: center; width: 100%; max-width: 720px; }
 </style>
 </head>
 <body>
@@ -186,9 +238,11 @@
   <div class="qr-wrap"><canvas id="qr"></canvas></div>
   <div class="join-url" id="joinUrl"></div>
   <div class="count" id="playerCount">참가자 0명</div>
-  <div class="chips" id="chips"></div>
-  <div class="game-grid" id="gameGrid"></div>
-  <button class="btn green" id="btnStart" disabled>게임 시작</button>
+  <div id="hostRight">
+    <div class="chips" id="chips"></div>
+    <div class="game-grid" id="gameGrid"></div>
+    <button class="btn green" id="btnStart" disabled>게임 시작</button>
+  </div>
   <button class="btn danger-ghost" id="btnCloseRoom">방 닫기 (모두 내보내기)</button>
 </div>
 
@@ -215,7 +269,9 @@
 <!-- 낱말 빨리치기 -->
 <div class="view" id="wordGame">
   <div class="word-round" id="wordRound">라운드 1 / 5</div>
+  <div class="cho-cat" id="choCat" style="display:none"></div>
   <div class="word-big" id="wordBig">준비하세요…</div>
+  <div class="cho-claimed" id="choClaimed"></div>
   <div class="word-timer"><div id="wordTimerBar" style="width:100%"></div></div>
   <!-- 학생 전용 -->
   <div id="wordPlayerUI" style="display:none; flex-direction:column; gap:12px; width:100%; max-width:420px; align-items:center;">
@@ -245,6 +301,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<button id="btnMute" title="효과음 켜기/끄기">🔊</button>
 
 <script>
 // ============================================================
@@ -258,6 +315,7 @@ const GAMES_META = {
   tag:  { icon: '🧟', name: '감염 술래잡기', desc: '좀비(술래)에게 닿으면 나도 좀비! 60초 동안 도망 다니며 살아남자.', badge: '60초', rule: '초록 좀비를 피해 도망가세요!\n잡히면 나도 좀비가 되어 친구를 잡으세요' },
   coin: { icon: '🪙', name: '동전 줍기', desc: '맵에 쏟아지는 동전을 주워 담자. 큰 금화는 3개! 탈락 없이 모두 끝까지.', badge: '60초', rule: '동전 위로 지나가면 자동으로 줍습니다!\n큰 금화는 3개짜리' },
   word: { icon: '📝', name: '낱말 빨리치기', desc: 'TV의 제시어를 폰에 빨리, 정확히 입력! 5라운드 합산 점수로 승부.', badge: '5라운드', rule: '제시어를 똑같이 입력하고 제출!\n빠를수록 높은 점수' },
+  cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 단어를 입력!\n이미 나온 단어는 안 돼요 — 다른 단어를 찾으세요' },
 };
 
 // ---- 전역 상태 ----
@@ -277,6 +335,63 @@ let wasAlive = false;
 let lastWordJson = '';
 
 const COLORS = Array.from({ length: 30 }, (_, i) => `hsl(${(i * 47) % 360} 75% 55%)`);
+
+// ---- 효과음 (TV/교사 화면에서만 재생, 외부 파일 없이 WebAudio 합성) ----
+const SFX = (() => {
+  let ac = null;
+  let muted = localStorage.getItem('ca_mute') === '1';
+  function ctx() {
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function tone(f, dur, { type = 'square', vol = .15, slide = 0, delay = 0 } = {}) {
+    if (muted || !isHost) return;
+    try {
+      const a = ctx(), t0 = a.currentTime + delay;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = type; o.frequency.setValueAtTime(f, t0);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t0 + dur);
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      o.connect(g); g.connect(a.destination);
+      o.start(t0); o.stop(t0 + dur + .05);
+    } catch {}
+  }
+  function noise(dur, vol = .25) {
+    if (muted || !isHost) return;
+    try {
+      const a = ctx(), t0 = a.currentTime;
+      const buf = a.createBuffer(1, a.sampleRate * dur, a.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      const s = a.createBufferSource(); s.buffer = buf;
+      const g = a.createGain();
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(.001, t0 + dur);
+      s.connect(g); g.connect(a.destination); s.start(t0);
+    } catch {}
+  }
+  return {
+    unlock() { if (!muted && isHost) try { ctx(); } catch {} },
+    countBeep() { tone(660, .12, { type: 'sine', vol: .2 }); },
+    go() { tone(523, .12); tone(659, .12, { delay: .1 }); tone(784, .3, { delay: .2 }); },
+    boom() { noise(.35, .3); tone(90, .3, { type: 'sine', vol: .3, slide: -55 }); },
+    coin() { tone(988, .07, { vol: .1 }); tone(1319, .15, { vol: .1, delay: .07 }); },
+    zombie() { tone(300, .35, { type: 'sawtooth', vol: .18, slide: -190 }); },
+    ok() { tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 }); },
+    fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .22, { vol: .16, delay: i * .13 })); },
+    get muted() { return muted; },
+    toggle() {
+      muted = !muted;
+      localStorage.setItem('ca_mute', muted ? '1' : '0');
+      if (!muted) this.unlock();
+      return muted;
+    },
+  };
+})();
+// 사운드 트리거 감지용 상태
+let sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0 };
 
 function show(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
@@ -339,6 +454,9 @@ function handle(m) {
     }
     case 'room_created':
       isHost = true; roomCode = m.code; hostToken = m.hostToken;
+      document.body.classList.add('host');
+      $('btnMute').textContent = SFX.muted ? '🔇' : '🔊';
+      SFX.unlock();
       sessionStorage.setItem('ca_host', JSON.stringify({ code: roomCode, hostToken }));
       setupHostLobby();
       break;
@@ -365,14 +483,18 @@ function handle(m) {
       phase = m.state; phaseEndAt = m.endAt || 0;
       if (m.gameType) gameType = m.gameType;
       if (phase === 'countdown' || phase === 'playing') {
-        if (phase === 'countdown') { snaps = []; wasAlive = true; lastWordJson = ''; }
+        if (phase === 'countdown') {
+          snaps = []; wasAlive = true; lastWordJson = '';
+          sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0 };
+        }
+        if (phase === 'playing') SFX.go();
         enterGameView();
       } else if (phase === 'lobby') {
         show(isHost ? 'hostLobby' : 'playerLobby');
       }
       break;
     case 'state':
-      if (m.mode === 'word') { renderWord(m); break; }
+      if (m.mode === 'word' || m.mode === 'cho') { renderWord(m); break; }
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
       arena = m.arena;
@@ -381,16 +503,26 @@ function handle(m) {
       showResult(m.ranking);
       break;
     case 'word_ok':
-      $('wordFeedback').textContent = `🎉 ${m.order}등! +${m.points}점`;
+      $('wordFeedback').textContent = m.word
+        ? `🎉 "${m.word}" 정답! ${m.order}등 +${m.points}점`
+        : `🎉 ${m.order}등! +${m.points}점`;
       $('wordFeedback').style.color = '#3ddc84';
       $('wordInput').disabled = true; $('btnWordSubmit').disabled = true;
       break;
-    case 'word_bad':
-      $('wordFeedback').textContent = '땡! 다시 입력해 보세요';
+    case 'word_bad': {
+      const msgs = {
+        cho: '초성이 달라요! 다시 보세요',
+        list: '앗, 목록에 없는 단어예요. 다른 단어로!',
+        dup: '이미 나온 단어! 다른 단어를 찾으세요',
+        wrong: '땡! 다시 입력해 보세요',
+      };
+      $('wordFeedback').textContent = msgs[m.reason] || msgs.wrong;
       $('wordFeedback').style.color = '#ff6b6b';
       $('wordInput').classList.remove('shake'); void $('wordInput').offsetWidth;
       $('wordInput').classList.add('shake');
+      if (gameType === 'cho') { $('wordInput').value = ''; $('wordInput').focus(); }
       break;
+    }
     case 'kicked':
       alert('선생님이 퇴장시켰습니다.');
       goHome();
@@ -407,7 +539,7 @@ function handle(m) {
 }
 
 function enterGameView() {
-  if (gameType === 'word') {
+  if (gameType === 'word' || gameType === 'cho') {
     show('wordGame');
     $('wordPlayerUI').style.display = isHost ? 'none' : 'flex';
     $('btnWordAbort').style.display = isHost ? 'block' : 'none';
@@ -416,6 +548,9 @@ function enterGameView() {
       $('wordInput').disabled = false; $('btnWordSubmit').disabled = false;
       $('wordInput').value = ''; $('wordFeedback').textContent = '';
     }
+    $('choCat').style.display = 'none';
+    $('choClaimed').innerHTML = '';
+    $('wordInput').placeholder = gameType === 'cho' ? '초성에 맞는 단어 입력!' : '여기에 똑같이 입력!';
   } else {
     show('game');
     $('hudCode').textContent = '방 ' + roomCode;
@@ -503,10 +638,12 @@ $('btnLeave').onclick = () => { send({ type: 'leave' }); goHome(); };
 $('btnLeave2').onclick = () => { send({ type: 'leave' }); goHome(); };
 $('btnAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
 $('btnWordAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
+$('btnMute').onclick = () => { $('btnMute').textContent = SFX.toggle() ? '🔇' : '🔊'; };
 
 // ---- 결과 ----
 function showResult(ranking) {
   show('result');
+  SFX.fanfare();
   if (isHost) {
     $('resultHost').style.display = 'flex';
     $('resultPlayer').style.display = 'none';
@@ -541,25 +678,45 @@ function renderWord(m) {
   const roundKey = m.round + '-' + m.wordPhase;
   if (renderWord._lastRound !== roundKey) {
     renderWord._lastRound = roundKey;
+    sndPrev.done = 0;
     if (!isHost && m.wordPhase === 'show') {
       $('wordInput').disabled = false; $('btnWordSubmit').disabled = false;
       $('wordInput').value = ''; $('wordFeedback').textContent = '';
       $('wordInput').focus();
     }
   }
-  const json = JSON.stringify([m.round, m.word, m.wordPhase, m.scores]);
-  const timePct = m.wordPhase === 'show' ? Math.max(0, Math.min(100, m.timeLeft / 200)) : 100;
+  const total = m.roundTotal || 20000;
+  const timePct = m.wordPhase === 'show' ? Math.max(0, Math.min(100, m.timeLeft / total * 100)) : 100;
   $('wordTimerBar').style.width = timePct + '%';
+
+  // 정답 소리 (교사 화면): 정답자 수가 늘면 딩동
+  const doneCount = m.scores.filter(s => s[2] > 0).length;
+  if (isHost && doneCount > sndPrev.done) SFX.ok();
+  sndPrev.done = doneCount;
+
+  const json = JSON.stringify([m.round, m.word, m.wordPhase, m.scores, m.claimed]);
   if (json === lastWordJson) return;
   lastWordJson = json;
 
   $('wordRound').textContent = `라운드 ${Math.max(1, m.round)} / ${m.totalRounds}`;
-  if (phase === 'countdown') {
-    $('wordBig').textContent = '준비하세요…';
-  } else if (m.wordPhase === 'show') {
-    $('wordBig').textContent = m.word || '…';
-  } else if (m.wordPhase === 'break') {
-    $('wordBig').textContent = m.round >= m.totalRounds ? '결과 계산 중…' : '다음 라운드 준비…';
+
+  // 초성 퀴즈: 카테고리 배지 + 초성 띄어 보여주기 + 나온 단어 목록
+  if (m.mode === 'cho') {
+    $('choCat').style.display = m.category ? 'block' : 'none';
+    $('choCat').textContent = m.category ? `[${m.category}]` + (m.answerCount > 1 ? ` 정답 ${m.answerCount}개` : '') : '';
+    if (phase === 'countdown') $('wordBig').textContent = '준비하세요…';
+    else if (m.wordPhase === 'show') $('wordBig').textContent = m.word ? [...m.word].join(' ') : '…';
+    else $('wordBig').textContent = m.round >= m.totalRounds ? '결과 계산 중…' : '다음 라운드 준비…';
+    $('choClaimed').innerHTML = (m.claimed || []).map(([w, id]) => {
+      const meta = roster.get(id) || { nick: '?' };
+      return `<span class="cw">${w} <small>${meta.nick}</small></span>`;
+    }).join('');
+  } else {
+    $('choCat').style.display = 'none';
+    $('choClaimed').innerHTML = '';
+    if (phase === 'countdown') $('wordBig').textContent = '준비하세요…';
+    else if (m.wordPhase === 'show') $('wordBig').textContent = m.word || '…';
+    else $('wordBig').textContent = m.round >= m.totalRounds ? '결과 계산 중…' : '다음 라운드 준비…';
   }
 
   if (isHost) {
@@ -619,7 +776,7 @@ function keyDir() {
   const l = Math.hypot(x, y); return l ? { x: x / l, y: y / l } : null;
 }
 setInterval(() => {
-  if (isHost || gameType === 'word' || (phase !== 'playing' && phase !== 'countdown')) return;
+  if (isHost || gameType === 'word' || gameType === 'cho' || (phase !== 'playing' && phase !== 'countdown')) return;
   const kd = keyDir();
   const d = kd || curDir;
   if (d.x !== sentDir.x || d.y !== sentDir.y) {
@@ -746,6 +903,25 @@ function draw() {
     ctx.globalAlpha = 1;
   }
 
+  // 효과음 트리거 (교사 화면): 폭발·동전·감염 변화 감지
+  if (isHost && phase === 'playing') {
+    if (latest.mode === 'bomb' && latest.bombs) {
+      const booming = latest.bombs.filter(bb => bb[3] === 1).length;
+      if (booming > sndPrev.boom) SFX.boom();
+      sndPrev.boom = booming;
+    }
+    if (latest.mode === 'coin') {
+      const totalScore = latest.players.reduce((s, pp) => s + (pp[5] || 0), 0);
+      if (sndPrev.coinTotal >= 0 && totalScore > sndPrev.coinTotal) SFX.coin();
+      sndPrev.coinTotal = totalScore;
+    }
+    if (latest.mode === 'tag') {
+      const inf = latest.players.filter(pp => pp[5] === 1).length;
+      if (sndPrev.infected >= 0 && inf > sndPrev.infected) SFX.zombie();
+      sndPrev.infected = inf;
+    }
+  }
+
   // HUD
   if (latest.mode === 'tag') $('hudLeft').textContent = '남은 사람 ' + humanCount;
   else if (latest.mode === 'coin') $('hudLeft').textContent = isHost ? '동전 줍기' : '내 동전 ' + myScore;
@@ -762,6 +938,7 @@ function draw() {
     $('centerMsg').classList.add('on');
     $('cmBig').textContent = n > 3 ? GAMES_META[gameType].icon + ' 준비!' : (n > 0 ? n : 'GO!');
     $('cmSmall').textContent = isHost ? GAMES_META[gameType].name : GAMES_META[gameType].rule;
+    if (n !== sndPrev.count) { sndPrev.count = n; if (n >= 1 && n <= 3) SFX.countBeep(); }
   } else if (!isHost && myAlive) {
     if (latest.mode === 'bomb' && !myAlive.alive && wasAlive) {
       $('centerMsg').classList.add('on');
