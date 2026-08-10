@@ -1,0 +1,15 @@
+{
+  "name": "class-arcade",
+  "version": "1.0.0",
+  "description": "교실 아케이드 — 학급 실시간 멀티플레이 미니게임 플랫폼",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
