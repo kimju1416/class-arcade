@@ -1,7 +1,8 @@
 // ============================================================
 // 교실 아케이드 — 게임 서버
 // 역할: ① 웹페이지(public/index.html) 서빙  ② WebSocket으로 방·게임 관리
-// 게임: bomb(폭탄 피하기) / tag(감염 술래잡기) / coin(동전 줍기) / word(낱말 빨리치기)
+// 게임: bomb(폭탄 피하기) / tag(감염 술래잡기) / coin(동전 줍기)
+//       word(낱말 빨리치기) / cho(초성 퀴즈) / mos(모기 잡기) / claw(인형 뽑기)
 // 실행: node server.js  (기본 포트 3000, Render에서는 PORT 환경변수 사용)
 // ============================================================
 const http = require('http');
@@ -28,6 +29,16 @@ const TAG_ROUND_MS = 60000;
 const ZOMBIE_SPEED_MULT = 1.08; // 좀비가 살짝 빠름 (게임이 끝나게 하는 장치)
 // 동전 줍기
 const COIN_ROUND_MS = 60000;
+const COIN_BOMB_WARN_MS = 900;   // 폭탄 경고(깜빡임) 시간
+const COIN_BOMB_LIVE_MS = 4200;  // 경고 후 폭탄이 놓여 있는 시간
+// 모기 잡기
+const MOS_ROUND_MS = 60000;
+const MOS_SWAT_R = 62;           // 파리채 반경
+const MOS_COOLDOWN_MS = 320;     // 헛스윙 연타 방지
+// 인형 뽑기
+const CLAW_ROUND_MS = 60000;
+const CLAW_DROP_MS = 900;        // 집게가 내려갔다 올라오는 시간
+const CLAW_GRAB_R = 34;          // 집게가 닿는 반경
 // 낱말 빨리치기
 const WORD_ROUNDS = 5;
 const WORD_TIME_MS = 20000;
@@ -103,6 +114,10 @@ const CHO_DATA = {
     '미나리','기생충','어벤져스','아이언맨','스파이더맨','배트맨','슈퍼맨','캡틴아메리카','토르','블랙팬서','앤트맨',
     '아쿠아맨','원더우먼','쥬라기공원','타이타닉','아바타','인터스텔라','해리포터','반지의제왕','나니아연대기',
     '찰리와초콜릿공장','나홀로집에','백투더퓨처','킹콩','고질라','트랜스포머','스타워즈','알라딘과요술램프','정글북','덤보',
+    '뽀로로','타요','로보카폴리','헬로카봇','또봇','신비아파트','안녕자두야','검정고무신','짱구는못말려',
+    '도라에몽','포켓몬스터','디지몬어드벤처','원피스','슬램덩크','드래곤볼','명탐정코난','스파이패밀리',
+    '인크레더블','라따뚜이','굿다이노','온워드','루카','메이의새빨간비밀','버즈라이트이어','업그레이드',
+    '엘리멘탈','위시','인사이드아웃2','겨울왕국2','토이스토리4','미니언즈2','마당을나온암탉','우리들','아이캔스피크',
   ],
   '노래': [
     '곰세마리','산토끼','나비야','학교종','반달','고향의봄','아기상어','퐁당퐁당','옹달샘','섬집아기','과수원길','노을',
@@ -110,8 +125,17 @@ const CHO_DATA = {
     '반짝반짝작은별','머리어깨무릎발','그대로멈춰라','꼬부랑할머니','네잎클로버','파란나라','아름다운나라','강남스타일',
     '젠틀맨','벚꽃엔딩','봄날','다이너마이트','버터','아이돌','라일락','밤편지','좋은날','팔레트','넥스트레벨','하입보이',
     '어텐션','디토','사건의지평선','거짓말','하루하루','붉은노을','소원을말해봐','너에게난나에게넌','당신은사랑받기위해태어난사람',
+    '작은별','옹헤야','따르릉','우리집에왜왔니','여우야여우야뭐하니','쎄쎄쎄','두꺼비집','기찻길옆오막살이','앞으로',
+    '텔레비전','솜사탕','악어떼','상어가족','바나나차차','올챙이송','우리모두다같이','비행기','나비잠','산너머남촌에는',
+    '겨울바람','눈꽃송이','흰눈사이로','아빠힘내세요','아기염소','예쁜아기곰','숲속을걸어요','새싹들이다','오빠생각',
+    '푸른하늘은하수','작은동물원','새나라의어린이','우리는꿈나무','아름다운강산','바람이불어오는곳','이등병의편지',
   ],
 };
+// 영화·노래는 "제목"이라 목록에 있는 것만 정답.
+// 나머지(음식·동물·사물장소)는 초성만 맞으면 무슨 단어든 정답으로 인정한다.
+// (교실에서 TV에 단어가 그대로 뜨므로 이상한 단어는 자연히 걸러진다)
+const CHO_FREE_CATS = new Set(['음식', '동물', '사물·장소']);
+
 // 카테고리별 초성 사전: 패턴 → 정답 단어 목록
 const CHO_INDEX = {};
 for (const [cat, words] of Object.entries(CHO_DATA)) {
@@ -124,7 +148,7 @@ for (const [cat, words] of Object.entries(CHO_DATA)) {
   }
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -142,6 +166,9 @@ const server = http.createServer((req, res) => {
         ({ nick: p.nick, x: Math.round(p.x), y: Math.round(p.y), alive: p.alive,
            infected: p.infected, score: p.score, connected: p.connected })),
       coins: r.game && r.game.coins ? r.game.coins.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), v: c.v })) : undefined,
+      mines: r.game && r.game.mines ? r.game.mines.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), live: Date.now() >= m.liveAt })) : undefined,
+      mos: r.game && r.game.mos ? r.game.mos.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), gold: m.gold })) : undefined,
+      dolls: r.game && r.game.dolls ? r.game.dolls.map(d => ({ x: Math.round(d.x), y: Math.round(d.y), v: d.v })) : undefined,
       cho: r.gameType === 'cho' && r.game && r.game.pattern
         ? { category: r.game.category, pattern: r.game.pattern, answers: [...r.game.answers], claimed: r.game.claimed.map(c => c.w) }
         : undefined,
@@ -229,6 +256,10 @@ function startGame(room, type) {
     p.infected = false; p.infectedAt = 0; p.patientZero = false;
     p.score = 0; p.wordDone = false;
     p.dirX = 0; p.dirY = 0;
+    p.lostAmount = 0; p.lostAt = 0;
+    p.swatReadyAt = 0; p.swatAt = 0; p.hitAt = 0; p.hitGold = false;
+    p.clawState = 'move'; p.clawT = 0; p.clawGot = null; p.clawJudged = false;
+    p.gotAt = 0; p.missAt = 0;
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -255,6 +286,25 @@ function startGame(room, type) {
   } else if (type === 'coin') {
     g.roundMs = COIN_ROUND_MS;
     g.coins = []; g.nextCoinId = 1; g.nextCoinAt = 0; g.coinCap = 12 + n;
+    g.mines = []; g.nextMineId = 1; g.nextMineAt = 0; g.mineCap = 3 + Math.round(n / 3);
+  } else if (type === 'mos') {
+    g.roundMs = MOS_ROUND_MS;
+    g.mos = []; g.nextMosId = 1;
+    const target = 6 + Math.round(n * 0.8);
+    for (let i = 0; i < target; i++) g.mos.push(spawnMosquito(g));
+    g.mosTarget = target;
+  } else if (type === 'claw') {
+    g.roundMs = CLAW_ROUND_MS;
+    g.dolls = []; g.nextDollId = 1;
+    g.dollCap = 8 + n;
+    for (let i = 0; i < g.dollCap; i++) g.dolls.push(spawnDoll(g));
+    // 플레이어마다 자기 집게가 위에서 좌우로 왕복한다
+    actives.forEach((p, i) => {
+      p.clawX = 60 + Math.random() * (g.arenaW - 120);
+      p.clawDir = i % 2 ? 1 : -1;
+      p.clawSpeed = 240 + Math.random() * 60;
+      p.clawState = 'move'; p.clawT = 0; p.clawGot = null;
+    });
   } else if (type === 'word') {
     g.roundMs = 0; // 라운드 방식이라 전체 제한시간 없음
     const shorts = [...WORDS_SHORT].sort(() => Math.random() - 0.5);
@@ -288,7 +338,7 @@ function tick(room) {
       g.startedAt = now;
       room.phaseEndAt = g.roundMs ? now + g.roundMs : 0;
       if (room.gameType === 'bomb') g.nextSpawnAt = now + 2500;
-      if (room.gameType === 'coin') g.nextCoinAt = now + 500;
+      if (room.gameType === 'coin') { g.nextCoinAt = now + 500; g.nextMineAt = now + 6000; }
       if (room.gameType === 'word') startWordRound(room, now);
       if (room.gameType === 'cho') startChoRound(room, now);
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
@@ -302,6 +352,8 @@ function tick(room) {
   if (room.gameType === 'bomb') bombTick(room, now, dt);
   else if (room.gameType === 'tag') tagTick(room, now, dt);
   else if (room.gameType === 'coin') coinTick(room, now, dt);
+  else if (room.gameType === 'mos') mosTick(room, now, dt);
+  else if (room.gameType === 'claw') clawTick(room, now, dt);
   else if (room.gameType === 'word') wordTick(room, now);
   else if (room.gameType === 'cho') choTick(room, now);
 }
@@ -427,6 +479,18 @@ function coinTick(room, now, dt) {
     g.nextCoinAt = now + 450;
   }
 
+  // 폭탄 생성 (잠깐 경고 후 활성 → 밟으면 점수 전부 0)
+  if (now >= g.nextMineAt && g.mines.length < g.mineCap) {
+    g.mines.push({
+      id: g.nextMineId++,
+      x: 40 + Math.random() * (g.arenaW - 80),
+      y: 40 + Math.random() * (g.arenaH - 80),
+      liveAt: now + COIN_BOMB_WARN_MS,
+      endAt: now + COIN_BOMB_WARN_MS + COIN_BOMB_LIVE_MS,
+    });
+    g.nextMineAt = now + Math.max(900, 2600 - (now - g.startedAt) / 40);
+  }
+
   // 줍기 판정
   for (const c of g.coins) {
     for (const p of room.players.values()) {
@@ -437,6 +501,21 @@ function coinTick(room, now, dt) {
   }
   g.coins = g.coins.filter(c => !c.taken);
 
+  // 폭탄 판정: 활성 상태에서 닿으면 그 사람 점수 0
+  for (const m of g.mines) {
+    if (now < m.liveAt || m.taken) continue;
+    for (const p of room.players.values()) {
+      if (!p.alive) continue;
+      const dx = p.x - m.x, dy = p.y - m.y;
+      if (dx * dx + dy * dy <= (PLAYER_R + 16) * (PLAYER_R + 16)) {
+        p.lostAt = now; p.lostAmount = p.score;
+        p.score = 0; m.taken = true;
+        break;
+      }
+    }
+  }
+  g.mines = g.mines.filter(m => !m.taken && now <= m.endAt);
+
   if (now >= room.phaseEndAt) { endCoin(room); return; }
   sendState(room, now);
 }
@@ -444,7 +523,124 @@ function coinTick(room, now, dt) {
 function endCoin(room) {
   const parts = [...room.players.values()].filter(p => !p.waiting);
   const sorted = parts.sort((a, b) => b.score - a.score);
-  finishGame(room, sorted, p => p.score + '개', p => String(p.score));
+  finishGame(room, sorted, p => p.score + '원' + (p.lostAmount ? ` (💥 ${p.lostAmount}원 날림)` : ''), p => String(p.score));
+}
+
+// ---------- 모기 잡기 ----------
+function spawnMosquito(g) {
+  const gold = Math.random() < 0.14;
+  const ang = Math.random() * Math.PI * 2;
+  const sp = (gold ? 210 : 130) + Math.random() * 80;
+  return {
+    id: g.nextMosId++,
+    x: 40 + Math.random() * (g.arenaW - 80),
+    y: 40 + Math.random() * (g.arenaH - 80),
+    vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+    gold, turnAt: 0,
+  };
+}
+
+function mosTick(room, now, dt) {
+  const g = room.game;
+  // 모기는 제멋대로 방향을 꺾으며 날아다닌다
+  for (const m of g.mos) {
+    if (now >= m.turnAt) {
+      const ang = Math.atan2(m.vy, m.vx) + (Math.random() - 0.5) * 1.9;
+      const sp = Math.hypot(m.vx, m.vy);
+      m.vx = Math.cos(ang) * sp; m.vy = Math.sin(ang) * sp;
+      m.turnAt = now + 300 + Math.random() * 500;
+    }
+    m.x += m.vx * dt; m.y += m.vy * dt;
+    if (m.x < 20 || m.x > g.arenaW - 20) { m.vx *= -1; m.x = Math.max(20, Math.min(g.arenaW - 20, m.x)); }
+    if (m.y < 20 || m.y > g.arenaH - 20) { m.vy *= -1; m.y = Math.max(20, Math.min(g.arenaH - 20, m.y)); }
+  }
+  // 잡힌 만큼 다시 채운다
+  while (g.mos.length < g.mosTarget) g.mos.push(spawnMosquito(g));
+
+  if (now >= room.phaseEndAt) {
+    const parts = [...room.players.values()].filter(p => !p.waiting);
+    finishGame(room, parts.sort((a, b) => b.score - a.score), p => p.score + '마리', p => String(p.score));
+    return;
+  }
+  sendState(room, now);
+}
+
+// 학생이 화면을 탭했을 때: 파리채 반경 안의 가장 가까운 모기 1마리를 잡는다
+function mosSwat(room, p, x, y, now) {
+  const g = room.game;
+  if (!g || room.gameType !== 'mos' || room.state !== 'playing') return;
+  if (now < (p.swatReadyAt || 0)) return;
+  p.swatReadyAt = now + MOS_COOLDOWN_MS;
+  p.swatX = x; p.swatY = y; p.swatAt = now;
+
+  let best = null, bd = MOS_SWAT_R * MOS_SWAT_R;
+  for (const m of g.mos) {
+    const d = (m.x - x) * (m.x - x) + (m.y - y) * (m.y - y);
+    if (d <= bd) { bd = d; best = m; }
+  }
+  if (best) {
+    p.score += best.gold ? 3 : 1;
+    p.hitAt = now; p.hitGold = best.gold;
+    g.mos = g.mos.filter(m => m !== best);
+  }
+}
+
+// ---------- 인형 뽑기 ----------
+function spawnDoll(g) {
+  const r = Math.random();
+  const v = r < 0.08 ? 5 : (r < 0.3 ? 3 : 1); // 5점(대형)·3점(중형)·1점(소형)
+  return {
+    id: g.nextDollId++,
+    x: 40 + Math.random() * (g.arenaW - 80),
+    y: g.arenaH * 0.55 + Math.random() * (g.arenaH * 0.3), // 아래쪽 인형 웅덩이
+    v,
+  };
+}
+
+function clawTick(room, now, dt) {
+  const g = room.game;
+  for (const p of room.players.values()) {
+    if (!p.alive) continue;
+    if (p.clawState === 'move') {
+      p.clawX += p.clawDir * p.clawSpeed * dt;
+      if (p.clawX < 30) { p.clawX = 30; p.clawDir = 1; }
+      if (p.clawX > g.arenaW - 30) { p.clawX = g.arenaW - 30; p.clawDir = -1; }
+    } else if (p.clawState === 'drop') {
+      p.clawT += dt * 1000;
+      // 내려가는 중간(절반)에 집기 판정
+      if (!p.clawJudged && p.clawT >= CLAW_DROP_MS / 2) {
+        p.clawJudged = true;
+        // 집게는 세로로 쭉 내려가므로 가로 위치(x)만 맞으면 집는다
+        let best = null, bd = CLAW_GRAB_R * CLAW_GRAB_R;
+        for (const d of g.dolls) {
+          const dist = (d.x - p.clawX) * (d.x - p.clawX);
+          if (dist <= bd) { bd = dist; best = d; }
+        }
+        if (best) {
+          p.score += best.v; p.clawGot = best.v; p.gotAt = now;
+          g.dolls = g.dolls.filter(d => d !== best);
+          g.dolls.push(spawnDoll(g));
+        } else { p.clawGot = 0; p.missAt = now; }
+      }
+      if (p.clawT >= CLAW_DROP_MS) {
+        p.clawState = 'move'; p.clawT = 0; p.clawJudged = false;
+        p.clawSpeed = Math.min(430, p.clawSpeed + 12); // 갈수록 빨라져 어려워진다
+      }
+    }
+  }
+
+  if (now >= room.phaseEndAt) {
+    const parts = [...room.players.values()].filter(p => !p.waiting);
+    finishGame(room, parts.sort((a, b) => b.score - a.score), p => p.score + '점', p => String(p.score));
+    return;
+  }
+  sendState(room, now);
+}
+
+function clawDrop(room, p) {
+  if (room.gameType !== 'claw' || room.state !== 'playing') return;
+  if (!p.alive || p.clawState !== 'move') return;
+  p.clawState = 'drop'; p.clawT = 0; p.clawJudged = false; p.clawGot = null;
 }
 
 // ---------- 낱말 빨리치기 ----------
@@ -491,17 +687,23 @@ function endWord(room) {
 function startChoRound(room, now) {
   const g = room.game;
   g.round++;
-  // 아직 안 쓴 초성 패턴을 가진 문제를 랜덤 카테고리에서 뽑는다.
-  // 1~3라운드는 정답이 여러 개인 문제 우선(중복 금지 눈치싸움), 4~5라운드는 아무 문제나(스피드전)
-  const cats = Object.keys(CHO_INDEX);
-  const preferMulti = g.round <= 3;
-  for (let tryN = 0; tryN < 100; tryN++) {
-    const cat = cats[Math.floor(Math.random() * cats.length)];
+  // 1~4라운드: 자유 카테고리(음식·동물·사물장소)의 짧은 초성 → 아무 단어나 떠올려 쓰는 재미
+  // 5라운드: 영화·노래 제목 (목록 대조, 마무리 보너스 라운드)
+  const freeCats = Object.keys(CHO_INDEX).filter(c => CHO_FREE_CATS.has(c));
+  const titleCats = Object.keys(CHO_INDEX).filter(c => !CHO_FREE_CATS.has(c));
+  const useTitle = g.round >= WORD_ROUNDS && titleCats.length > 0;
+  const pool = useTitle ? titleCats : (freeCats.length ? freeCats : Object.keys(CHO_INDEX));
+
+  for (let tryN = 0; tryN < 120; tryN++) {
+    const cat = pool[Math.floor(Math.random() * pool.length)];
     const patterns = [...CHO_INDEX[cat].keys()];
     const pattern = patterns[Math.floor(Math.random() * patterns.length)];
     if (g.usedPatterns.has(cat + ':' + pattern)) continue;
     const answers = CHO_INDEX[cat].get(pattern);
-    if (preferMulti && answers.length < 2 && tryN < 70) continue; // 70번까지는 다중 정답만 노림
+    // 자유 카테고리는 2~3글자 초성이라야 떠올릴 단어가 많다
+    if (!useTitle && tryN < 90 && (pattern.length < 2 || pattern.length > 3)) continue;
+    // 제목 카테고리는 정답이 여러 개인 쪽이 눈치싸움이 된다
+    if (useTitle && tryN < 60 && answers.length < 2) continue;
     g.usedPatterns.add(cat + ':' + pattern);
     g.category = cat; g.pattern = pattern;
     g.answers = new Set(answers);
@@ -518,8 +720,8 @@ function choTick(room, now) {
   const actives = [...room.players.values()].filter(p => p.alive && p.connected);
   if (g.wordPhase === 'show') {
     const allDone = actives.length > 0 && actives.every(p => p.wordDone);
-    // 정답 단어가 다 나왔으면 더 기다릴 필요 없음
-    const exhausted = g.claimed.length >= g.answers.size;
+    // 목록 대조 카테고리(영화·노래)에서 정답이 다 나왔으면 더 기다릴 필요 없음
+    const exhausted = !CHO_FREE_CATS.has(g.category) && g.claimed.length >= g.answers.size;
     if (now >= g.roundEndAt || allDone || exhausted) {
       g.wordPhase = 'break';
       g.breakEndAt = now + WORD_BREAK_MS;
@@ -558,6 +760,7 @@ function sendState(room, now) {
       category: type === 'cho' ? g.category : undefined,
       claimed: type === 'cho' && g.claimed ? g.claimed.map(c => [c.w, c.id]) : undefined,
       answerCount: type === 'cho' && g.answers ? g.answers.size : 0,
+      freeMode: type === 'cho' ? CHO_FREE_CATS.has(g.category) : undefined,
       wordPhase: g.wordPhase || 'idle',
       timeLeft: g.wordPhase === 'show' ? Math.max(0, g.roundEndAt - now) : 0,
       roundTotal: type === 'cho' ? CHO_ROUND_MS : WORD_TIME_MS,
@@ -573,8 +776,25 @@ function sendState(room, now) {
     arena: { w: g.arenaW, h: g.arenaH },
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {
-      const extra = type === 'tag' ? (p.infected ? 1 : 0) : (type === 'coin' ? p.score : 0);
-      return [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
+      const extra = type === 'tag' ? (p.infected ? 1 : 0)
+        : (type === 'coin' || type === 'mos' || type === 'claw') ? p.score : 0;
+      const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
+      // 폭탄 밟은 직후 1초간 "0원!" 연출
+      if (type === 'coin') row.push(now - (p.lostAt || 0) < 1000 ? 1 : 0);
+      // 파리채 위치·최근 명중 표시
+      if (type === 'mos') {
+        row.push(now - (p.swatAt || 0) < 260 ? 1 : 0,
+                 Math.round(p.swatX || 0), Math.round(p.swatY || 0),
+                 now - (p.hitAt || 0) < 500 ? (p.hitGold ? 2 : 1) : 0);
+      }
+      // 집게 위치·상태
+      if (type === 'claw') {
+        row.push(Math.round(p.clawX || 0),
+                 p.clawState === 'drop' ? Math.round(Math.min(1, p.clawT / CLAW_DROP_MS) * 100) : 0,
+                 now - (p.gotAt || 0) < 700 ? (p.clawGot || 0) : 0,
+                 now - (p.missAt || 0) < 500 ? 1 : 0);
+      }
+      return row;
     }),
   };
   if (type === 'bomb') msg.bombs = g.bombs.map(b => {
@@ -583,7 +803,12 @@ function sendState(room, now) {
       : (now - (b.explodeAt - BOMB_WARN_MS)) / BOMB_WARN_MS;
     return [Math.round(b.x), Math.round(b.y), Math.round(b.r), boom ? 1 : 0, Math.round(prog * 100)];
   });
-  if (type === 'coin') msg.coins = g.coins.map(c => [Math.round(c.x), Math.round(c.y), c.v]);
+  if (type === 'coin') {
+    msg.coins = g.coins.map(c => [Math.round(c.x), Math.round(c.y), c.v]);
+    msg.mines = g.mines.map(m => [Math.round(m.x), Math.round(m.y), now >= m.liveAt ? 1 : 0]);
+  }
+  if (type === 'mos') msg.mos = g.mos.map(m => [Math.round(m.x), Math.round(m.y), m.gold ? 1 : 0]);
+  if (type === 'claw') msg.dolls = g.dolls.map(d => [Math.round(d.x), Math.round(d.y), d.v]);
   broadcast(room, msg);
 }
 
@@ -678,6 +903,26 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // 모기 잡기: 학생이 아레나를 탭한 좌표
+      case 'swat': {
+        if (!room || ws.playerId == null) return;
+        const p = room.players.get(ws.playerId);
+        if (!p || !room.game) return;
+        const x = Math.max(0, Math.min(room.game.arenaW, Number(msg.x) || 0));
+        const y = Math.max(0, Math.min(room.game.arenaH, Number(msg.y) || 0));
+        mosSwat(room, p, x, y, Date.now());
+        break;
+      }
+
+      // 인형 뽑기: 액션 버튼(집게 내리기)
+      case 'action': {
+        if (!room || ws.playerId == null) return;
+        const p = room.players.get(ws.playerId);
+        if (!p) return;
+        if (room.gameType === 'claw') clawDrop(room, p);
+        break;
+      }
+
       case 'word_submit': {
         if (!room || ws.playerId == null || room.state !== 'playing') return;
         const g = room.game;
@@ -698,9 +943,10 @@ wss.on('connection', (ws) => {
         } else if (room.gameType === 'cho') {
           const norm = normalizeWord(msg.text);
           if (!norm) return;
+          const free = CHO_FREE_CATS.has(g.category); // 자유 카테고리: 초성만 맞으면 정답
           if (choseongOf(norm) !== g.pattern) {
             roomSend(ws, { type: 'word_bad', reason: 'cho' });
-          } else if (!g.answers.has(norm)) {
+          } else if (!free && !g.answers.has(norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'list' });
           } else if (g.claimed.some(c => c.w === norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'dup' });
