@@ -369,6 +369,24 @@ function closeRoom(room, reason) {
   rooms.delete(room.code);
 }
 
+// 소켓이 지금까지 속해 있던 방에서 그 자리를 비운다 (방을 갈아탈 때 유령이 남지 않도록).
+// close 핸들러와 같은 정책: 로비면 즉시 제거, 게임 중이면 유예 후 tick이 탈락 처리.
+function detachFromRoom(ws) {
+  const room = ws.roomCode ? rooms.get(ws.roomCode) : null;
+  if (room) {
+    if (ws.isHost && room.hostWs === ws) room.hostWs = null;
+    if (ws.playerId != null) {
+      const p = room.players.get(ws.playerId);
+      if (p && p.ws === ws) {
+        if (room.state === 'lobby') room.players.delete(p.id);
+        else { p.connected = false; p.dirX = 0; p.dirY = 0; p.dropAt = Date.now(); }
+        sendRoster(room);
+      }
+    }
+  }
+  ws.playerId = null; ws.roomCode = null; ws.isHost = false;
+}
+
 // ---------- 게임 시작 ----------
 function startGame(room, type) {
   if (!GAME_KEYS.includes(type)) return;
@@ -393,7 +411,7 @@ function startGame(room, type) {
     p.angle = 0; p.boostsLeft = 0; p.boostUntil = 0;
     p.spinUntil = 0; p.spinImmuneUntil = 0; p.inWater = false;
     p.fireReadyAt = 0;
-    p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
+    p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.startS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -497,7 +515,19 @@ function startGame(room, type) {
   sendRoster(room);
 
   if (room.timer) clearInterval(room.timer);
-  room.timer = setInterval(() => tick(room), TICK_MS);
+  // tick이 예외를 던지면 그 방은 50ms마다 예외를 반복하며 멈춘 채 방치된다.
+  // 감싸서 연속 실패가 쌓이면 로비로 강제 복귀시켜 교사가 복구할 수 있게 한다.
+  room.tickErrors = 0;
+  room.timer = setInterval(() => {
+    try { tick(room); room.tickErrors = 0; }
+    catch (e) {
+      console.error('[tick 예외]', room.code, e && e.stack || e);
+      if (++room.tickErrors >= 10) {
+        console.error('[tick 반복 실패 → 로비 복귀]', room.code);
+        try { backToLobby(room); } catch { closeRoom(room, '게임 오류로 방이 종료되었습니다.'); }
+      }
+    }
+  }, TICK_MS);
 }
 
 // ---------- 틱 ----------
@@ -1018,6 +1048,7 @@ function galaTick(room, now, dt) {
   for (const bl of g.eb) { bl.x += bl.vx * dt; bl.y += bl.vy * dt; }
   g.pb = g.pb.filter(bl => bl.y > -20);
   g.eb = g.eb.filter(bl => bl.x > -20 && bl.x < g.arenaW + 20 && bl.y > -20 && bl.y < g.arenaH + 20);
+  if (g.eb.length > 200) g.eb.splice(0, g.eb.length - 200);   // 고웨이브 탄 폭주 상한
 
   // 명중 판정: 내 총알 → 적
   g.kills = [];
@@ -1205,30 +1236,35 @@ function raceTick(room, now, dt) {
       const d = dx * dx + dy * dy;
       if (d < bd) { bd = d; bi = i; }
     }
+    // 지름길 방지: 한 틱에 트랙 인덱스가 크게 건너뛰면(S자 코너가 겹치는 구간을
+    // 가로질러 진행도를 훔치는 것) 그 진행을 무효로 하고 이전 위치를 유지한다.
+    const fwd = ((bi - (p.trackIdx || 0)) % n + n) % n;
+    const jumped = fwd > 8 && fwd < n - 8;
+    if (jumped) { p.trackDist = Math.sqrt(bd); continue; }  // 랩·s 갱신 없이 넘어감
     p.trackIdx = bi; p.trackDist = Math.sqrt(bd);
     const sNow = t.cum[bi];
+    if (p.startS == null) p.startS = sNow;   // 출발 지점(형평성 기준)
     if (p.prevS != null) {
       const d = sNow - p.prevS;
-      if (d < -t.total / 2) {         // 결승선 앞으로 통과
-        p.crossings++;
-        if (p.crossings >= RACE_LAPS) {
-          p.finishedAt = now;
-          p.finishRank = ++g.finishCount;
-          if (!g.firstFinishAt) {
-            g.firstFinishAt = now;
-            // 1등이 나오면 남은 시간을 30초로 줄인다 (한 명 때문에 2분 기다리는 일 방지)
-            if (room.phaseEndAt > now + RACE_AFTER_FIRST_MS) {
-              room.phaseEndAt = now + RACE_AFTER_FIRST_MS;
-              broadcast(room, { type: 'phase', state: 'playing', gameType: 'race', endAt: room.phaseEndAt, st: now });
-            }
-          }
-        }
-      } else if (d > t.total / 2) {   // 결승선 뒤로 넘어감 (역주행)
-        p.crossings--;
-      }
+      if (d < -t.total / 2) p.crossings++;        // 결승선 앞으로 통과
+      else if (d > t.total / 2) p.crossings--;    // 결승선 뒤로 넘어감 (역주행)
     }
     p.prevS = sNow;
     p.raceProgress = p.crossings * t.total + sNow;
+    // 완주 = 출발점부터 정확히 RACE_LAPS바퀴만큼 달렸을 때 (출발 격자 위치와 무관하게 공정).
+    // 매 틱 검사해야 격자 보정된 완주 지점을 놓치지 않는다.
+    if (p.raceProgress - p.startS >= RACE_LAPS * t.total - 5) {
+      p.finishedAt = now;
+      p.finishRank = ++g.finishCount;
+      if (!g.firstFinishAt) {
+        g.firstFinishAt = now;
+        // 1등이 나오면 남은 시간을 30초로 줄인다 (한 명 때문에 2분 기다리는 일 방지)
+        if (room.phaseEndAt > now + RACE_AFTER_FIRST_MS) {
+          room.phaseEndAt = now + RACE_AFTER_FIRST_MS;
+          broadcast(room, { type: 'phase', state: 'playing', gameType: 'race', endAt: room.phaseEndAt, st: now });
+        }
+      }
+    }
   }
 
   const allDone = racers.length > 0 && racers.every(p => p.finishedAt);
@@ -1327,8 +1363,11 @@ function sendState(room, now) {
       }
       // 레이싱: 방향각·랩·부스터·완주 순위·스핀/물 상태
       if (type === 'race') {
+        // 랩 표시는 출발점부터 달린 거리 기준 (격자 보정과 일관되게)
+        const lapNow = p.startS == null ? 1
+          : Math.max(1, Math.min(RACE_LAPS, Math.floor((p.raceProgress - p.startS) / (g.track.total || 1)) + 1));
         row.push(Math.round((p.angle || 0) * 180 / Math.PI),
-                 Math.max(1, Math.min(RACE_LAPS, (p.crossings || 0) + 1)),
+                 lapNow,
                  p.boostsLeft || 0,
                  now < (p.boostUntil || 0) ? 1 : 0,
                  p.finishedAt ? (p.finishRank || 0) : 0,
@@ -1371,7 +1410,11 @@ function sendState(room, now) {
 function backToLobby(room) {
   if (room.timer) { clearInterval(room.timer); room.timer = null; }
   room.state = 'lobby'; room.game = null; room.gameType = null;
-  for (const p of room.players.values()) { p.alive = false; p.waiting = false; }
+  // 게임 중 끊긴 채 안 돌아온 학생은 로비로 오면서 정리 (유령 누적·정원 조기 소진 방지)
+  for (const p of [...room.players.values()]) {
+    if (!p.connected) room.players.delete(p.id);
+    else { p.alive = false; p.waiting = false; }
+  }
   broadcast(room, { type: 'phase', state: 'lobby', st: Date.now() });
   sendRoster(room);
 }
@@ -1419,6 +1462,7 @@ wss.on('connection', (ws) => {
           roomSend(ws, { type: 'error', msg: '방을 더 만들 수 없습니다. 잠시 후 다시 시도하세요.' });
           return;
         }
+        detachFromRoom(ws);   // 다른 방의 참가자였다면 그 자리를 비운다 (유령 방지)
         const r = createRoom();
         if (!r) { roomSend(ws, { type: 'error', msg: '방을 만들 수 없습니다. 잠시 후 다시 시도하세요.' }); return; }
         r.hostWs = ws; ws.roomCode = r.code; ws.isHost = true;
@@ -1430,6 +1474,7 @@ wss.on('connection', (ws) => {
       case 'rejoin_host': {
         const r = rooms.get(String(msg.code));
         if (!r || r.hostToken !== msg.hostToken) { roomSend(ws, { type: 'host_rejoin_fail' }); return; }
+        detachFromRoom(ws);   // 이전 참가 자리 정리
         r.hostWs = ws; ws.roomCode = r.code; ws.isHost = true;
         roomSend(ws, { type: 'room_created', code: r.code, hostToken: r.hostToken });
         sendRoster(r);
@@ -1448,6 +1493,8 @@ wss.on('connection', (ws) => {
         }
         // 이미 이 방에 들어와 있는 소켓이 join을 반복하면 유령 참가자가 쌓인다
         if (ws.playerId != null && ws.roomCode === r.code && r.players.has(ws.playerId)) return;
+        // 다른 방의 참가자였다면 그 자리를 비운다 (콘솔로 방 갈아타며 유령 만드는 것 차단)
+        if (ws.roomCode && ws.roomCode !== r.code) detachFromRoom(ws);
 
         if (msg.token) {
           const old = [...r.players.values()].find(p => p.token === msg.token);
