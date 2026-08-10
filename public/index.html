@@ -353,6 +353,7 @@ let arena = { w: 800, h: 800 };
 let wasAlive = false;
 let lastWordJson = '';
 let view = { ox: 0, oy: 0, scale: 1 };   // 아레나 → 화면 변환 (탭 좌표 계산에 사용)
+let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 띄우기 위한 시각
 
 const COLORS = Array.from({ length: 30 }, (_, i) => `hsl(${(i * 47) % 360} 75% 55%)`);
 
@@ -378,6 +379,13 @@ const SFX = (() => {
       o.start(t0); o.stop(t0 + dur + .05);
     } catch {}
   }
+  // 같은 효과음이 초당 수십 번 겹쳐 뭉개지는 것을 막는 최소 간격
+  const lastAt = {};
+  function gate(key, ms) {
+    const t = performance.now();
+    if (lastAt[key] && t - lastAt[key] < ms) return false;
+    lastAt[key] = t; return true;
+  }
   function noise(dur, vol = .25) {
     if (muted || !isHost) return;
     try {
@@ -393,16 +401,17 @@ const SFX = (() => {
     } catch {}
   }
   return {
-    unlock() { if (!muted && isHost) try { ctx(); } catch {} },
+    // 오디오 컨텍스트는 사용자 제스처 안에서 열어야 한다 (교사 화면 여부와 무관하게 미리 열어둠)
+    unlock() { if (!muted) try { ctx(); } catch {} },
     countBeep() { tone(660, .12, { type: 'sine', vol: .2 }); },
     go() { tone(523, .12); tone(659, .12, { delay: .1 }); tone(784, .3, { delay: .2 }); },
-    boom() { noise(.35, .3); tone(90, .3, { type: 'sine', vol: .3, slide: -55 }); },
-    coin() { tone(988, .07, { vol: .1 }); tone(1319, .15, { vol: .1, delay: .07 }); },
+    boom() { if (gate('boom', 90)) { noise(.35, .3); tone(90, .3, { type: 'sine', vol: .3, slide: -55 }); } },
+    coin() { if (gate('coin', 70)) { tone(988, .07, { vol: .1 }); tone(1319, .15, { vol: .1, delay: .07 }); } },
     zombie() { tone(300, .35, { type: 'sawtooth', vol: .18, slide: -190 }); },
-    swat() { noise(.09, .18); tone(420, .07, { type: 'square', vol: .12, slide: -180 }); },
-    grab() { tone(587, .09, { vol: .14 }); tone(880, .16, { vol: .14, delay: .09 }); },
+    swat() { if (gate('swat', 70)) { noise(.09, .18); tone(420, .07, { type: 'square', vol: .12, slide: -180 }); } },
+    grab() { if (gate('grab', 90)) { tone(587, .09, { vol: .14 }); tone(880, .16, { vol: .14, delay: .09 }); } },
     miss() { tone(200, .18, { type: 'sine', vol: .13, slide: -70 }); },
-    ok() { tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 }); },
+    ok() { if (gate('ok', 90)) { tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 }); } },
     fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .22, { vol: .16, delay: i * .13 })); },
     get muted() { return muted; },
     toggle() {
@@ -441,19 +450,32 @@ function goHome() {
 }
 
 // ---- WebSocket ----
+let wsGen = 0;        // 연결 세대 — 옛 소켓의 뒤늦은 콜백을 무시하기 위한 번호
+let retryDelay = 1500;
+
 function connect(onOpen) {
+  // 이전 소켓이 남아 있으면 콜백을 떼고 닫는다 (더블탭으로 방이 두 개 생기는 것 방지)
+  if (ws) { try { ws.onclose = ws.onmessage = ws.onopen = null; ws.close(); } catch {} }
+  const myGen = ++wsGen;
   const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
   ws = new WebSocket(proto + location.host);
   ws.onopen = () => {
+    if (myGen !== wsGen) return;
+    retryDelay = 1500;
     offsetSamples = [];
     for (let i = 0; i < 3; i++) setTimeout(() => send({ type: 'ping', ct: Date.now() }), i * 120);
     onOpen && onOpen();
   };
-  ws.onmessage = e => handle(JSON.parse(e.data));
+  ws.onmessage = e => {
+    if (myGen !== wsGen) return;
+    try { handle(JSON.parse(e.data)); }
+    catch (err) { console.error('메시지 처리 오류', err); }
+  };
   ws.onclose = () => {
-    if (phase === 'closed') return;
+    if (myGen !== wsGen || phase === 'closed') return;
     toast('연결이 끊겼어요. 다시 접속 중…', 4000);
-    setTimeout(reconnect, 1500);
+    setTimeout(reconnect, retryDelay);
+    retryDelay = Math.min(10000, Math.round(retryDelay * 1.8)); // 서버가 자는 동안 매초 두드리지 않게
   };
 }
 function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -540,7 +562,7 @@ function handle(m) {
         ? `🎉 "${m.word}" 정답! ${m.order}등 +${m.points}점`
         : `🎉 ${m.order}등! +${m.points}점`;
       $('wordFeedback').style.color = '#3ddc84';
-      $('wordInput').disabled = true; $('btnWordSubmit').disabled = true;
+      $('wordInput').readOnly = true; $('btnWordSubmit').disabled = true;
       break;
     case 'word_bad': {
       const msgs = {
@@ -565,7 +587,10 @@ function handle(m) {
       goHome();
       break;
     case 'error':
-      if ($('join').classList.contains('on')) $('joinErr').textContent = m.msg;
+      if ($('join').classList.contains('on')) {
+        $('joinErr').textContent = m.msg;
+        $('inCode').style.display = '';   // 코드가 틀렸을 수 있으니 다시 고칠 수 있게
+      }
       else toast(m.msg, 4000);
       break;
   }
@@ -578,7 +603,7 @@ function enterGameView() {
     $('btnWordAbort').style.display = isHost ? 'block' : 'none';
     $('wordList').style.display = isHost ? 'flex' : 'none';
     if (!isHost) {
-      $('wordInput').disabled = false; $('btnWordSubmit').disabled = false;
+      $('wordInput').readOnly = false; $('btnWordSubmit').disabled = false;
       $('wordInput').value = ''; $('wordFeedback').textContent = '';
     }
     $('choCat').style.display = 'none';
@@ -590,13 +615,38 @@ function enterGameView() {
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기) / 버튼(인형뽑기)
     $('btnAction').style.display = (!isHost && gameType === 'claw') ? 'block' : 'none';
-    $('stick').style.display = 'none';
     if (!isHost) initInput();
   }
+  resetInputState();
+  seenDeadAt = 0; seenInfectedAt = 0;
+  snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
+  $('hudTime').textContent = '';
+  $('hudLeft').textContent = '';
 }
 
+// 게임이 바뀔 때 조작 상태를 완전히 초기화한다.
+// (조이스틱을 잡은 채 게임이 끝나면 방향이 남아 다음 판에서 조작이 먹통이 된다)
+function resetInputState() {
+  stickActive = false; stickPid = null;
+  curDir = { x: 0, y: 0 };
+  sentDir = { x: NaN, y: NaN };     // NaN이라 다음 루프에서 0을 한 번 강제 전송
+  for (const k in keys) delete keys[k];
+  $('stick').style.display = 'none';
+}
+
+// 탭 전환 등으로 keyup을 놓치면 그 키가 계속 눌린 상태로 남는다
+addEventListener('blur', () => { for (const k in keys) delete keys[k]; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) for (const k in keys) delete keys[k]; });
+// 오디오는 사용자가 화면을 건드린 순간 열어둬야 한다 (나중에 열면 브라우저가 막는다)
+addEventListener('pointerdown', () => SFX.unlock(), { once: true });
+
 // ---- 첫 화면 ----
-$('btnCreate').onclick = () => connect(() => send({ type: 'create_room' }));
+$('btnCreate').onclick = () => {
+  SFX.unlock();                                 // 클릭 제스처 안에서 오디오 허용을 받아둔다
+  $('btnCreate').style.pointerEvents = 'none';  // 더블탭으로 방이 두 개 생기는 것 방지
+  setTimeout(() => { $('btnCreate').style.pointerEvents = ''; }, 2000);
+  connect(() => send({ type: 'create_room' }));
+};
 $('btnGoJoin').onclick = () => { show('join'); $('inCode').focus(); };
 $('btnJoin').onclick = doJoin;
 $('btnJoinBack').onclick = () => show('home');
@@ -625,17 +675,23 @@ function setupHostLobby() {
   $('codeBig').textContent = roomCode;
   const url = location.origin + location.pathname + '?room=' + roomCode;
   $('joinUrl').textContent = url;
-  if (window.qrcode) {
+  try {
+    if (!window.qrcode) throw new Error('QR 라이브러리 없음');
     const qr = qrcode(0, 'M');
     qr.addData(url); qr.make();
     const n = qr.getModuleCount();
-    const cell = Math.floor(200 / n), sz = cell * n;
+    const cell = Math.floor(320 / n), sz = cell * n;   // TV 뒷자리에서도 찍히도록 크게
     const c = $('qr'); c.width = sz; c.height = sz;
+    c.style.display = '';
     const g = c.getContext('2d');
     g.fillStyle = '#fff'; g.fillRect(0, 0, sz, sz);
     g.fillStyle = '#000';
     for (let r = 0; r < n; r++) for (let col = 0; col < n; col++)
       if (qr.isDark(r, col)) g.fillRect(col * cell, r * cell, cell, cell);
+  } catch (e) {
+    // QR 생성이 막히면(CDN 차단 등) 흰 상자만 남아 교사가 당황한다
+    $('qr').style.display = 'none';
+    $('joinUrl').innerHTML = 'QR을 만들지 못했어요. 학생들에게 아래 주소와 코드를 불러 주세요.<br><b>' + esc(url) + '</b>';
   }
   renderGameGrid();
   renderHostLobby();
@@ -704,6 +760,7 @@ function showResult(ranking) {
 $('btnWordSubmit').onclick = submitWord;
 $('wordInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitWord(); });
 function submitWord() {
+  if ($('wordInput').readOnly) return;   // 이미 맞힌 라운드
   const t = $('wordInput').value;
   if (!t.trim()) return;
   send({ type: 'word_submit', text: t });
@@ -716,9 +773,10 @@ function renderWord(m) {
     renderWord._lastRound = roundKey;
     sndPrev.done = 0;
     if (!isHost && m.wordPhase === 'show') {
-      $('wordInput').disabled = false; $('btnWordSubmit').disabled = false;
+      $('wordInput').readOnly = false; $('btnWordSubmit').disabled = false;
       $('wordInput').value = ''; $('wordFeedback').textContent = '';
-      $('wordInput').focus();
+      // 포커스를 잃지 않았으면 키보드가 그대로 열려 있어 바로 칠 수 있다
+      if (document.activeElement !== $('wordInput')) $('wordInput').focus();
     }
   }
   const total = m.roundTotal || 20000;
@@ -773,7 +831,7 @@ function renderWord(m) {
 }
 
 // ---- 조이스틱 ----
-let stickActive = false, stickCx = 0, stickCy = 0;
+let stickActive = false, stickCx = 0, stickCy = 0, stickPid = null;
 let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 
 // 화면 좌표 → 아레나 좌표 (draw()가 매 프레임 갱신하는 view 사용)
@@ -784,32 +842,43 @@ function toArena(clientX, clientY) {
 
 function initInput() {
   const g = $('game');
-  const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin';
 
   g.onpointerdown = e => {
     if (isHost) return;
     e.preventDefault();
     if (gameType === 'mos') {
-      // 모기 잡기: 두드린 자리로 파리채
+      // 모기 잡기: 두드린 자리로 파리채 (카운트다운 중에는 무시)
+      if (phase !== 'playing') return;
       const a = toArena(e.clientX, e.clientY);
       send({ type: 'swat', x: a.x, y: a.y });
+      if (navigator.vibrate) navigator.vibrate(12);
       return;
     }
+    const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin';
     if (!usesStick) return;
+    // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
+    if (stickPid !== null) return;
+    stickPid = e.pointerId;
     stickActive = true; stickCx = e.clientX; stickCy = e.clientY;
     $('stick').style.display = 'block';
     moveStick(e.clientX, e.clientY);
-    g.setPointerCapture(e.pointerId);
+    try { g.setPointerCapture(e.pointerId); } catch {}
   };
-  g.onpointermove = e => { if (stickActive) moveStick(e.clientX, e.clientY); };
-  g.onpointerup = g.onpointercancel = () => {
-    stickActive = false; curDir = { x: 0, y: 0 };
+  g.onpointermove = e => { if (stickActive && e.pointerId === stickPid) moveStick(e.clientX, e.clientY); };
+  g.onpointerup = g.onpointercancel = e => {
+    if (e && stickPid !== null && e.pointerId !== stickPid) return; // 다른 손가락 뗀 것은 무시
+    stickActive = false; stickPid = null; curDir = { x: 0, y: 0 };
     $('stick').style.display = 'none';
   };
 }
 
 // 액션 버튼 (인형 뽑기의 집게 내리기)
-$('btnAction').addEventListener('pointerdown', e => { e.preventDefault(); send({ type: 'action' }); });
+$('btnAction').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (isHost || gameType !== 'claw' || phase !== 'playing') return;
+  send({ type: 'action' });
+  if (navigator.vibrate) navigator.vibrate(15);   // 학생 폰은 무음이라 진동으로 손맛
+});
 function moveStick(x, y) {
   const dx = x - stickCx, dy = y - stickCy;
   const len = Math.hypot(dx, dy), max = 60;
@@ -848,6 +917,7 @@ const PLAYER_R_CLIENT = 16;
 function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; }
 addEventListener('resize', resize); resize();
 function lerp(a, b, t) { return a + (b - a) * t; }
+function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
 
 function draw() {
   requestAnimationFrame(draw);
@@ -872,7 +942,8 @@ function draw() {
   for (let x = ox + grid; x < ox + arena.w * scale; x += grid) { ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + arena.h * scale); ctx.stroke(); }
   for (let y = oy + grid; y < oy + arena.h * scale; y += grid) { ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + arena.w * scale, y); ctx.stroke(); }
 
-  if (snaps.length === 0) return;
+  // 아직 상태가 안 왔어도 카운트다운·안내는 보여야 한다 (학생이 규칙을 보는 유일한 화면)
+  if (snaps.length === 0) { drawOverlay(null); return; }
   const rt = performance.now() - 120;
   let a = snaps[0], b = snaps[snaps.length - 1];
   for (let i = 0; i < snaps.length - 1; i++) {
@@ -1062,39 +1133,55 @@ function draw() {
     }
   }
 
-  // HUD
-  if (tapHud !== null) $('hudLeft').textContent = tapHud;
-  else if (latest.mode === 'tag') $('hudLeft').textContent = '남은 사람 ' + humanCount;
-  else if (latest.mode === 'coin') $('hudLeft').textContent = isHost ? '💣 폭탄 조심!' : '내 돈 ' + myScore + '원';
-  else $('hudLeft').textContent = '생존 ' + aliveCount;
+  // HUD (같은 문자열이면 건드리지 않는다)
+  const hudText = tapHud !== null ? tapHud
+    : latest.mode === 'tag' ? '남은 사람 ' + humanCount
+    : latest.mode === 'coin' ? (isHost ? '💣 폭탄 조심!' : '내 돈 ' + myScore + '원')
+    : '생존 ' + aliveCount;
+  setText($('hudLeft'), hudText);
   if (phase === 'playing') {
     const left = Math.max(0, phaseEndAt - serverNow());
-    $('hudTime').textContent = Math.ceil(left / 1000) + '초';
+    setText($('hudTime'), Math.ceil(left / 1000) + '초');
   }
 
-  // 카운트다운·상태 메시지
-  if (phase === 'countdown') {
-    const left = phaseEndAt - serverNow();
-    const n = Math.ceil(left / 1000);
-    $('centerMsg').classList.add('on');
-    $('cmBig').textContent = n > 3 ? GAMES_META[gameType].icon + ' 준비!' : (n > 0 ? n : 'GO!');
-    $('cmSmall').textContent = isHost ? GAMES_META[gameType].name : GAMES_META[gameType].rule;
-    if (n !== sndPrev.count) { sndPrev.count = n; if (n >= 1 && n <= 3) SFX.countBeep(); }
-  } else if (!isHost && myAlive) {
-    if (latest.mode === 'bomb' && !myAlive.alive && wasAlive) {
-      $('centerMsg').classList.add('on');
-      $('cmBig').textContent = '💥 탈락!';
-      $('cmSmall').textContent = '끝까지 관전해 보세요';
-    } else if (latest.mode === 'tag' && myAlive.infected && !renderTagMsg._shown) {
-      $('centerMsg').classList.remove('on');
-    } else if (latest.mode !== 'bomb' || myAlive.alive) {
-      $('centerMsg').classList.remove('on');
-    }
-  } else {
-    $('centerMsg').classList.remove('on');
-  }
+  drawOverlay(myAlive, latest);
 }
-function renderTagMsg() {} // (자리표시)
+
+// 화면 한가운데 안내(카운트다운·탈락·감염). 상태 수신 전에도 동작해야 한다.
+function drawOverlay(myAlive, latest) {
+  if (phase === 'countdown') {
+    const meta = GAMES_META[gameType] || { icon: '🎮', name: '게임', rule: '' };
+    const n = Math.ceil((phaseEndAt - serverNow()) / 1000);
+    $('centerMsg').classList.add('on');
+    $('cmBig').textContent = n > 3 ? meta.icon + ' 준비!' : (n > 0 ? n : 'GO!');
+    $('cmSmall').textContent = isHost ? meta.name : meta.rule;
+    if (n !== sndPrev.count) { sndPrev.count = n; if (n >= 1 && n <= 3) SFX.countBeep(); }
+    return;
+  }
+  if (!isHost && myAlive && latest) {
+    const now = Date.now();
+    // 안내는 몇 초만 띄운다 — 계속 떠 있으면 경기장을 가린다
+    if (latest.mode === 'bomb' && !myAlive.alive) {
+      if (!seenDeadAt) seenDeadAt = now;
+      if (now - seenDeadAt < 3000) {
+        $('centerMsg').classList.add('on');
+        $('cmBig').textContent = '💥 탈락!';
+        $('cmSmall').textContent = '끝까지 관전해 보세요';
+        return;
+      }
+    }
+    if (latest.mode === 'tag' && myAlive.infected) {
+      if (!seenInfectedAt) seenInfectedAt = now;
+      if (now - seenInfectedAt < 2500) {
+        $('centerMsg').classList.add('on');
+        $('cmBig').textContent = '🧟 감염!';
+        $('cmSmall').textContent = '이제 친구들을 잡으러 가세요';
+        return;
+      }
+    }
+  }
+  $('centerMsg').classList.remove('on');
+}
 
 // 모기 잡기·인형 뽑기 전용 렌더링 (캐릭터가 없는 대신 파리채·집게를 그린다)
 function drawTapGames(latest, ox, oy, scale, dpr) {

@@ -19,6 +19,7 @@ const SPEED = 230;           // 이동 속도 (유닛/초)
 const PLAYER_R = 16;
 const COUNTDOWN_MS = 3500;
 const ROOM_IDLE_MS = 30 * 60 * 1000;
+const DROP_GRACE_MS = 8000;  // 접속이 끊긴 학생을 이번 판에서 빼기까지 기다리는 시간
 
 // 폭탄 피하기
 const BOMB_WARN_MS = 1000;
@@ -159,7 +160,12 @@ const MIME = {
 const server = http.createServer((req, res) => {
   let url = req.url.split('?')[0];
   if (url === '/health') { res.writeHead(200); res.end('ok'); return; }
-  if (url === '/debug') { // 운영 확인용: 방·플레이어 현황
+  // 운영 점검용. 방 코드·별명·정답이 들어 있어 아무나 보면 안 되므로
+  // DEBUG_KEY 환경변수를 설정한 경우에만, 그리고 키가 맞을 때만 응답한다.
+  if (url === '/debug') {
+    const key = process.env.DEBUG_KEY;
+    const given = new URL(req.url, 'http://x').searchParams.get('key');
+    if (!key || given !== key) { res.writeHead(404); res.end('not found'); return; }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify([...rooms.values()].map(r => ({
       code: r.code, state: r.state, game: r.gameType, players: [...r.players.values()].map(p =>
@@ -177,8 +183,9 @@ const server = http.createServer((req, res) => {
   }
   if (url === '/') url = '/index.html';
   const safe = path.normalize(url).replace(/^(\.\.[\/\\])+/, '');
-  const file = path.join(__dirname, 'public', safe);
-  if (!file.startsWith(path.join(__dirname, 'public'))) { res.writeHead(403); res.end(); return; }
+  const root = path.join(__dirname, 'public');
+  const file = path.join(root, safe);
+  if (file !== root && !file.startsWith(root + path.sep)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); res.end('not found'); return; }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
@@ -215,6 +222,18 @@ function createRoom() {
   };
   rooms.set(code, room);
   return room;
+}
+
+// 호스트 명령(게임 시작·강제퇴장·방닫기) 권한 검사.
+// 소켓 플래그만 믿으면 안 된다 — 학생이 자기 방을 만든 뒤 남의 방에 들어와도 플래그가 남기 때문.
+function isRoomHost(room, ws) {
+  return !!room && room.hostWs === ws && ws.isHost === true;
+}
+
+// 숫자 입력 정화: 1e400 같은 값은 JSON.parse에서 Infinity가 되어 좌표를 NaN으로 만든다(무적 치트)
+function finite(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 function roomSend(ws, obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -256,7 +275,10 @@ function closeRoom(room, reason) {
 function startGame(room, type) {
   if (!GAME_KEYS.includes(type)) return;
   const actives = [...room.players.values()].filter(p => p.connected);
-  if (actives.length < 1) return;
+  if (actives.length < 1) {
+    roomSend(room.hostWs, { type: 'error', msg: '참가한 학생이 없습니다. 학생이 입장한 뒤 시작하세요.' });
+    return;
+  }
   const n = actives.length;
   room.gameType = type;
 
@@ -266,7 +288,7 @@ function startGame(room, type) {
     p.infected = false; p.infectedAt = 0; p.patientZero = false;
     p.score = 0; p.wordDone = false;
     p.dirX = 0; p.dirY = 0;
-    p.lostAmount = 0; p.lostAt = 0;
+    p.lostAmount = 0; p.lostAt = 0; p.dropAt = 0;
     p.swatReadyAt = 0; p.swatAt = 0; p.hitAt = 0; p.hitGold = false;
     p.clawState = 'move'; p.clawT = 0; p.clawGot = null; p.clawJudged = false;
     p.gotAt = 0; p.missAt = 0;
@@ -357,6 +379,13 @@ function tick(room) {
     return;
   }
   if (room.state !== 'playing') return;
+
+  // 오래 끊긴 학생은 이번 판에서 뺀다 (가만히 서서 우승하는 일 방지)
+  for (const p of room.players.values()) {
+    if (p.alive && !p.connected && p.dropAt && now - p.dropAt > DROP_GRACE_MS) {
+      p.alive = false; p.deadAt = now; p.dropAt = 0;
+    }
+  }
 
   const dt = TICK_MS / 1000;
   if (room.gameType === 'bomb') bombTick(room, now, dt);
@@ -461,10 +490,10 @@ function endTag(room, now) {
   const g = room.game;
   const parts = [...room.players.values()].filter(p => !p.waiting);
   // 순위: 생존자 공동 1위 → 늦게 감염된 순 → 술래(처음 좀비)는 순위 밖 표시
+  // 순위: 끝까지 생존 > 늦게 감염된 순 > 처음 술래(맨 아래)
   const sorted = parts.sort((a, b) => {
-    const av = a.patientZero ? -1 : (a.infected ? a.infectedAt - now : 1); // 클수록 위
-    const bv = b.patientZero ? -1 : (b.infected ? b.infectedAt - now : 1);
-    return bv - av;
+    const val = p => p.patientZero ? -Infinity : (p.infected ? p.infectedAt - now : Infinity);
+    return val(b) - val(a);
   });
   finishGame(room, sorted, p => {
     if (p.patientZero) return '🧟 술래';
@@ -683,8 +712,13 @@ function wordTick(room, now) {
   sendState(room, now);
 }
 
+// 제출 단어 정리 — 길이를 먼저 자른다(초장문 도배가 20Hz 방송을 타면 교실 전체가 멈춘다)
 function normalizeWord(s) {
-  return String(s || '').normalize('NFC').replace(/\s+/g, '').trim();
+  return String(s == null ? '' : s).slice(0, 40).normalize('NFC').replace(/\s+/g, '').trim();
+}
+function hasBadWord(s) {
+  const t = String(s).toLowerCase();
+  return BAD_WORDS.some(w => t.includes(w));
 }
 
 function endWord(room) {
@@ -719,6 +753,13 @@ function startChoRound(room, now) {
     g.answers = new Set(answers);
     break;
   }
+  // 안 쓴 패턴을 못 찾은 경우(사전이 작아지면 생길 수 있음) 아무 문제나 하나 강제 배정
+  if (!g.pattern || !g.answers) {
+    const cat = pool[0] || Object.keys(CHO_INDEX)[0];
+    const pattern = [...CHO_INDEX[cat].keys()][0];
+    g.category = cat; g.pattern = pattern;
+    g.answers = new Set(CHO_INDEX[cat].get(pattern));
+  }
   g.wordPhase = 'show';
   g.roundEndAt = now + CHO_ROUND_MS;
   g.correctOrder = []; g.claimed = [];
@@ -731,7 +772,7 @@ function choTick(room, now) {
   if (g.wordPhase === 'show') {
     const allDone = actives.length > 0 && actives.every(p => p.wordDone);
     // 목록 대조 카테고리(영화·노래)에서 정답이 다 나왔으면 더 기다릴 필요 없음
-    const exhausted = !CHO_FREE_CATS.has(g.category) && g.claimed.length >= g.answers.size;
+    const exhausted = !CHO_FREE_CATS.has(g.category) && g.answers && g.claimed.length >= g.answers.size;
     if (now >= g.roundEndAt || allDone || exhausted) {
       g.wordPhase = 'break';
       g.breakEndAt = now + WORD_BREAK_MS;
@@ -831,14 +872,34 @@ function backToLobby(room) {
 }
 
 // ---------- WebSocket ----------
-const wss = new WebSocketServer({ server });
+// maxPayload: 한 메시지 4KB 제한 (기본값 100MB라 대용량 도배에 무방비)
+const wss = new WebSocketServer({ server, maxPayload: 4096 });
+wss.on('error', (e) => console.error('[wss 오류]', e.message));
+server.on('error', (e) => console.error('[http 오류]', e.message));
+// 서버가 죽으면 수업 중인 모든 방이 날아간다. 예상 못 한 예외는 로그만 남기고 계속 산다.
+process.on('uncaughtException', (e) => console.error('[치명적 예외 - 계속 실행]', e && e.stack || e));
+process.on('unhandledRejection', (e) => console.error('[처리 안 된 거부]', e));
+
+const MSG_LIMIT = 60;        // 소켓당 초당 허용 메시지 수
+const MSG_WINDOW_MS = 1000;
 
 wss.on('connection', (ws) => {
   ws.roomCode = null; ws.playerId = null; ws.isHost = false;
+  ws.isAlive = true; ws.msgCount = 0; ws.msgWindowAt = Date.now(); ws.roomsMade = 0;
+  // 소켓 오류에 리스너가 없으면 그대로 프로세스가 죽는다 (모바일 접속이 끊길 때 흔함)
+  ws.on('error', () => {});
+  ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (raw) => {
+   try {
+    // 초당 메시지 상한 — 한 명이 서버를 마비시키지 못하게
+    const now0 = Date.now();
+    if (now0 - ws.msgWindowAt > MSG_WINDOW_MS) { ws.msgWindowAt = now0; ws.msgCount = 0; }
+    if (++ws.msgCount > MSG_LIMIT) return;
+
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
+    if (!msg || typeof msg !== 'object') return;
     const room = ws.roomCode ? rooms.get(ws.roomCode) : null;
     if (room) room.lastActive = Date.now();
 
@@ -848,6 +909,11 @@ wss.on('connection', (ws) => {
         break;
 
       case 'create_room': {
+        // 한 소켓이 방을 계속 찍어내면 4자리 코드(9000개)가 고갈된다
+        if (++ws.roomsMade > 3 || rooms.size >= 500) {
+          roomSend(ws, { type: 'error', msg: '방을 더 만들 수 없습니다. 잠시 후 다시 시도하세요.' });
+          return;
+        }
         const r = createRoom();
         if (!r) { roomSend(ws, { type: 'error', msg: '방을 만들 수 없습니다. 잠시 후 다시 시도하세요.' }); return; }
         r.hostWs = ws; ws.roomCode = r.code; ws.isHost = true;
@@ -869,11 +935,19 @@ wss.on('connection', (ws) => {
       case 'join': {
         const r = rooms.get(String(msg.code));
         if (!r) { roomSend(ws, { type: 'error', msg: '방이 없습니다. 코드를 확인하세요.' }); return; }
+        // 학생으로 들어오는 순간 호스트 권한은 사라진다 (자기 방을 만든 뒤 남의 방을 조종하는 것 차단)
+        if (ws.isHost) {
+          const own = ws.roomCode ? rooms.get(ws.roomCode) : null;
+          if (own && own.hostWs === ws) own.hostWs = null;
+          ws.isHost = false;
+        }
+        // 이미 이 방에 들어와 있는 소켓이 join을 반복하면 유령 참가자가 쌓인다
+        if (ws.playerId != null && ws.roomCode === r.code && r.players.has(ws.playerId)) return;
 
         if (msg.token) {
           const old = [...r.players.values()].find(p => p.token === msg.token);
           if (old) {
-            old.ws = ws; old.connected = true;
+            old.ws = ws; old.connected = true; old.dropAt = 0;
             ws.roomCode = r.code; ws.playerId = old.id;
             roomSend(ws, { type: 'join_ok', id: old.id, token: old.token, code: r.code, nick: old.nick, ci: old.ci, state: r.state, gameType: r.gameType });
             sendRoster(r);
@@ -909,10 +983,10 @@ wss.on('connection', (ws) => {
         if (!room || ws.playerId == null) return;
         const p = room.players.get(ws.playerId);
         if (!p) return;
-        let x = Number(msg.x) || 0, y = Number(msg.y) || 0;
+        let x = finite(msg.x), y = finite(msg.y);
         const len = Math.hypot(x, y);
         if (len > 1) { x /= len; y /= len; }
-        p.dirX = x; p.dirY = y;
+        p.dirX = finite(x); p.dirY = finite(y);
         break;
       }
 
@@ -920,9 +994,9 @@ wss.on('connection', (ws) => {
       case 'swat': {
         if (!room || ws.playerId == null) return;
         const p = room.players.get(ws.playerId);
-        if (!p || !room.game) return;
-        const x = Math.max(0, Math.min(room.game.arenaW, Number(msg.x) || 0));
-        const y = Math.max(0, Math.min(room.game.arenaH, Number(msg.y) || 0));
+        if (!p || !room.game || !p.alive || p.waiting) return;
+        const x = Math.max(0, Math.min(room.game.arenaW, finite(msg.x)));
+        const y = Math.max(0, Math.min(room.game.arenaH, finite(msg.y)));
         mosSwat(room, p, x, y, Date.now());
         break;
       }
@@ -957,9 +1031,14 @@ wss.on('connection', (ws) => {
           const norm = normalizeWord(msg.text);
           if (!norm) return;
           const free = CHO_FREE_CATS.has(g.category); // 자유 카테고리: 초성만 맞으면 정답
-          if (choseongOf(norm) !== g.pattern) {
+          if (hasBadWord(norm)) {
+            roomSend(ws, { type: 'word_bad', reason: 'bad' });
+          } else if (free && !/^[가-힣]+$/.test(norm)) {
+            // 자유 판정이라도 "한글 단어"여야 한다 (이모지·영문 도배 차단)
+            roomSend(ws, { type: 'word_bad', reason: 'hangul' });
+          } else if (choseongOf(norm) !== g.pattern) {
             roomSend(ws, { type: 'word_bad', reason: 'cho' });
-          } else if (!free && !g.answers.has(norm)) {
+          } else if (!free && !(g.answers && g.answers.has(norm))) {
             roomSend(ws, { type: 'word_bad', reason: 'list' });
           } else if (g.claimed.some(c => c.w === norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'dup' });
@@ -977,16 +1056,16 @@ wss.on('connection', (ws) => {
       }
 
       case 'start_game':
-        if (room && ws.isHost && (room.state === 'lobby' || room.state === 'result'))
+        if (isRoomHost(room, ws) && (room.state === 'lobby' || room.state === 'result'))
           startGame(room, String(msg.game || 'bomb'));
         break;
 
       case 'back_to_lobby':
-        if (room && ws.isHost) backToLobby(room);
+        if (isRoomHost(room, ws)) backToLobby(room);
         break;
 
       case 'close_room':
-        if (room && ws.isHost) closeRoom(room, '선생님이 방을 닫았습니다.');
+        if (isRoomHost(room, ws)) closeRoom(room, '선생님이 방을 닫았습니다.');
         break;
 
       case 'leave': {
@@ -998,8 +1077,8 @@ wss.on('connection', (ws) => {
       }
 
       case 'kick': {
-        if (!room || !ws.isHost) return;
-        const p = room.players.get(msg.playerId);
+        if (!isRoomHost(room, ws)) return;
+        const p = room.players.get(Number(msg.playerId));
         if (p) {
           roomSend(p.ws, { type: 'kicked' });
           try { p.ws.close(); } catch {}
@@ -1009,6 +1088,10 @@ wss.on('connection', (ws) => {
         break;
       }
     }
+   } catch (e) {
+    // 메시지 하나 때문에 서버 전체가 죽지 않게 한다
+    console.error('[메시지 처리 오류]', e && e.stack || e);
+   }
   });
 
   ws.on('close', () => {
@@ -1019,18 +1102,40 @@ wss.on('connection', (ws) => {
       const p = room.players.get(ws.playerId);
       if (p && p.ws === ws) {
         p.connected = false; p.dirX = 0; p.dirY = 0;
-        if (room.state === 'lobby') room.players.delete(p.id);
+        if (room.state === 'lobby') {
+          room.players.delete(p.id);
+        } else if (p.alive) {
+          // 바로 탈락시키지 않는다 — 폰이 잠기거나 새로고침한 학생은 돌아올 시간을 준다.
+          // 유예 시간이 지나도 안 오면 tick()에서 이번 판에서 뺀다.
+          p.dropAt = Date.now();
+        }
         sendRoster(room);
       }
     }
   });
 });
 
+// ---------- 죽은 연결 정리 (모바일은 신호가 끊겨도 소켓이 남는다) ----------
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { try { ws.terminate(); } catch {} continue; }
+    ws.isAlive = false;
+    try { ws.ping(); } catch {}
+  }
+}, 30 * 1000);
+
 // ---------- 방 청소 ----------
+const EMPTY_ROOM_MS = 3 * 60 * 1000; // 선생님도 학생도 없는 방은 3분 뒤 정리
 setInterval(() => {
   const now = Date.now();
   for (const [, room] of rooms) {
-    if (now - room.lastActive > ROOM_IDLE_MS) closeRoom(room, '오래 사용하지 않아 방이 종료되었습니다.');
+    const empty = !room.hostWs && [...room.players.values()].every(p => !p.connected);
+    if (now - room.lastActive > ROOM_IDLE_MS) {
+      closeRoom(room, '오래 사용하지 않아 방이 종료되었습니다.');
+    } else if (empty && now - room.lastActive > EMPTY_ROOM_MS) {
+      if (room.timer) clearInterval(room.timer);
+      rooms.delete(room.code);
+    }
   }
 }, 60 * 1000);
 
