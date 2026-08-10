@@ -421,6 +421,7 @@ const GAMES_META = {
   mos:  { icon: '🦟', name: '모기 잡기', desc: '날아다니는 모기를 손가락으로 탁! 황금 모기는 3마리 값. 조이스틱 없이 화면만 두드리면 끝.', badge: '60초', rule: '모기를 손가락으로 톡톡 두드려 잡으세요!\n✨황금 모기는 3점' },
   claw: { icon: '🧸', name: '인형 뽑기', desc: '좌우로 움직이는 집게를 버튼으로 딱 멈춰 인형을 뽑자. 큰 인형일수록 고득점, 갈수록 빨라진다!', badge: '60초', rule: '집게가 인형 위에 왔을 때 버튼을 누르세요!\n큰 인형일수록 높은 점수' },
   word: { icon: '📝', name: '낱말 빨리치기', desc: 'TV의 제시어를 폰에 빨리, 정확히 입력! 5라운드 합산 점수로 승부.', badge: '5라운드', rule: '제시어를 똑같이 입력하고 제출!\n빠를수록 높은 점수' },
+  race: { icon: '🏎️', name: '레이싱', desc: '왼손으로 핸들, 오른손으로 부스터! 잔디에 빠지면 느려진다. 3바퀴 먼저 돌면 우승.', badge: '3랩', rule: '왼손: 핸들 조이스틱 · 오른손: 부스터(3번)\n트랙 밖 잔디는 느려요!' },
   cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 단어를 입력!\n이미 나온 단어는 안 돼요 — 다른 단어를 찾으세요' },
 };
 
@@ -440,6 +441,8 @@ let arena = { w: 800, h: 800 };
 let wasAlive = false;
 let lastWordJson = '';
 let view = { ox: 0, oy: 0, scale: 1 };   // 아레나 → 화면 변환 (탭 좌표 계산에 사용)
+let raceTrack = null;                    // 레이싱 트랙 (서버가 phase에 실어 보냄)
+let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
 let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 띄우기 위한 시각
 
 // 밝기 68% — 어두운 아레나(#1a2140)에서 남색·보라 계열도 보이도록.
@@ -624,10 +627,12 @@ function handle(m) {
       const prev = phase;
       phase = m.state; phaseEndAt = m.endAt || 0;
       if (m.gameType) gameType = m.gameType;
+      if (m.track) raceTrack = m.track;    // 레이싱 트랙 (시작·재접속 때 한 번 옴)
       if (phase === 'countdown' || phase === 'playing') {
         if (phase === 'countdown') {
           snaps = []; wasAlive = true; lastWordJson = '';
-          sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0 };
+          camX = null; camY = null;
+          sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0, boosts: 0, raceFin: 0 };
         }
         // 시작 효과음은 카운트다운에서 넘어올 때만 (재접속 복귀 때는 울리지 않게)
         if (phase === 'playing' && prev === 'countdown') SFX.go();
@@ -707,7 +712,10 @@ function enterGameView() {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기) / 버튼(인형뽑기)
-    $('btnAction').style.display = (!isHost && gameType === 'claw') ? 'block' : 'none';
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race');
+    $('btnAction').style.display = hasBtn ? 'block' : 'none';
+    $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥' : '집게<br>내리기';
+    $('btnAction').classList.remove('wait');
     if (!isHost) initInput();
   }
   resetInputState();
@@ -939,7 +947,7 @@ let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 // 이미지가 아직 안 왔거나 실패하면 예전 원형 그리기로 자동 대체된다.
 const SPR = {};
 ['player', 'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
- 'swatter', 'claw', 'boom', 'mascot'].forEach(name => {
+ 'swatter', 'claw', 'boom', 'mascot', 'car', 'start'].forEach(name => {
   const im = new Image();
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
@@ -948,8 +956,29 @@ const FLOOR_IMG = new Image();
 let floorReady = false;
 FLOOR_IMG.src = 'sprites/floor.jpg';
 FLOOR_IMG.onload = () => { floorReady = true; };
+const GRASS_IMG = new Image();
+let grassReady = false;
+GRASS_IMG.src = 'sprites/grass.jpg';
+GRASS_IMG.onload = () => { grassReady = true; };
 
 const tintCache = new Map();
+function tintSprite(name, color) {
+  const src = SPR[name];
+  if (!src) return null;
+  const key = name + '|' + color;
+  if (tintCache.has(key)) return tintCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'multiply';   // 흰 부분 → 원하는 색, 검은 부분은 그대로
+  g.fillStyle = color;
+  g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'destination-in';
+  g.drawImage(src, 0, 0);
+  tintCache.set(key, c);
+  return c;
+}
 function tintedPlayer(color) {
   if (!SPR.player) return null;
   if (tintCache.has(color)) return tintCache.get(color);
@@ -991,8 +1020,9 @@ function initInput() {
       if (navigator.vibrate) navigator.vibrate(12);
       return;
     }
-    const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin';
+    const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin' || gameType === 'race';
     if (!usesStick) return;
+    if (gameType === 'race' && e.clientX > innerWidth * 0.62) return; // 오른쪽은 부스터 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
     stickPid = e.pointerId;
@@ -1012,7 +1042,8 @@ function initInput() {
 // 액션 버튼 (인형 뽑기의 집게 내리기)
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
-  if (isHost || gameType !== 'claw' || phase !== 'playing') return;
+  if (isHost || phase !== 'playing') return;
+  if (gameType !== 'claw' && gameType !== 'race') return;
   send({ type: 'action' });
   if (navigator.vibrate) navigator.vibrate(15);   // 학생 폰은 무음이라 진동으로 손맛
 });
@@ -1038,7 +1069,7 @@ function keyDir() {
   const l = Math.hypot(x, y); return l ? { x: x / l, y: y / l } : null;
 }
 setInterval(() => {
-  const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin';
+  const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin' || gameType === 'race';
   if (isHost || !moves || (phase !== 'playing' && phase !== 'countdown')) return;
   const kd = keyDir();
   const d = kd || curDir;
@@ -1064,17 +1095,39 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
 
   const pad = 8 * dpr, topPad = (isHost ? 64 : 48) * dpr;
-  const scale = Math.min((W - pad * 2) / arena.w, (H - topPad - pad) / arena.h);
-  const ox = (W - arena.w * scale) / 2;
+  let scale = Math.min((W - pad * 2) / arena.w, (H - topPad - pad) / arena.h);
+  let ox = (W - arena.w * scale) / 2;
   // 세로 폰: 게임판을 위로 붙여 아래쪽을 조이스틱 자리로 비운다. 교사 화면은 세로 중앙.
   const portrait = H > W;
-  const oy = (!isHost && portrait) ? topPad
+  let oy = (!isHost && portrait) ? topPad
     : topPad + (H - topPad - pad - arena.h * scale) / 2;
+
+  // 레이싱 학생 폰: TV는 전체 맵, 내 폰은 내 차를 따라가는 확대 카메라
+  if (gameType === 'race' && !isHost && snaps.length) {
+    const lm = snaps[snaps.length - 1].m;
+    const me = lm.players && lm.players.find(r => r[0] === myId);
+    if (me) {
+      scale = Math.min(W, H) / 640;                 // 화면에 약 640유닛만 보이게 확대
+      // 카메라가 차를 부드럽게 쫓아간다 (팍팍 튀지 않게)
+      if (camX == null) { camX = me[1]; camY = me[2]; }
+      camX += (me[1] - camX) * 0.12;
+      camY += (me[2] - camY) * 0.12;
+      const aw2 = arena.w * scale, ah2 = arena.h * scale;
+      ox = W / 2 - camX * scale;
+      oy = H / 2 - camY * scale;
+      ox = aw2 <= W ? (W - aw2) / 2 : Math.max(W - aw2, Math.min(0, ox));
+      oy = ah2 <= H ? (H - ah2) / 2 : Math.max(H - ah2, Math.min(0, oy));
+    }
+  }
   view = { ox, oy, scale };
   window.__view = view;  // 자동 검증용 훅
 
   const aw = arena.w * scale, ah = arena.h * scale;
-  if (floorReady) {
+  if (gameType === 'race') {
+    if (grassReady) ctx.drawImage(GRASS_IMG, ox, oy, aw, ah);
+    else { ctx.fillStyle = '#2c5a2e'; ctx.fillRect(ox, oy, aw, ah); }
+    if (raceTrack) drawRaceTrack(ox, oy, scale, dpr);
+  } else if (floorReady) {
     ctx.drawImage(FLOOR_IMG, ox, oy, aw, ah);
   } else {
     ctx.fillStyle = '#1a2140';
@@ -1235,7 +1288,32 @@ function draw() {
     tapHud = r.hud; myScore = r.myScore;
   }
 
-  for (const pb of (tapMode ? [] : b.m.players)) {
+  // 레이싱: 자동차 렌더 + 랩/등수 HUD + 부스터 버튼 상태
+  const raceMode = latest.mode === 'race';
+  if (raceMode) {
+    const r = drawRaceCars(a.m, latest, t, posA, ox, oy, scale, dpr);
+    if (isHost) tapHud = '🏎️ 레이싱';
+    else if (r.myFinished) tapHud = '🏁 완주! ' + r.myFinished + '등';
+    else tapHud = '랩 ' + r.myLap + '/3 · 현재 ' + (r.myRank || '-') + '등';
+    if (!isHost) {
+      const btn = $('btnAction');
+      const label = r.myFinished ? '완주!<br>🏁'
+        : '부스터<br>' + ('🔥'.repeat(r.myBoosts) || '❌');
+      if (btn.__label !== label) { btn.__label = label; btn.innerHTML = label; }
+      btn.classList.toggle('wait', r.myBoosting || r.myBoosts === 0 || !!r.myFinished);
+    }
+    // 사운드: 부스터 점화·완주 (교사 화면)
+    if (isHost && phase === 'playing') {
+      const boosting = latest.players.filter(pp => pp[9] === 1).length;
+      if (boosting > sndPrev.boosts) SFX.swat();
+      sndPrev.boosts = boosting;
+      const fin = latest.players.filter(pp => pp[10] > 0).length;
+      if (fin > sndPrev.raceFin) SFX.ok();
+      sndPrev.raceFin = fin;
+    }
+  }
+
+  for (const pb of ((tapMode || raceMode) ? [] : b.m.players)) {
     const [id, x2, y2, alive, waiting, extra] = pb;
     if (waiting) continue;
     const pa = posA.get(id) || pb;
@@ -1391,10 +1469,29 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
     const [id, , , alive, waiting, extra] = pb;
     if (waiting) continue;
     const meta = roster.get(id) || { nick: '?', ci: 0 };
-    rows.push({ nick: meta.nick, ci: meta.ci, alive, extra });
+    rows.push({ nick: meta.nick, ci: meta.ci, alive, extra, lap: pb[7], fin: pb[10] });
   }
 
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+  if (latest.mode === 'race') {
+    // 진행도 등수 순으로 정렬해 등수·랩 표시
+    rows.sort((a, c) => a.extra - c.extra);
+    ctx.fillStyle = '#93a0c4';
+    ctx.font = `700 ${20 * dpr}px Pretendard, sans-serif`;
+    ctx.fillText('실시간 순위', x0, y); y += 40 * dpr;
+    rows.slice(0, 8).forEach((r, i) => {
+      ctx.fillStyle = i < 3 ? '#ffb03a' : '#c8d0e8';
+      ctx.font = `800 ${26 * dpr}px Pretendard, sans-serif`;
+      ctx.fillText(`${r.extra}. ${r.nick}`, x0, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(r.fin ? '🏁' : `${r.lap}랩`, W - 24 * dpr, y);
+      ctx.textAlign = 'left';
+      y += 46 * dpr;
+    });
+    return;
+  }
+
   const scoreGame = latest.mode === 'coin' || latest.mode === 'mos' || latest.mode === 'claw';
 
   if (scoreGame) {
@@ -1434,6 +1531,119 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
       ctx.fillText(`🧟 좀비 ${infected}명`, x0, y);
     }
   }
+}
+
+// ---------- 레이싱 렌더링 ----------
+function traceTrackPath(ox, oy, scale) {
+  const t = raceTrack;
+  ctx.beginPath();
+  t.pts.forEach(([x, y], i) => i ? ctx.lineTo(ox + x * scale, oy + y * scale) : ctx.moveTo(ox + x * scale, oy + y * scale));
+  ctx.closePath();
+}
+
+function drawRaceTrack(ox, oy, scale, dpr) {
+  const t = raceTrack;
+  const trackW = t.halfW * 2 * scale;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // 연석: 흰 바탕 위에 빨간 점선 → 빨강·하양 체크 무늬
+  traceTrackPath(ox, oy, scale);
+  ctx.strokeStyle = '#d8dce8'; ctx.lineWidth = trackW + 16 * scale; ctx.stroke();
+  ctx.setLineDash([16 * scale, 16 * scale]);
+  traceTrackPath(ox, oy, scale);
+  ctx.strokeStyle = '#c94848'; ctx.lineWidth = trackW + 16 * scale; ctx.stroke();
+  ctx.setLineDash([]);
+  // 아스팔트
+  traceTrackPath(ox, oy, scale);
+  ctx.strokeStyle = '#3a3f4c'; ctx.lineWidth = trackW; ctx.stroke();
+  // 중앙 점선
+  ctx.setLineDash([16 * scale, 24 * scale]);
+  traceTrackPath(ox, oy, scale);
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = Math.max(2, 3 * scale); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 출발선: 첫 점에서 트랙을 가로지르는 체커 무늬
+  const p0 = t.pts[0], p1 = t.pts[1];
+  const ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+  ctx.save();
+  ctx.translate(ox + p0[0] * scale, oy + p0[1] * scale);
+  ctx.rotate(ang);
+  const cell = 12 * scale, cols = 2, half = t.halfW * scale;
+  for (let cx = 0; cx < cols; cx++)
+    for (let i = 0; i < Math.ceil(half * 2 / cell); i++) {
+      ctx.fillStyle = (cx + i) % 2 ? '#111' : '#fff';
+      ctx.fillRect(cx * cell - cell, -half + i * cell, cell, Math.min(cell, half * 2 - i * cell));
+    }
+  ctx.restore();
+  // START 배너는 출발선 위쪽 잔디에 세운다
+  if (SPR.start) {
+    const bw = t.halfW * 2.4 * scale, bh = bw * (SPR.start.height / SPR.start.width);
+    ctx.drawImage(SPR.start, ox + p0[0] * scale - bw / 2, oy + (p0[1] - t.halfW) * scale - bh - 14 * scale, bw, bh);
+  }
+}
+
+// 자동차: 보간 위치 + 방향으로 회전, 부스터 불꽃, 완주 표시
+function drawRaceCars(a, bMsg, t, posA, ox, oy, scale, dpr) {
+  const latest = bMsg;
+  let myLap = 1, myRank = 0, myBoosts = 0, myBoosting = false, myFinished = 0;
+  const carLen = 64 * scale;
+
+  for (const pb of latest.players) {
+    const [id, x2, y2, alive, waiting, rankLive, angDeg, lap, boosts, boosting, finRank] = pb;
+    if (waiting || !alive) continue;
+    const pa = posA.get(id) || pb;
+    const px = ox + (pa[1] + (x2 - pa[1]) * t) * scale;
+    const py = oy + (pa[2] + (y2 - pa[2]) * t) * scale;
+    // 각도 보간 (최단 방향)
+    let a0 = (pa[6] != null ? pa[6] : angDeg) * Math.PI / 180;
+    const a1 = angDeg * Math.PI / 180;
+    let dA = a1 - a0;
+    while (dA > Math.PI) dA -= Math.PI * 2;
+    while (dA < -Math.PI) dA += Math.PI * 2;
+    const ang = a0 + dA * t;
+    const meta = roster.get(id) || { nick: '?', ci: 0 };
+    const color = COLORS[meta.ci % COLORS.length];
+
+    if (id === myId) { myLap = lap; myRank = rankLive; myBoosts = boosts; myBoosting = !!boosting; myFinished = finRank; }
+
+    ctx.save();
+    if (finRank) ctx.globalAlpha = 0.55;   // 완주한 차는 반투명 유령
+    // 그림자
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(px, py + 4 * scale, carLen * .42, carLen * .3, 0, 0, 7); ctx.fill();
+    ctx.translate(px, py);
+    ctx.rotate(ang);
+    // 부스터 불꽃 (차 뒤에서 일렁임)
+    if (boosting) {
+      const fl = (0.8 + Math.random() * 0.5) * carLen * 0.55;
+      ctx.fillStyle = 'rgba(255,150,40,.85)';
+      ctx.beginPath();
+      ctx.moveTo(-carLen * .48, -carLen * .12);
+      ctx.lineTo(-carLen * .48 - fl, 0);
+      ctx.lineTo(-carLen * .48, carLen * .12);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,230,120,.9)';
+      ctx.beginPath();
+      ctx.moveTo(-carLen * .48, -carLen * .06);
+      ctx.lineTo(-carLen * .48 - fl * .55, 0);
+      ctx.lineTo(-carLen * .48, carLen * .06);
+      ctx.closePath(); ctx.fill();
+    }
+    const car = tintSprite('car', color);
+    if (car) ctx.drawImage(car, -carLen / 2, -carLen / 2, carLen, carLen);
+    else { ctx.fillStyle = color; ctx.fillRect(-carLen * .4, -carLen * .22, carLen * .8, carLen * .44); }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // 이름 + 순위
+    ctx.textAlign = 'center';
+    ctx.fillStyle = id === myId ? '#ffb03a' : '#fff';
+    ctx.font = `${id === myId ? 800 : 600} ${13 * dpr}px Pretendard, sans-serif`;
+    ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 3 * dpr;
+    const label = (finRank ? '🏁 ' : rankLive <= 3 ? ['🥇', '🥈', '🥉'][rankLive - 1] + ' ' : '') + meta.nick;
+    ctx.strokeText(label, px, py - carLen * .62);
+    ctx.fillText(label, px, py - carLen * .62);
+  }
+  return { myLap, myRank, myBoosts, myBoosting, myFinished };
 }
 
 // 모기 잡기·인형 뽑기 전용 렌더링 (캐릭터가 없는 대신 파리채·집게를 그린다)

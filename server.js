@@ -149,7 +149,61 @@ for (const [cat, words] of Object.entries(CHO_DATA)) {
   }
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw'];
+// 레이싱
+const RACE_LAPS = 3;
+const RACE_ROUND_MS = 150000;    // 최대 2분 30초 (1등 나오면 30초 카운트다운으로 단축)
+const RACE_SPEED = 300;          // 기본 주행 속도 (유닛/초)
+const RACE_TURN = 3.4;           // 조향 속도 (rad/s)
+const RACE_OFF_MULT = 0.42;      // 트랙 밖(잔디) 감속
+const RACE_BOOSTS = 3;           // 판당 부스터 개수
+const RACE_BOOST_MS = 1300;
+const RACE_BOOST_MULT = 1.55;
+const RACE_CAR_R = 19;
+const RACE_AFTER_FIRST_MS = 30000; // 1등 완주 후 나머지에게 주는 시간
+
+// 트랙 중심선: 모서리가 둥근 직사각형 루프를 점으로 샘플링
+// (차의 진행도·트랙 이탈 판정·클라이언트 트랙 그리기가 전부 이 점 목록 하나로 돌아간다)
+function buildTrack(w, h) {
+  const m = 185, r = 205;                  // 바깥 여백, 모서리 반경
+  const x0 = m, y0 = m, x1 = w - m, y1 = h - m;
+  const pts = [];
+  const seg = (fx, fy, tx, ty) => {
+    const d = Math.hypot(tx - fx, ty - fy), n = Math.max(2, Math.round(d / 22));
+    for (let i = 0; i < n; i++) pts.push([fx + (tx - fx) * i / n, fy + (ty - fy) * i / n]);
+  };
+  const arc = (cx, cy, a0, a1) => {
+    const n = Math.max(4, Math.round(Math.abs(a1 - a0) * r / 22));
+    for (let i = 0; i < n; i++) { const a = a0 + (a1 - a0) * i / n; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+  };
+  // 시계 방향 한 바퀴 (출발선 = 위쪽 변의 시작점, 진행 방향 →)
+  seg(x0 + r, y0, x1 - r, y0);
+  arc(x1 - r, y0 + r, -Math.PI / 2, 0);
+  seg(x1, y0 + r, x1, y1 - r);
+  arc(x1 - r, y1 - r, 0, Math.PI / 2);
+  seg(x1 - r, y1, x0 + r, y1);
+  arc(x0 + r, y1 - r, Math.PI / 2, Math.PI);
+  seg(x0, y1 - r, x0, y0 + r);
+  arc(x0 + r, y0 + r, Math.PI, Math.PI * 1.5);
+  const cum = [0];
+  for (let i = 1; i <= pts.length; i++) {
+    const a = pts[i - 1], bb = pts[i % pts.length];
+    cum.push(cum[i - 1] + Math.hypot(bb[0] - a[0], bb[1] - a[1]));
+  }
+  return { pts, cum, total: cum[pts.length], halfW: 95 };
+}
+// 중심선을 따라 s만큼 간 지점과 그 방향
+function trackPointAt(t, s) {
+  s = ((s % t.total) + t.total) % t.total;
+  let i = 0;
+  while (i < t.pts.length - 1 && t.cum[i + 1] < s) i++;
+  const a = t.pts[i], bb = t.pts[(i + 1) % t.pts.length];
+  const segLen = Math.max(1e-6, t.cum[i + 1] - t.cum[i]);
+  const f = (s - t.cum[i]) / segLen;
+  return { x: a[0] + (bb[0] - a[0]) * f, y: a[1] + (bb[1] - a[1]) * f,
+           ang: Math.atan2(bb[1] - a[1], bb[0] - a[0]), idx: i };
+}
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -170,7 +224,8 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify([...rooms.values()].map(r => ({
       code: r.code, state: r.state, game: r.gameType, players: [...r.players.values()].map(p =>
         ({ nick: p.nick, x: Math.round(p.x), y: Math.round(p.y), alive: p.alive,
-           infected: p.infected, score: p.score, connected: p.connected })),
+           infected: p.infected, score: p.score, connected: p.connected,
+           lap: p.crossings, fin: !!p.finishedAt, dist: Math.round(p.trackDist || 0) })),
       coins: r.game && r.game.coins ? r.game.coins.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), v: c.v })) : undefined,
       mines: r.game && r.game.mines ? r.game.mines.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), live: Date.now() >= m.liveAt })) : undefined,
       mos: r.game && r.game.mos ? r.game.mos.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), gold: m.gold })) : undefined,
@@ -261,7 +316,13 @@ function sendCurrentPhase(room, ws) {
   roomSend(ws, {
     type: 'phase', state: room.state, gameType: room.gameType,
     endAt: room.phaseEndAt, st: Date.now(),
+    track: room.gameType === 'race' && room.game && room.game.track ? trackForClient(room.game.track) : undefined,
   });
+}
+
+// 클라이언트가 트랙을 그릴 수 있게 중심선을 통째로 보낸다 (시작할 때 한 번만)
+function trackForClient(t) {
+  return { pts: t.pts.map(p => [Math.round(p[0]), Math.round(p[1])]), halfW: t.halfW, total: Math.round(t.total) };
 }
 
 function closeRoom(room, reason) {
@@ -292,6 +353,8 @@ function startGame(room, type) {
     p.swatReadyAt = 0; p.swatAt = 0; p.hitAt = 0; p.hitGold = false;
     p.clawState = 'move'; p.clawT = 0; p.clawGot = null; p.clawJudged = false;
     p.gotAt = 0; p.missAt = 0;
+    p.angle = 0; p.boostsLeft = 0; p.boostUntil = 0;
+    p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -347,11 +410,30 @@ function startGame(room, type) {
     g.roundMs = 0;
     g.round = 0; g.wordPhase = 'idle'; g.correctOrder = [];
     g.usedPatterns = new Set(); g.claimed = [];
+  } else if (type === 'race') {
+    g.roundMs = RACE_ROUND_MS;
+    g.arenaW = 1500; g.arenaH = 1000;        // 레이싱은 넓은 고정 맵
+    g.track = buildTrack(g.arenaW, g.arenaH);
+    g.finishCount = 0; g.firstFinishAt = 0;
+    // 출발선 바로 뒤에 4열 격자로 배치 (트랙 진행 방향 기준)
+    actives.forEach((p, i) => {
+      const row = Math.floor(i / 4), col = i % 4;
+      const at = trackPointAt(g.track, 46 + row * 52);
+      const px = Math.cos(at.ang + Math.PI / 2), py = Math.sin(at.ang + Math.PI / 2);
+      p.x = at.x + px * (col - 1.5) * 40;
+      p.y = at.y + py * (col - 1.5) * 40;
+      p.angle = at.ang;
+      p.trackIdx = at.idx; p.prevS = null;
+      p.boostsLeft = RACE_BOOSTS;
+    });
   }
 
   room.state = 'countdown';
   room.phaseEndAt = Date.now() + COUNTDOWN_MS;
-  broadcast(room, { type: 'phase', state: 'countdown', gameType: type, endAt: room.phaseEndAt, st: Date.now() });
+  broadcast(room, {
+    type: 'phase', state: 'countdown', gameType: type, endAt: room.phaseEndAt, st: Date.now(),
+    track: type === 'race' ? trackForClient(g.track) : undefined,
+  });
   sendRoster(room);
 
   if (room.timer) clearInterval(room.timer);
@@ -395,6 +477,7 @@ function tick(room) {
   else if (room.gameType === 'claw') clawTick(room, now, dt);
   else if (room.gameType === 'word') wordTick(room, now);
   else if (room.gameType === 'cho') choTick(room, now);
+  else if (room.gameType === 'race') raceTick(room, now, dt);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -786,6 +869,103 @@ function choTick(room, now) {
   sendState(room, now);
 }
 
+// ---------- 레이싱 ----------
+function raceTick(room, now, dt) {
+  const g = room.game, t = g.track;
+  const racers = [...room.players.values()].filter(p => p.alive);
+
+  for (const p of racers) {
+    if (p.finishedAt) continue;
+    // 조향: 조이스틱이 가리키는 방향으로 서서히 회전 (차라서 즉시 못 꺾는다)
+    const len = Math.hypot(p.dirX, p.dirY);
+    if (len > 0.25) {
+      const target = Math.atan2(p.dirY, p.dirX);
+      let d = target - p.angle;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const maxTurn = RACE_TURN * dt;
+      p.angle += Math.max(-maxTurn, Math.min(maxTurn, d));
+    }
+    const boosting = now < p.boostUntil;
+    const off = p.trackDist > t.halfW;               // 잔디에 빠졌나
+    const sp = RACE_SPEED * (off ? RACE_OFF_MULT : 1) * (boosting ? RACE_BOOST_MULT : 1);
+    p.x = Math.max(RACE_CAR_R, Math.min(g.arenaW - RACE_CAR_R, p.x + Math.cos(p.angle) * sp * dt));
+    p.y = Math.max(RACE_CAR_R, Math.min(g.arenaH - RACE_CAR_R, p.y + Math.sin(p.angle) * sp * dt));
+  }
+
+  // 차끼리 부드럽게 밀어내기 (완주한 차는 유령이 된다)
+  const live = racers.filter(p => !p.finishedAt);
+  for (let i = 0; i < live.length; i++) {
+    for (let j = i + 1; j < live.length; j++) {
+      const a = live[i], bb = live[j];
+      const dx = bb.x - a.x, dy = bb.y - a.y;
+      const d2 = dx * dx + dy * dy, min = RACE_CAR_R * 2;
+      if (d2 > 0.01 && d2 < min * min) {
+        const d = Math.sqrt(d2), push = (min - d) / 2;
+        const nx = dx / d, ny = dy / d;
+        a.x -= nx * push; a.y -= ny * push;
+        bb.x += nx * push; bb.y += ny * push;
+      }
+    }
+  }
+
+  // 진행도·랩 계산
+  for (const p of racers) {
+    if (p.finishedAt) continue;
+    const n = t.pts.length;
+    let bi = p.trackIdx || 0, bd = Infinity;
+    for (let k = -16; k <= 16; k++) {
+      const i = ((p.trackIdx + k) % n + n) % n;
+      const dx = p.x - t.pts[i][0], dy = p.y - t.pts[i][1];
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; bi = i; }
+    }
+    p.trackIdx = bi; p.trackDist = Math.sqrt(bd);
+    const sNow = t.cum[bi];
+    if (p.prevS != null) {
+      const d = sNow - p.prevS;
+      if (d < -t.total / 2) {         // 결승선 앞으로 통과
+        p.crossings++;
+        if (p.crossings >= RACE_LAPS) {
+          p.finishedAt = now;
+          p.finishRank = ++g.finishCount;
+          if (!g.firstFinishAt) {
+            g.firstFinishAt = now;
+            // 1등이 나오면 남은 시간을 30초로 줄인다 (한 명 때문에 2분 기다리는 일 방지)
+            if (room.phaseEndAt > now + RACE_AFTER_FIRST_MS) {
+              room.phaseEndAt = now + RACE_AFTER_FIRST_MS;
+              broadcast(room, { type: 'phase', state: 'playing', gameType: 'race', endAt: room.phaseEndAt, st: now });
+            }
+          }
+        }
+      } else if (d > t.total / 2) {   // 결승선 뒤로 넘어감 (역주행)
+        p.crossings--;
+      }
+    }
+    p.prevS = sNow;
+    p.raceProgress = p.crossings * t.total + sNow;
+  }
+
+  const allDone = racers.length > 0 && racers.every(p => p.finishedAt);
+  if (now >= room.phaseEndAt || allDone || racers.length === 0) { endRace(room); return; }
+  sendState(room, now);
+}
+
+function endRace(room) {
+  const g = room.game;
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    const af = a.finishedAt || Infinity, bf = b.finishedAt || Infinity;
+    if (af !== bf) return af - bf;
+    return (b.raceProgress || 0) - (a.raceProgress || 0);
+  });
+  finishGame(room, sorted,
+    p => p.finishedAt
+      ? ((p.finishedAt - g.startedAt) / 1000).toFixed(1) + '초 완주 🏁'
+      : `${Math.max(1, Math.min(RACE_LAPS, p.crossings + 1))}랩에서 종료`,
+    p => p.finishedAt ? String(p.finishedAt) : 'dnf' + Math.round(p.raceProgress || 0));
+}
+
 // ---------- 공통 종료·상태 ----------
 function finishGame(room, sorted, labelOf, keyOf) {
   clearInterval(room.timer); room.timer = null;
@@ -824,13 +1004,26 @@ function sendState(room, now) {
     });
     return;
   }
+  // 레이싱: 진행도 순으로 현재 등수 매기기 (완주자는 완주 순서 고정)
+  let raceOrder = null;
+  if (type === 'race') {
+    raceOrder = new Map();
+    [...room.players.values()].filter(p => !p.waiting)
+      .sort((a, bb) => {
+        const af = a.finishedAt || Infinity, bf = bb.finishedAt || Infinity;
+        if (af !== bf) return af - bf;
+        return (bb.raceProgress || 0) - (a.raceProgress || 0);
+      })
+      .forEach((p, i) => raceOrder.set(p.id, i + 1));
+  }
   const msg = {
     type: 'state', mode: type, st: now,
     arena: { w: g.arenaW, h: g.arenaH },
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
-        : (type === 'coin' || type === 'mos' || type === 'claw') ? p.score : 0;
+        : (type === 'coin' || type === 'mos' || type === 'claw') ? p.score
+        : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0) : 0;
       const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
       // 폭탄 밟은 직후 1초간 "0원!" 연출
       if (type === 'coin') row.push(now - (p.lostAt || 0) < 1000 ? 1 : 0);
@@ -846,6 +1039,14 @@ function sendState(room, now) {
                  p.clawState === 'drop' ? Math.round(Math.min(1, p.clawT / CLAW_DROP_MS) * 100) : 0,
                  now - (p.gotAt || 0) < 700 ? (p.clawGot || 0) : 0,
                  now - (p.missAt || 0) < 500 ? 1 : 0);
+      }
+      // 레이싱: 방향각·랩·부스터·완주 순위
+      if (type === 'race') {
+        row.push(Math.round((p.angle || 0) * 180 / Math.PI),
+                 Math.max(1, Math.min(RACE_LAPS, (p.crossings || 0) + 1)),
+                 p.boostsLeft || 0,
+                 now < (p.boostUntil || 0) ? 1 : 0,
+                 p.finishedAt ? (p.finishRank || 0) : 0);
       }
       return row;
     }),
@@ -1009,6 +1210,12 @@ wss.on('connection', (ws) => {
         const p = room.players.get(ws.playerId);
         if (!p) return;
         if (room.gameType === 'claw') clawDrop(room, p);
+        else if (room.gameType === 'race' && room.state === 'playing'
+                 && p.alive && !p.finishedAt && (p.boostsLeft || 0) > 0
+                 && Date.now() >= (p.boostUntil || 0)) {
+          p.boostsLeft--;
+          p.boostUntil = Date.now() + RACE_BOOST_MS;
+        }
         break;
       }
 
