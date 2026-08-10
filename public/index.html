@@ -241,6 +241,12 @@ function connect(onOpen) {
 }
 function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
 
+// 연결 유지 1: 25초마다 핑 — 중간 장비(프록시)가 조용한 연결을 끊는 것을 방지
+setInterval(() => send({ type: 'ping', ct: Date.now() }), 25000);
+// 연결 유지 2: 교사 화면은 4분마다 HTTP 요청 — Render 무료 서버가 잠들지 않게 함
+// (Render는 WebSocket을 트래픽으로 치지 않아서, 이게 없으면 수업 중에 서버가 잠들 수 있음)
+setInterval(() => { if (isHost) fetch('/health?t=' + Date.now()).catch(() => {}); }, 4 * 60 * 1000);
+
 function reconnect() {
   if (isHost && roomCode && hostToken) {
     connect(() => send({ type: 'rejoin_host', code: roomCode, hostToken }));
