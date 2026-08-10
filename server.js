@@ -491,16 +491,20 @@ function endWord(room) {
 function startChoRound(room, now) {
   const g = room.game;
   g.round++;
-  // 아직 안 쓴 초성 패턴을 가진 문제를 랜덤 카테고리에서 뽑는다
+  // 아직 안 쓴 초성 패턴을 가진 문제를 랜덤 카테고리에서 뽑는다.
+  // 1~3라운드는 정답이 여러 개인 문제 우선(중복 금지 눈치싸움), 4~5라운드는 아무 문제나(스피드전)
   const cats = Object.keys(CHO_INDEX);
-  for (let tryN = 0; tryN < 60; tryN++) {
+  const preferMulti = g.round <= 3;
+  for (let tryN = 0; tryN < 100; tryN++) {
     const cat = cats[Math.floor(Math.random() * cats.length)];
     const patterns = [...CHO_INDEX[cat].keys()];
     const pattern = patterns[Math.floor(Math.random() * patterns.length)];
     if (g.usedPatterns.has(cat + ':' + pattern)) continue;
+    const answers = CHO_INDEX[cat].get(pattern);
+    if (preferMulti && answers.length < 2 && tryN < 70) continue; // 70번까지는 다중 정답만 노림
     g.usedPatterns.add(cat + ':' + pattern);
     g.category = cat; g.pattern = pattern;
-    g.answers = new Set(CHO_INDEX[cat].get(pattern));
+    g.answers = new Set(answers);
     break;
   }
   g.wordPhase = 'show';
