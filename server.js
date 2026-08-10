@@ -812,6 +812,8 @@ function sendState(room, now) {
       claimed: type === 'cho' && g.claimed ? g.claimed.map(c => [c.w, c.id]) : undefined,
       answerCount: type === 'cho' && g.answers ? g.answers.size : 0,
       freeMode: type === 'cho' ? CHO_FREE_CATS.has(g.category) : undefined,
+      // 아무도 못 맞힌 라운드에 정답을 보여주기 위한 예시 (쉬는 시간에만)
+      sample: type === 'cho' && g.wordPhase === 'break' && g.answers ? [...g.answers].slice(0, 3) : undefined,
       wordPhase: g.wordPhase || 'idle',
       timeLeft: g.wordPhase === 'show' ? Math.max(0, g.roundEndAt - now) : 0,
       roundTotal: type === 'cho' ? CHO_ROUND_MS : WORD_TIME_MS,
