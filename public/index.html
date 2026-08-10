@@ -69,7 +69,10 @@
   .game-card p { color: #93a0c4; font-size: 14px; margin-top: 6px; line-height: 1.5; }
 
   /* 게임 화면 */
-  #game { position: fixed; inset: 0; display: none; }
+  /* touch-action:none — 게임 중 터치를 브라우저(스크롤·당겨서 새로고침)가 가로채지 못하게 함.
+     이게 없으면 조이스틱 드래그가 시작되자마자 pointercancel로 끊긴다 */
+  #game { position: fixed; inset: 0; display: none; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   #game.on { display: block; }
   #cv { position: absolute; inset: 0; width: 100%; height: 100%; }
   .hud {
@@ -414,6 +417,7 @@ function initStick() {
   const g = $('game');
   g.onpointerdown = e => {
     if (isHost) return;
+    e.preventDefault();
     stickActive = true; stickCx = e.clientX; stickCy = e.clientY;
     $('stick').style.display = 'block';
     moveStick(e.clientX, e.clientY);
