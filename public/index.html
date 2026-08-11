@@ -442,8 +442,8 @@ const GAMES_META = {
   word: { icon: '📝', name: '낱말 빨리치기', desc: 'TV의 제시어를 폰에 빨리, 정확히 입력! 5라운드 합산 점수로 승부.', badge: '5라운드', rule: '제시어를 똑같이 입력하고 제출!\n빠를수록 높은 점수' },
   race: { icon: '🏎️', name: '레이싱', desc: '왼손 핸들, 오른손 부스터! 물웅덩이는 느려지고 기름을 밟으면 빙글~ 함정을 피해 3바퀴 먼저 돌면 우승.', badge: '3랩', rule: '왼손: 핸들 · 오른손: 부스터(3번)\n💧물·🛢️기름 함정을 피하세요!' },
   gala: { icon: '🚀', name: '갤러그', desc: '반 전체가 함대가 되어 외계인 편대를 격추! 맞으면 그대로 끝. 웨이브가 갈수록 빨라진다.', badge: '협동 슈팅', rule: '왼손: 이동 · 오른손: 발사!\n적 탄에 맞으면 부활 없음 — 끝까지 살아남으세요' },
-  dodge: { icon: '💥', name: '탄막 피하기', desc: '사방에서 쏟아지는 탄막을 피하는 극한 생존! 한 발이라도 맞으면 끝. 시간이 갈수록 거세진다.', badge: '서바이벌', rule: '조이스틱으로 탄막을 피하세요!\n한 발이라도 맞으면 탈락 — 최후의 1인은?' },
-  cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 단어를 입력!\n이미 나온 단어는 안 돼요 — 다른 단어를 찾으세요' },
+  dodge: { icon: '💥', name: '탄막 피하기', desc: '사방에서 쏟아지는 탄막을 피하는 극한 생존! 한 발이라도 맞으면 끝. 시간이 갈수록 거세진다.', badge: '서바이벌', rule: '조이스틱으로 탄막을 피하세요!\n한 발이라도 맞으면 탈락 — 시간이 끝날 때까지 버텨라!' },
+  cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 진짜 단어를 입력!\n사전에 없는 단어·이미 나온 단어는 안 돼요' },
 };
 
 // ---- 전역 상태 ----
@@ -691,6 +691,7 @@ function handle(m) {
       const msgs = {
         cho: '초성이 달라요! 다시 보세요',
         list: '앗, 목록에 없는 단어예요. 다른 단어로!',
+        dict: '사전에 없는 단어예요. 진짜 단어를 써 보세요!',
         dup: '이미 나온 단어! 다른 단어를 찾으세요',
         wrong: '땡! 다시 입력해 보세요',
       };
@@ -938,7 +939,7 @@ function renderWord(m) {
   if (m.mode === 'cho') {
     $('choCat').style.display = m.category ? 'block' : 'none';
     $('choCat').textContent = !m.category ? ''
-      : m.freeMode ? `[${m.category}] 초성만 맞으면 뭐든 정답!`
+      : m.freeMode ? `[${m.category}] 사전에 있는 단어만 정답!` + (m.answerCount > 1 ? ` (정답 ${m.answerCount}개)` : '')
       : `[${m.category} 제목]` + (m.answerCount > 1 ? ` 정답 ${m.answerCount}개` : '');
     if (phase === 'countdown') $('wordBig').textContent = '준비하세요…';
     else if (m.wordPhase === 'show') $('wordBig').textContent = m.word ? [...m.word].join(' ') : '…';

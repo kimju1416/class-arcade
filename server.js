@@ -132,9 +132,9 @@ const CHO_DATA = {
     '푸른하늘은하수','작은동물원','새나라의어린이','우리는꿈나무','아름다운강산','바람이불어오는곳','이등병의편지',
   ],
 };
-// 영화·노래는 "제목"이라 목록에 있는 것만 정답.
-// 나머지(음식·동물·사물장소)는 초성만 맞으면 무슨 단어든 정답으로 인정한다.
-// (교실에서 TV에 단어가 그대로 뜨므로 이상한 단어는 자연히 걸러진다)
+// 전 카테고리 사전(목록) 대조 판정 — 사전에 없는 단어는 초성이 맞아도 오답.
+// (예전엔 음식·동물·사물장소는 초성만 맞으면 아무 단어나 인정했는데, 없는 말 도배가 가능해 막았다)
+// CHO_FREE_CATS는 이제 라운드 배정(1~4라운드)과 안내 문구 구분용으로만 쓰인다.
 const CHO_FREE_CATS = new Set(['음식', '동물', '사물·장소']);
 
 // 카테고리별 초성 사전: 패턴 → 정답 단어 목록
@@ -908,8 +908,8 @@ function endWord(room) {
 function startChoRound(room, now) {
   const g = room.game;
   g.round++;
-  // 1~4라운드: 자유 카테고리(음식·동물·사물장소)의 짧은 초성 → 아무 단어나 떠올려 쓰는 재미
-  // 5라운드: 영화·노래 제목 (목록 대조, 마무리 보너스 라운드)
+  // 1~4라운드: 자유 카테고리(음식·동물·사물장소)의 짧은 초성 → 사전 속 단어를 먼저 떠올리는 싸움
+  // 5라운드: 영화·노래 제목 (마무리 보너스 라운드)
   const freeCats = Object.keys(CHO_INDEX).filter(c => CHO_FREE_CATS.has(c));
   const titleCats = Object.keys(CHO_INDEX).filter(c => !CHO_FREE_CATS.has(c));
   const useTitle = g.round >= WORD_ROUNDS && titleCats.length > 0;
@@ -923,6 +923,8 @@ function startChoRound(room, now) {
     const answers = CHO_INDEX[cat].get(pattern);
     // 자유 카테고리는 2~3글자 초성이라야 떠올릴 단어가 많다
     if (!useTitle && tryN < 90 && (pattern.length < 2 || pattern.length > 3)) continue;
+    // 사전 대조 판정이라 정답이 여럿인 문제라야 여러 명이 점수를 딸 수 있다
+    if (!useTitle && tryN < 70 && answers.length < 3) continue;
     // 제목 카테고리는 정답이 여러 개인 쪽이 눈치싸움이 된다
     if (useTitle && tryN < 60 && answers.length < 2) continue;
     g.usedPatterns.add(cat + ':' + pattern);
@@ -948,8 +950,8 @@ function choTick(room, now) {
   const actives = [...room.players.values()].filter(p => p.alive && p.connected);
   if (g.wordPhase === 'show') {
     const allDone = actives.length > 0 && actives.every(p => p.wordDone);
-    // 목록 대조 카테고리(영화·노래)에서 정답이 다 나왔으면 더 기다릴 필요 없음
-    const exhausted = !CHO_FREE_CATS.has(g.category) && g.answers && g.claimed.length >= g.answers.size;
+    // 사전에 있는 정답이 다 나왔으면 더 기다릴 필요 없음
+    const exhausted = g.answers && g.claimed.length >= g.answers.size;
     if (now >= g.roundEndAt || allDone || exhausted) {
       g.wordPhase = 'break';
       g.breakEndAt = now + WORD_BREAK_MS;
@@ -1157,7 +1159,8 @@ function dodgeTick(room, now, dt) {
   }
 
   const alive = [...room.players.values()].filter(p => p.alive);
-  if (now >= room.phaseEndAt || (g.startingCount >= 2 && alive.length <= 1) || !alive.length) {
+  // 폭탄 피하기(최후 1인 종료)와 달리 혼자 남아도 계속 — 전멸하거나 시간이 다해야 끝난다
+  if (now >= room.phaseEndAt || !alive.length) {
     endBomb(room, now);   // 순위 규칙이 폭탄 피하기와 같다 (생존자 → 늦게 죽은 순)
     return;
   }
@@ -1595,16 +1598,14 @@ wss.on('connection', (ws) => {
         } else if (room.gameType === 'cho') {
           const norm = normalizeWord(msg.text);
           if (!norm) return;
-          const free = CHO_FREE_CATS.has(g.category); // 자유 카테고리: 초성만 맞으면 정답
+          const free = CHO_FREE_CATS.has(g.category); // 자유 카테고리: 사전에 있는 단어면 무엇이든 정답
           if (hasBadWord(norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'bad' });
-          } else if (free && !/^[가-힣]+$/.test(norm)) {
-            // 자유 판정이라도 "한글 단어"여야 한다 (이모지·영문 도배 차단)
-            roomSend(ws, { type: 'word_bad', reason: 'hangul' });
           } else if (choseongOf(norm) !== g.pattern) {
             roomSend(ws, { type: 'word_bad', reason: 'cho' });
-          } else if (!free && !(g.answers && g.answers.has(norm))) {
-            roomSend(ws, { type: 'word_bad', reason: 'list' });
+          } else if (!(g.answers && g.answers.has(norm))) {
+            // 어느 카테고리든 사전(목록)에 있는 단어만 정답 — 초성만 맞는 아무 말 도배 방지
+            roomSend(ws, { type: 'word_bad', reason: free ? 'dict' : 'list' });
           } else if (g.claimed.some(c => c.w === norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'dup' });
           } else {
