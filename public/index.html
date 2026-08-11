@@ -173,7 +173,12 @@
     background: rgba(255,255,255,.55); transform: translate(-50%,-50%); }
 
   /* 낱말 빨리치기 */
-  #wordGame { justify-content: flex-start; padding-top: 4vh; }
+  /* 낱말·초성: 교실 칠판 배경 (어두운 그라데이션으로 글자 대비 유지) */
+  #wordGame {
+    justify-content: flex-start; padding-top: 4vh;
+    background: linear-gradient(rgba(8,11,26,.42), rgba(8,11,26,.62)),
+                url('sprites/board.jpg') center/cover no-repeat;
+  }
   body.host #wordList { max-height: calc(100vh - 470px); overflow-y: auto; }
   #btnWordAbort {
     position: fixed; top: 14px; right: 14px; z-index: 8; width: auto;
@@ -1042,11 +1047,16 @@ GRASS_IMG.src = 'sprites/grass.jpg';
 GRASS_IMG.onload = () => { grassReady = true; };
 // 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
 const FLOORS = {};
-['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate'].forEach(k => {
+['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari'].forEach(k => {
   const im = new Image();
   im.src = 'sprites/floor-' + k + '.jpg';
   im.onload = () => { FLOORS[k] = im; };
 });
+// 갤러그 우주 배경 (성운·행성 이미지 위에 코드로 별이 흐른다)
+const SPACE_IMG = new Image();
+let spaceReady = false;
+SPACE_IMG.src = 'sprites/space.jpg';
+SPACE_IMG.onload = () => { spaceReady = true; };
 
 const tintCache = new Map();
 function tintSprite(name, color) {
@@ -1858,7 +1868,8 @@ function drawSadari(latest, ox, oy, scale, dpr) {
   if ((latest.round || 0) !== myPickRound) { myPickRound = latest.round || 0; myPick = -1; }
   const picking = latest.sPhase === 'pick';
 
-  ctx.fillStyle = 'rgba(8,11,28,.6)';
+  // 밤 축제 배경(청사초롱)이 비치도록 살짝만 어둡게
+  ctx.fillStyle = 'rgba(8,11,28,.35)';
   ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
 
   // 세로줄
@@ -2234,8 +2245,8 @@ const STARS = Array.from({ length: 90 }, (_, i) => {
   return { x: (h % 1000) / 1000, y: ((h >> 10) % 1000) / 1000, s: 1 + (i % 3), tw: (i % 7) / 7 };
 });
 function drawSpace(ox, oy, aw, ah, dpr) {
-  ctx.fillStyle = '#070b1c';
-  ctx.fillRect(ox, oy, aw, ah);
+  if (spaceReady) ctx.drawImage(SPACE_IMG, ox, oy, aw, ah);
+  else { ctx.fillStyle = '#070b1c'; ctx.fillRect(ox, oy, aw, ah); }
   const scroll = (performance.now() / 60) % 1000;
   for (const st of STARS) {
     const y = (st.y * 1000 + scroll * st.s * 0.35) % 1000 / 1000;
