@@ -467,8 +467,11 @@ let wasAlive = false;
 let lastWordJson = '';
 let view = { ox: 0, oy: 0, scale: 1 };   // 아레나 → 화면 변환 (탭 좌표 계산에 사용)
 let raceTrack = null;                    // 레이싱 트랙 (서버가 phase에 실어 보냄)
-let myPick = -1, myPickRound = 0;        // 사다리·통아저씨: 내 선택 (라운드 바뀌면 초기화)
+let myPick = -1, myPickRound = 0;        // 사다리: 내 선택 (라운드 바뀌면 초기화)
+let myPicks = [];                        // 통아저씨: 내가 꽂은 칼들
+let pirKnives = 1;                       // 통아저씨: 1인당 칼 개수 (서버 상태로 갱신)
 let pirRot = 0, pirDrag = null;          // 통아저씨: 통 회전각·드래그 상태
+let pirateKnives = Math.max(1, Math.min(3, +(localStorage.getItem('ca_knives') || 1)));  // 호스트가 고른 위험도
 let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
 let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 띄우기 위한 시각
 
@@ -766,7 +769,7 @@ function enterGameView(keepInput) {
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
       : gameType === 'sumo' ? '대시!<br>💨' : '집게<br>내리기';
-    myPick = -1; myPickRound = 0; pirRot = 0; pirDrag = null;
+    myPick = -1; myPickRound = 0; myPicks = []; pirRot = 0; pirDrag = null;
     $('btnAction').classList.remove('wait');
     if (!isHost) initInput();
   }
@@ -863,6 +866,21 @@ function renderGameGrid() {
         onerror="this.outerHTML='<span style=font-size:30px>${meta.icon}</span>'">
       <b>${meta.name}</b><span class="badge" style="margin-left:auto">${meta.badge}</span></div><p>${meta.desc}</p>`;
     el.onclick = () => { selectedGame = key; renderGameGrid(); };
+    // 통아저씨: 위험도(1인당 칼 개수) 선택
+    if (key === 'pirate') {
+      const opt = document.createElement('div');
+      opt.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:8px';
+      opt.innerHTML = '<span style="color:#93a0c4;font-size:13px">1인당 칼</span>' +
+        [1, 2, 3].map(k => `<button data-k="${k}" style="padding:4px 10px;border-radius:99px;border:1.5px solid ${k === pirateKnives ? '#ffb03a' : '#3a4680'};background:${k === pirateKnives ? '#ffb03a' : 'transparent'};color:${k === pirateKnives ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${k}자루</button>`).join('');
+      opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
+        ev.stopPropagation();
+        pirateKnives = +b2.dataset.k;
+        localStorage.setItem('ca_knives', String(pirateKnives));
+        selectedGame = 'pirate';
+        renderGameGrid();
+      });
+      el.appendChild(opt);
+    }
     $('gameGrid').appendChild(el);
   }
   $('btnStart').textContent = `${GAMES_META[selectedGame].icon} ${GAMES_META[selectedGame].name} 시작`;
@@ -881,8 +899,10 @@ function renderHostLobby() {
   });
   $('btnStart').disabled = list.filter(p => p.connected).length < 1;
 }
-$('btnStart').onclick = () => send({ type: 'start_game', game: selectedGame });
-$('btnAgain').onclick = () => send({ type: 'start_game', game: gameType });
+$('btnStart').onclick = () => send({ type: 'start_game', game: selectedGame,
+  opt: selectedGame === 'pirate' ? { knives: pirateKnives } : undefined });
+$('btnAgain').onclick = () => send({ type: 'start_game', game: gameType,
+  opt: gameType === 'pirate' ? { knives: pirateKnives } : undefined });
 $('btnLobby').onclick = () => send({ type: 'back_to_lobby' });
 $('btnCloseRoom').onclick = () => { if (confirm('방을 닫으면 모든 학생이 나가집니다. 닫을까요?')) { send({ type: 'close_room' }); goHome(); } };
 $('btnLeave').onclick = () => { send({ type: 'leave' }); goHome(); };
@@ -1122,7 +1142,14 @@ function initInput() {
       if (pirDrag.moved < 9 && e.type === 'pointerup') {
         const a = toArena(e.clientX, e.clientY);
         const slot = pirateSlotAt(a.x, a.y);
-        if (slot >= 0) { myPick = slot; send({ type: 'pick', v: slot }); if (navigator.vibrate) navigator.vibrate(14); }
+        if (slot >= 0) {
+          // 서버와 같은 규칙: 같은 칸 다시 누르면 뽑기, 꽉 찼으면 오래된 칼 이동
+          const i = myPicks.indexOf(slot);
+          if (i >= 0) myPicks.splice(i, 1);
+          else { if (myPicks.length >= pirKnives) myPicks.shift(); myPicks.push(slot); }
+          send({ type: 'pick', v: slot });
+          if (navigator.vibrate) navigator.vibrate(14);
+        }
       }
       pirDrag = null;
       return;
@@ -1993,7 +2020,8 @@ function drawKnife(x, y, s, color) {
 }
 
 function drawPirate(latest, ox, oy, scale, dpr) {
-  if ((latest.round || 0) !== myPickRound) { myPickRound = latest.round || 0; myPick = -1; pirRot = 0; }
+  if ((latest.round || 0) !== myPickRound) { myPickRound = latest.round || 0; myPicks = []; pirRot = 0; }
+  pirKnives = latest.knives || 1;
   const picking = latest.pPhase === 'pick';
   const reveal = latest.pPhase === 'reveal';
   const tp = reveal && latest.revealAt ? serverNow() - latest.revealAt : 0;
@@ -2059,10 +2087,12 @@ function drawPirate(latest, ox, oy, scale, dpr) {
   for (let s = 0; s < 24; s++) { const p = pirSlotPos(s); if (p) slots.push([s, p]); }
   slots.sort((a, b) => a[1].depth - b[1].depth);
   const pickMap = new Map();   // 공개 시: slot → [ci...]
-  if (reveal) for (const [pid, pk] of (latest.picks || [])) {
+  if (reveal) for (const [pid, arr] of (latest.picks || [])) {
     const meta = roster.get(pid);
-    if (!pickMap.has(pk)) pickMap.set(pk, []);
-    pickMap.get(pk).push(meta ? meta.ci : 0);
+    for (const pk of (Array.isArray(arr) ? arr : [arr])) {
+      if (!pickMap.has(pk)) pickMap.set(pk, []);
+      pickMap.get(pk).push(meta ? meta.ci : 0);
+    }
   }
   const trigSet = new Set(latest.triggers || []);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -2081,7 +2111,7 @@ function drawPirate(latest, ox, oy, scale, dpr) {
     ctx.font = `700 ${19 * scale * (0.7 + 0.3 * p.depth)}px Pretendard, sans-serif`;
     ctx.fillText(String(s + 1), x, y - h * 0.05);
     // 칼: 내 선택(선택 중) / 전원 선택(공개)
-    if (!isHost && picking && s === myPick) {
+    if (!isHost && picking && myPicks.includes(s)) {
       drawKnife(x, y + h * 0.15, 34 * scale, '#ffb03a');
       ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 3 * dpr;
       ctx.beginPath();
@@ -2109,9 +2139,13 @@ function drawPirate(latest, ox, oy, scale, dpr) {
   }
   // 학생 안내
   if (!isHost && picking) {
-    ctx.fillStyle = myPick < 0 ? '#ffb03a' : '#3ddc84';
+    const done = myPicks.length >= pirKnives;
+    ctx.fillStyle = done ? '#3ddc84' : '#ffb03a';
     ctx.font = `800 ${28 * scale}px Pretendard, sans-serif`;
-    ctx.fillText(myPick < 0 ? '↔️ 통을 돌리고 칸을 눌러 칼을 꽂아요!' : `${myPick + 1}번에 꽂음! (바꿔도 돼요)`,
+    ctx.fillText(
+      myPicks.length === 0 ? `↔️ 통을 돌리고 칼 ${pirKnives}자루를 꽂아요!`
+      : done ? `🗡️ ${myPicks.map(s => s + 1).join('·')}번 완료! (다시 누르면 뽑기)`
+      : `🗡️ ${myPicks.length}/${pirKnives}자루 — ${pirKnives - myPicks.length}자루 더!`,
       CX, oy + 1060 * scale);
   }
   ctx.textBaseline = 'alphabetic';

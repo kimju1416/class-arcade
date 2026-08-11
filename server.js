@@ -419,7 +419,7 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.sPhase, round: r.game.round, prizes: r.game.prizes, map: r.game.map, picks: [...r.players.values()].map(p => [p.nick, p.pick]) }
         : undefined,
       pirate: r.gameType === 'pirate' && r.game && r.game.round
-        ? { phase: r.game.pPhase, round: r.game.round, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.pick]) }
+        ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
         : undefined,
       sumo: r.gameType === 'sumo' && r.game ? { ring: Math.round(r.game.ringR) } : undefined,
     }))));
@@ -544,7 +544,7 @@ function detachFromRoom(ws) {
 }
 
 // ---------- 게임 시작 ----------
-function startGame(room, type) {
+function startGame(room, type, opt) {
   if (!GAME_KEYS.includes(type)) return;
   const actives = [...room.players.values()].filter(p => p.connected);
   if (actives.length < 1) {
@@ -569,7 +569,7 @@ function startGame(room, type) {
     p.fireReadyAt = 0;
     p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.startS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
     p.vx = 0; p.vy = 0; p.dashUntil = 0; p.dashReadyAt = 0; p.dashDx = 0; p.dashDy = 0; p.bumpAt = 0;
-    p.satChair = null; p.outRound = 0; p.pick = -1;
+    p.satChair = null; p.outRound = 0; p.pick = -1; p.picks = [];
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -683,6 +683,9 @@ function startGame(room, type) {
     g.roundMs = 0;
     g.arenaW = 900; g.arenaH = 1150;
     g.round = 0; g.pPhase = 'idle';
+    // 교사가 고르는 위험도: 1인당 꽂는 칼 개수 (1~3자루)
+    const k = Math.floor(Number(opt && opt.knives));
+    g.knives = Number.isFinite(k) ? Math.max(1, Math.min(3, k)) : 1;
   }
 
   room.state = 'countdown';
@@ -1544,20 +1547,27 @@ function startPirateRound(room, now) {
   g.pPhase = 'pick';
   g.pickEndAt = now + PIRATE_PICK_MS;
   g.applied = false;
-  for (const p of room.players.values()) p.pick = -1;
+  for (const p of room.players.values()) p.picks = [];
 }
 
 function pirateTick(room, now) {
   const g = room.game;
   const alive = [...room.players.values()].filter(p => p.alive && p.connected);
   if (g.pPhase === 'pick') {
-    const allPicked = alive.length > 0 && alive.every(p => p.pick >= 0);
+    const allPicked = alive.length > 0 && alive.every(p => p.picks.length >= g.knives);
     if (now >= g.pickEndAt || allPicked) {
-      for (const p of room.players.values())
-        if (p.alive && p.pick < 0) p.pick = Math.floor(Math.random() * PIRATE_SLOTS);
+      // 시간 안에 다 못 꽂은 칼은 랜덤 칸에 (복불복이니 억울할 것 없음)
+      for (const p of room.players.values()) {
+        if (!p.alive) continue;
+        let guard = 0;
+        while (p.picks.length < g.knives && guard++ < 200) {
+          const s = Math.floor(Math.random() * PIRATE_SLOTS);
+          if (!p.picks.includes(s)) p.picks.push(s);
+        }
+      }
       g.victims = [];
       for (const p of room.players.values())
-        if (p.alive && g.triggers.has(p.pick)) g.victims.push(p.id);
+        if (p.alive && p.picks.some(s => g.triggers.has(s))) g.victims.push(p.id);
       g.pPhase = 'reveal';
       g.revealAt = now; g.revealEndAt = now + PIRATE_REVEAL_MS;
     }
@@ -1782,8 +1792,9 @@ function sendState(room, now) {
       }
       // 의자 뺏기: 앉았는지
       if (type === 'chair') row.push(p.satChair != null ? 1 : 0);
-      // 사다리·통아저씨: 골랐는지 (뭘 골랐는지는 공개 시점에만)
-      if (type === 'sadari' || type === 'pirate') row.push(p.pick >= 0 ? 1 : 0);
+      // 사다리·통아저씨: 다 골랐는지 (뭘 골랐는지는 공개 시점에만)
+      if (type === 'sadari') row.push(p.pick >= 0 ? 1 : 0);
+      if (type === 'pirate') row.push(p.picks.length >= g.knives ? 1 : 0);
       // 폭탄 밟은 직후 1초간 "0원!" 연출
       if (type === 'coin') row.push(now - (p.lostAt || 0) < 1000 ? 1 : 0);
       // 파리채 위치·최근 명중 표시
@@ -1865,13 +1876,13 @@ function sendState(room, now) {
   }
   if (type === 'pirate') {
     msg.pPhase = g.pPhase; msg.round = g.round;
-    msg.slots = PIRATE_SLOTS;
+    msg.slots = PIRATE_SLOTS; msg.knives = g.knives;
     msg.pickLeft = g.pPhase === 'pick' ? Math.max(0, g.pickEndAt - now) : 0;
-    msg.pickedCount = [...room.players.values()].filter(p => p.alive && p.pick >= 0).length;
+    msg.pickedCount = [...room.players.values()].filter(p => p.alive && p.picks.length >= g.knives).length;
     msg.aliveCount = [...room.players.values()].filter(p => p.alive).length;
     if (g.pPhase === 'reveal') {
       msg.triggers = [...g.triggers]; msg.victims = g.victims; msg.revealAt = g.revealAt;
-      msg.picks = [...room.players.values()].filter(p => !p.waiting && p.pick >= 0).map(p => [p.id, p.pick]);
+      msg.picks = [...room.players.values()].filter(p => !p.waiting && p.picks.length).map(p => [p.id, p.picks]);
     }
   }
   broadcast(room, msg);
@@ -2070,7 +2081,11 @@ wss.on('connection', (ws) => {
         if (room.gameType === 'sadari' && g.sPhase === 'pick') {
           if (v >= 0 && v < SADARI_LANES) p.pick = v;
         } else if (room.gameType === 'pirate' && g.pPhase === 'pick') {
-          if (v >= 0 && v < PIRATE_SLOTS) p.pick = v;
+          if (v >= 0 && v < PIRATE_SLOTS) {
+            const i = p.picks.indexOf(v);
+            if (i >= 0) p.picks.splice(i, 1);                        // 같은 칸 다시 누르면 칼 뽑기(취소)
+            else { if (p.picks.length >= g.knives) p.picks.shift(); p.picks.push(v); }  // 꽉 찼으면 오래된 칼 이동
+          }
         }
         break;
       }
@@ -2120,7 +2135,7 @@ wss.on('connection', (ws) => {
 
       case 'start_game':
         if (isRoomHost(room, ws) && (room.state === 'lobby' || room.state === 'result'))
-          startGame(room, String(msg.game || 'bomb'));
+          startGame(room, String(msg.game || 'bomb'), msg.opt);
         break;
 
       case 'back_to_lobby':
