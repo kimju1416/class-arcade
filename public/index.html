@@ -1024,7 +1024,8 @@ let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 // 흰 몸통 하나를 색만 바꿔 30명에게 쓴다(이미지 30장을 받을 필요가 없다).
 // 이미지가 아직 안 왔거나 실패하면 예전 원형 그리기로 자동 대체된다.
 const SPR = {};
-['player', 'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
+['player', 'player2', 'player3', 'player4', 'player5', 'player6',
+ 'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
  'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
  'ship', 'alien', 'alien2', 'chair', 'pirate', 'knife', 'sumo', 'sadari'].forEach(name => {
   const im = new Image();
@@ -1039,6 +1040,13 @@ const GRASS_IMG = new Image();
 let grassReady = false;
 GRASS_IMG.src = 'sprites/grass.jpg';
 GRASS_IMG.onload = () => { grassReady = true; };
+// 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
+const FLOORS = {};
+['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate'].forEach(k => {
+  const im = new Image();
+  im.src = 'sprites/floor-' + k + '.jpg';
+  im.onload = () => { FLOORS[k] = im; };
+});
 
 const tintCache = new Map();
 function tintSprite(name, color) {
@@ -1058,21 +1066,11 @@ function tintSprite(name, color) {
   tintCache.set(key, c);
   return c;
 }
-function tintedPlayer(color) {
-  if (!SPR.player) return null;
-  if (tintCache.has(color)) return tintCache.get(color);
-  const src = SPR.player;
-  const c = document.createElement('canvas');
-  c.width = src.width; c.height = src.height;
-  const g = c.getContext('2d');
-  g.drawImage(src, 0, 0);
-  g.globalCompositeOperation = 'multiply';   // 흰 몸통 → 원하는 색, 검은 테두리는 그대로
-  g.fillStyle = color;
-  g.fillRect(0, 0, c.width, c.height);
-  g.globalCompositeOperation = 'destination-in'; // 원래 모양 밖은 잘라낸다
-  g.drawImage(src, 0, 0);
-  tintCache.set(color, c);
-  return c;
+// 학생마다 다른 생김새: ci로 6종(기본·고양이·토끼·삐죽·뿔·더듬이) 중 하나 배정, 색은 multiply 틴팅
+const PLAYER_VARIANTS = ['player', 'player2', 'player3', 'player4', 'player5', 'player6'];
+function tintedPlayer(color, ci) {
+  const name = PLAYER_VARIANTS[(ci || 0) % PLAYER_VARIANTS.length];
+  return tintSprite(SPR[name] ? name : 'player', color);
 }
 // 스프라이트를 중심 기준으로 그린다
 function drawSpr(img, x, y, size) {
@@ -1272,8 +1270,8 @@ function draw() {
     if (raceTrack) drawRaceTrack(ox, oy, scale, dpr);
   } else if (gameType === 'gala') {
     drawSpace(ox, oy, aw, ah, dpr);
-  } else if (floorReady) {
-    ctx.drawImage(FLOOR_IMG, ox, oy, aw, ah);
+  } else if (FLOORS[gameType] || floorReady) {
+    ctx.drawImage(FLOORS[gameType] || FLOOR_IMG, ox, oy, aw, ah);
   } else {
     ctx.fillStyle = '#1a2140';
     ctx.fillRect(ox, oy, aw, ah);
@@ -1483,7 +1481,8 @@ function draw() {
   if (latest.mode === 'sumo' && latest.ring) {
     const cx2 = ox + (arena.w / 2) * scale, cy2 = oy + (arena.h / 2) * scale;
     const r = latest.ring * scale;
-    ctx.fillStyle = 'rgba(5,7,18,.66)';
+    // 체육관 마루가 살짝 비치는 어둠 — 링 밖은 위험 구역
+    ctx.fillStyle = 'rgba(5,7,18,.45)';
     ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
     const grd = ctx.createRadialGradient(cx2, cy2, r * 0.15, cx2, cy2, r);
     grd.addColorStop(0, '#dcb668'); grd.addColorStop(1, '#b98a3e');
@@ -1599,7 +1598,7 @@ function draw() {
     // 살짝 통통 튀는 움직임 (걸을 때만)
     const bob = alive ? Math.sin(performance.now() / 170 + id * 1.7) * rr * .06 : 0;
     const body = latest.mode === 'gala' ? tintSprite('ship', COLORS[meta.ci % COLORS.length])
-      : infected ? SPR.zombie : tintedPlayer(COLORS[meta.ci % COLORS.length]);
+      : infected ? SPR.zombie : tintedPlayer(COLORS[meta.ci % COLORS.length], meta.ci);
     if (body) {
       drawSpr(body, px, py + bob, rr * 2.35);
       // 갤러그 함선: 엔진 불꽃 깜빡임 (눈은 안 그린다)
@@ -2031,7 +2030,8 @@ function drawPirate(latest, ox, oy, scale, dpr) {
   let rotSave = pirRot;
   if (reveal && tp < 1600) pirRot += Math.sin(performance.now() / 28) * 0.012;   // 두구두구 흔들림
 
-  ctx.fillStyle = 'rgba(8,11,28,.6)';
+  // 배 갑판이 비치도록 살짝만 어둡게
+  ctx.fillStyle = 'rgba(8,11,28,.3)';
   ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
   const CX = ox + PIR.cx * scale;
 
