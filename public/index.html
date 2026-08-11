@@ -444,6 +444,10 @@ const GAMES_META = {
   gala: { icon: '🚀', name: '갤러그', desc: '반 전체가 함대가 되어 외계인 편대를 격추! 맞으면 그대로 끝. 웨이브가 갈수록 빨라진다.', badge: '협동 슈팅', rule: '왼손: 이동 · 오른손: 발사!\n적 탄에 맞으면 부활 없음 — 끝까지 살아남으세요' },
   dodge: { icon: '💥', name: '탄막 피하기', desc: '사방에서 쏟아지는 탄막을 피하는 극한 생존! 한 발이라도 맞으면 끝. 시간이 갈수록 거세진다.', badge: '서바이벌', rule: '조이스틱으로 탄막을 피하세요!\n한 발이라도 맞으면 탈락 — 시간이 끝날 때까지 버텨라!' },
   cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 진짜 단어를 입력!\n사전에 없는 단어·이미 나온 단어는 안 돼요' },
+  sumo: { icon: '🥊', name: '스모 밀치기', desc: '조이스틱으로 밀고 대시로 날려버려라! 링 밖으로 떨어지면 장외. 링은 점점 좁아진다 — 최후의 1인!', badge: '최후 1인', rule: '왼손: 이동 · 오른손: 대시(돌진)!\n친구를 링 밖으로 밀어내세요' },
+  chair:{ icon: '🪑', name: '의자 뺏기', desc: '음악이 흐르는 동안 빙글빙글~ 뚝! 멈추면 의자로 돌진! 못 앉으면 탈락. 의자는 라운드마다 줄어든다.', badge: '서바이벌', rule: '🎵 음악이 나오는 동안 돌아다니다가\n음악이 멈추면 의자에 먼저 앉으세요!' },
+  sadari:{ icon: '🪜', name: '사다리 복불복', desc: '8칸 중 하나를 골라라! 사다리를 타고 내려가면 +10 황금? 💣폭탄? 내려가 보기 전엔 아무도 모른다.', badge: '5라운드', rule: '내려가고 싶은 칸을 손가락으로 고르세요!\n어디로 이어질지는 아무도 몰라요' },
+  pirate:{ icon: '🏴‍☠️', name: '통아저씨', desc: '해적 통을 빙글 돌려 칼을 꽂아라! 잘못 꽂으면 해적이 펑 튀어나오며 탈락. 위험 칸은 라운드마다 늘어난다.', badge: '복불복', rule: '통을 돌려서 원하는 칸에 칼을 꽂으세요!\n해적이 튀어나오면 탈락이에요' },
 };
 
 // ---- 전역 상태 ----
@@ -463,6 +467,8 @@ let wasAlive = false;
 let lastWordJson = '';
 let view = { ox: 0, oy: 0, scale: 1 };   // 아레나 → 화면 변환 (탭 좌표 계산에 사용)
 let raceTrack = null;                    // 레이싱 트랙 (서버가 phase에 실어 보냄)
+let myPick = -1, myPickRound = 0;        // 사다리·통아저씨: 내 선택 (라운드 바뀌면 초기화)
+let pirRot = 0, pirDrag = null;          // 통아저씨: 통 회전각·드래그 상태
 let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
 let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 띄우기 위한 시각
 
@@ -526,17 +532,29 @@ const SFX = (() => {
     miss() { tone(200, .18, { type: 'sine', vol: .13, slide: -70 }); },
     ok() { if (gate('ok', 90)) { tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 }); } },
     fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .22, { vol: .16, delay: i * .13 })); },
+    // 의자 뺏기: 음악이 흐르다 뚝 멈추는 게 게임의 전부라 진짜 멜로디를 튼다
+    melodyStart() {
+      if (this._melIv || muted || !isHost) return;
+      const notes = [523, 659, 784, 659, 880, 784, 659, 523, 587, 698, 880, 698, 784, 659, 587, 523];
+      this._melStep = 0;
+      this._melIv = setInterval(() => {
+        tone(notes[this._melStep++ % notes.length], .17, { type: 'triangle', vol: .13 });
+      }, 220);
+    },
+    melodyStop() { clearInterval(this._melIv); this._melIv = null; },
     get muted() { return muted; },
     toggle() {
       muted = !muted;
       localStorage.setItem('ca_mute', muted ? '1' : '0');
+      if (muted) this.melodyStop();
       if (!muted) this.unlock();
       return muted;
     },
   };
 })();
 // 사운드 트리거 감지용 상태
-let sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0 };
+let sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0,
+                bumps: 0, sumoAlive: -1, cphase: '', sat: 0, chairAlive: -1, sadariTotal: null, pirPop: 0 };
 
 function show(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
@@ -658,13 +676,15 @@ function handle(m) {
           snaps = []; wasAlive = true; lastWordJson = '';
           camX = null; camY = null;
           drawRaceCars._myHz = 0; drawRaceCars._myPos = null;
-          sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0, boosts: 0, raceFin: 0, spins: 0, wave: 1, dodgeAlive: -1 };
+          sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0, boosts: 0, raceFin: 0, spins: 0, wave: 1, dodgeAlive: -1,
+                      bumps: 0, sumoAlive: -1, cphase: '', sat: 0, chairAlive: -1, sadariTotal: null, pirPop: 0 };
         }
         // 시작 효과음은 카운트다운에서 넘어올 때만 (재접속 복귀 때는 울리지 않게)
         if (phase === 'playing' && prev === 'countdown') SFX.go();
         // 카운트다운 → 같은 게임 playing 전환에서는 조이스틱을 놓지 않는다(미리 잡은 스틱 유지)
         enterGameView(prev === 'countdown' && phase === 'playing');
       } else if (phase === 'lobby') {
+        SFX.melodyStop();
         show(isHost ? 'hostLobby' : 'playerLobby');
       }
       break;
@@ -677,6 +697,7 @@ function handle(m) {
       window.__lastState = m; window.__myId = myId;  // 자동 검증용 훅
       break;
     case 'result':
+      SFX.melodyStop();
       showResult(m.ranking);
       break;
     case 'word_ok':
@@ -739,11 +760,13 @@ function enterGameView(keepInput) {
     show('game');
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
-    // 게임별 조작 방식: 이동(조이스틱) / 탭(모기) / 버튼(인형뽑기)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala');
+    // 게임별 조작 방식: 이동(조이스틱) / 탭(모기·사다리·통) / 버튼(인형뽑기·부스터·발사·대시)
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo');
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
-      : gameType === 'gala' ? '발사<br>🔸' : '집게<br>내리기';
+      : gameType === 'gala' ? '발사<br>🔸'
+      : gameType === 'sumo' ? '대시!<br>💨' : '집게<br>내리기';
+    myPick = -1; myPickRound = 0; pirRot = 0; pirDrag = null;
     $('btnAction').classList.remove('wait');
     if (!isHost) initInput();
   }
@@ -831,7 +854,8 @@ function setupHostLobby() {
 function renderGameGrid() {
   $('gameGrid').innerHTML = '';
   const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
-                     race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul' };
+                     race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
+                     sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     const el = document.createElement('div');
     el.className = 'game-card' + (key === selectedGame ? ' sel' : '');
@@ -982,7 +1006,7 @@ let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 const SPR = {};
 ['player', 'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
  'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
- 'ship', 'alien', 'alien2'].forEach(name => {
+ 'ship', 'alien', 'alien2', 'chair', 'pirate', 'knife', 'sumo', 'sadari'].forEach(name => {
   const im = new Image();
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
@@ -1056,10 +1080,26 @@ function initInput() {
       if (navigator.vibrate) navigator.vibrate(12);
       return;
     }
+    if (gameType === 'sadari') {
+      // 사다리: 세로줄(칸)을 탭해서 선택
+      if (phase !== 'playing') return;
+      const a = toArena(e.clientX, e.clientY);
+      const lane = sadariLaneAt(a.x);
+      if (lane >= 0) { myPick = lane; send({ type: 'pick', v: lane }); if (navigator.vibrate) navigator.vibrate(12); }
+      return;
+    }
+    if (gameType === 'pirate') {
+      // 통아저씨: 좌우로 끌면 통 회전, 살짝 탭하면 그 칸에 칼 꽂기
+      if (phase !== 'playing') return;
+      pirDrag = { pid: e.pointerId, x0: e.clientX, rot0: pirRot, moved: 0 };
+      try { g.setPointerCapture(e.pointerId); } catch {}
+      return;
+    }
     const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
-      || gameType === 'race' || gameType === 'gala' || gameType === 'dodge';
+      || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
+      || gameType === 'sumo' || gameType === 'chair';
     if (!usesStick) return;
-    if ((gameType === 'race' || gameType === 'gala') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
+    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
     stickPid = e.pointerId;
@@ -1068,8 +1108,25 @@ function initInput() {
     moveStick(e.clientX, e.clientY);
     try { g.setPointerCapture(e.pointerId); } catch {}
   };
-  g.onpointermove = e => { if (stickActive && e.pointerId === stickPid) moveStick(e.clientX, e.clientY); };
+  g.onpointermove = e => {
+    if (pirDrag && e.pointerId === pirDrag.pid) {
+      const dx = e.clientX - pirDrag.x0;
+      pirDrag.moved = Math.max(pirDrag.moved, Math.abs(dx));
+      pirRot = pirDrag.rot0 + dx * 0.011;   // 끄는 만큼 통이 돈다
+      return;
+    }
+    if (stickActive && e.pointerId === stickPid) moveStick(e.clientX, e.clientY);
+  };
   g.onpointerup = g.onpointercancel = e => {
+    if (pirDrag && e && e.pointerId === pirDrag.pid) {
+      if (pirDrag.moved < 9 && e.type === 'pointerup') {
+        const a = toArena(e.clientX, e.clientY);
+        const slot = pirateSlotAt(a.x, a.y);
+        if (slot >= 0) { myPick = slot; send({ type: 'pick', v: slot }); if (navigator.vibrate) navigator.vibrate(14); }
+      }
+      pirDrag = null;
+      return;
+    }
     if (e && stickPid !== null && e.pointerId !== stickPid) return; // 다른 손가락 뗀 것은 무시
     stickActive = false; stickPid = null; curDir = { x: 0, y: 0 };
     $('stick').style.display = 'none';
@@ -1087,7 +1144,7 @@ function stopFire() {
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (isHost || phase !== 'playing') return;
-  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala') return;
+  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo') return;
   send({ type: 'action' });
   if (navigator.vibrate) navigator.vibrate(15);   // 학생 폰은 무음이라 진동으로 손맛
   // 갤러그: 누르고 있는 동안 연사
@@ -1127,7 +1184,8 @@ function keyDir() {
 }
 setInterval(() => {
   const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
-    || gameType === 'race' || gameType === 'gala' || gameType === 'dodge';
+    || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
+    || gameType === 'sumo' || gameType === 'chair';
   if (isHost || !moves || (phase !== 'playing' && phase !== 'countdown')) return;
   const kd = keyDir();
   const d = kd || curDir;
@@ -1394,6 +1452,37 @@ function draw() {
       }
     }
   }
+  // 스모: 씨름판 링 — 밖은 낭떠러지
+  if (latest.mode === 'sumo' && latest.ring) {
+    const cx2 = ox + (arena.w / 2) * scale, cy2 = oy + (arena.h / 2) * scale;
+    const r = latest.ring * scale;
+    ctx.fillStyle = 'rgba(5,7,18,.66)';
+    ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
+    const grd = ctx.createRadialGradient(cx2, cy2, r * 0.15, cx2, cy2, r);
+    grd.addColorStop(0, '#dcb668'); grd.addColorStop(1, '#b98a3e');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 * dpr;
+    ctx.beginPath(); ctx.arc(cx2, cy2, r * 0.96, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#c1121f'; ctx.lineWidth = 7 * dpr;
+    ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, 7); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,60,20,.35)'; ctx.lineWidth = 3 * dpr;
+    ctx.beginPath(); ctx.arc(cx2, cy2, r * 0.34, 0, 7); ctx.stroke();
+  }
+  // 의자 뺏기: 의자 (빈 의자는 노란 링이 깜빡인다)
+  if (latest.mode === 'chair' && latest.chairs) {
+    for (const [chx, chy, owned] of latest.chairs) {
+      const x = ox + chx * scale, y = oy + chy * scale;
+      if (!owned && latest.cphase === 'grab') {
+        ctx.strokeStyle = `rgba(255,215,0,${0.4 + 0.35 * Math.sin(performance.now() / 160)})`;
+        ctx.lineWidth = 4 * dpr;
+        ctx.beginPath(); ctx.arc(x, y, 34 * scale, 0, 7); ctx.stroke();
+      }
+      drawChair(x, y, 24 * scale, dpr, owned === 1);
+    }
+  }
+  if (latest.mode === 'sadari') drawSadari(latest, ox, oy, scale, dpr);
+  if (latest.mode === 'pirate') drawPirate(latest, ox, oy, scale, dpr);
   ctx.restore();
 
   // 플레이어
@@ -1434,7 +1523,29 @@ function draw() {
     }
   }
 
-  for (const pb of ((tapMode || raceMode) ? [] : b.m.players)) {
+  // 스모: 대시 버튼 쿨타임 표시
+  if (latest.mode === 'sumo' && !isHost) {
+    const me = latest.players.find(r2 => r2[0] === myId);
+    if (me) {
+      const cd = me[7] || 0;
+      const btn = $('btnAction');
+      const label = !me[3] ? '탈락<br>💀' : cd > 0 ? `대시<br>${(cd / 10).toFixed(1)}` : '대시!<br>💨';
+      if (btn.__label !== label) { btn.__label = label; btn.innerHTML = label; }
+      btn.classList.toggle('wait', cd > 0 || !me[3]);
+    }
+  }
+
+  // 사다리·통아저씨는 캐릭터가 돌아다니지 않는 판 게임 — 아바타를 그리지 않는다
+  const boardMode = latest.mode === 'sadari' || latest.mode === 'pirate';
+  if (boardMode) {
+    for (const pb of latest.players) {
+      if (pb[4]) continue;
+      if (pb[3]) aliveCount++;
+      if (pb[0] === myId) { myScore = pb[5]; myAlive = { alive: !!pb[3] }; }
+    }
+  }
+
+  for (const pb of ((tapMode || raceMode || boardMode) ? [] : b.m.players)) {
     const [id, x2, y2, alive, waiting, extra] = pb;
     if (waiting) continue;
     const pa = posA.get(id) || pb;
@@ -1544,6 +1655,37 @@ function draw() {
       if (sndPrev.dodgeAlive >= 0 && al < sndPrev.dodgeAlive) SFX.miss();
       sndPrev.dodgeAlive = al;
     }
+    if (latest.mode === 'sumo') {
+      const bumps = latest.players.filter(pp => pp[8] === 1).length;
+      if (bumps > (sndPrev.bumps || 0)) SFX.swat();
+      sndPrev.bumps = bumps;
+      const al = latest.players.filter(pp => pp[3] === 1 && !pp[4]).length;
+      if (sndPrev.sumoAlive >= 0 && al < sndPrev.sumoAlive) SFX.boom();   // 장외!
+      sndPrev.sumoAlive = al;
+    }
+    if (latest.mode === 'chair') {
+      // 음악 재생/정지 — 이 게임의 심장
+      if (latest.cphase === 'music') SFX.melodyStart(); else SFX.melodyStop();
+      if (latest.cphase === 'grab' && sndPrev.cphase === 'music') SFX.fanfare();
+      sndPrev.cphase = latest.cphase;
+      const sat = latest.players.filter(pp => pp[6] === 1).length;
+      if (latest.cphase === 'grab' && sat > (sndPrev.sat || 0)) SFX.grab();
+      sndPrev.sat = latest.cphase === 'grab' ? sat : 0;
+      const al = latest.players.filter(pp => pp[3] === 1 && !pp[4]).length;
+      if (sndPrev.chairAlive >= 0 && al < sndPrev.chairAlive) SFX.miss();
+      sndPrev.chairAlive = al;
+    }
+    if (latest.mode === 'sadari' && latest.sPhase === 'reveal') {
+      const total = latest.players.reduce((s, pp) => s + (pp[5] || 0), 0);
+      if (sndPrev.sadariTotal != null && total !== sndPrev.sadariTotal) SFX.coin();
+      sndPrev.sadariTotal = total;
+    }
+    if (latest.mode === 'pirate' && latest.pPhase === 'reveal' && latest.revealAt) {
+      if (serverNow() - latest.revealAt >= 1600 && sndPrev.pirPop !== latest.round) {
+        sndPrev.pirPop = latest.round;
+        if ((latest.victims || []).length) SFX.boom(); else SFX.fanfare();   // 전원 무사!
+      }
+    }
   }
 
   // 교사 화면: 좌우 여백이 비어 있으므로 실시간 순위를 크게 띄운다
@@ -1555,11 +1697,23 @@ function draw() {
     : latest.mode === 'coin' ? (isHost ? '💣 폭탄 조심!' : '내 돈 ' + myScore + '원')
     : latest.mode === 'gala' ? ('🌊 웨이브 ' + (latest.wave || 1) + (isHost ? ' · 생존 ' + aliveCount : ' · 내 격추 ' + myScore))
     : latest.mode === 'dodge' ? ((latest.elapsed || 0) + '초 버팀 · 생존 ' + aliveCount)
+    : latest.mode === 'sumo' ? '🥊 생존 ' + aliveCount
+    : latest.mode === 'chair' ? (latest.cphase === 'grab'
+        ? `🪑 앉아라!! ${Math.ceil((latest.grabLeft || 0) / 1000)}초`
+        : `🎵 ${latest.cround || 1}라운드 · 생존 ${aliveCount}`)
+    : latest.mode === 'sadari' ? `🪜 ${latest.round || 1}/${latest.totalRounds || 5}라운드` + (isHost ? '' : ` · 내 점수 ${myScore}`)
+    : latest.mode === 'pirate' ? `🏴‍☠️ ${latest.round || 1}라운드 · 🗡️ ${latest.pickedCount || 0}/${latest.aliveCount || 0}명`
     : '생존 ' + aliveCount;
   setText($('hudLeft'), hudText);
   if (phase === 'playing') {
-    const left = Math.max(0, phaseEndAt - serverNow());
-    setText($('hudTime'), Math.ceil(left / 1000) + '초');
+    if (phaseEndAt) {
+      const left = Math.max(0, phaseEndAt - serverNow());
+      setText($('hudTime'), Math.ceil(left / 1000) + '초');
+    } else {
+      // 라운드형 게임(사다리·통아저씨)은 선택 남은 시간을 보여준다
+      const pl = latest.pickLeft || 0;
+      setText($('hudTime'), pl > 0 ? '⏱️ ' + Math.ceil(pl / 1000) + '초' : '');
+    }
   }
 
   drawOverlay(myAlive, latest);
@@ -1580,12 +1734,17 @@ function drawOverlay(myAlive, latest) {
     const now = Date.now();
     // 안내는 몇 초만 띄운다 — 계속 떠 있으면 경기장을 가린다
     // 죽으면 끝나는 게임들: 탈락 안내 (몇 초 띄우고 사라짐 — 이후 관전)
-    const deathGame = latest.mode === 'bomb' || latest.mode === 'dodge' || latest.mode === 'gala';
+    const deathGame = latest.mode === 'bomb' || latest.mode === 'dodge' || latest.mode === 'gala'
+      || latest.mode === 'sumo' || latest.mode === 'chair' || latest.mode === 'pirate';
     if (deathGame && !myAlive.alive) {
       if (!seenDeadAt) seenDeadAt = now;
       if (now - seenDeadAt < 3200) {
         $('centerMsg').classList.add('on');
-        $('cmBig').textContent = latest.mode === 'gala' ? '💥 격추됐어요!' : '💥 탈락!';
+        $('cmBig').textContent = latest.mode === 'gala' ? '💥 격추됐어요!'
+          : latest.mode === 'sumo' ? '💫 장외!'
+          : latest.mode === 'chair' ? '🪑 못 앉았어요!'
+          : latest.mode === 'pirate' ? '☠️ 펑! 탈락!'
+          : '💥 탈락!';
         $('cmSmall').textContent = '끝까지 관전해 보세요';
         return;
       }
@@ -1604,6 +1763,361 @@ function drawOverlay(myAlive, latest) {
 }
 
 // 교사 TV 우측에 실시간 순위/현황을 크게 표시 (교실 뒤에서 읽히는 크기)
+// ---- 의자 뺏기: 픽셀풍 의자 ----
+function drawChair(x, y, r, dpr, owned) {
+  if (SPR.chair) {
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.beginPath(); ctx.ellipse(x, y + r * 0.9, r * 0.9, r * 0.32, 0, 0, 7); ctx.fill();
+    drawSpr(SPR.chair, x, y, r * 2.7);
+    if (owned) {   // 임자 있는 의자: 초록 확인 링
+      ctx.strokeStyle = 'rgba(61,220,132,.85)'; ctx.lineWidth = 3 * dpr;
+      ctx.beginPath(); ctx.arc(x, y, r * 1.35, 0, 7); ctx.stroke();
+    }
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  const s = r / 24;
+  ctx.fillStyle = 'rgba(0,0,0,.25)';
+  ctx.beginPath(); ctx.ellipse(0, 20 * s, 22 * s, 8 * s, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = owned ? '#6da85b' : '#b06e1e';       // 등받이
+  ctx.fillRect(-16 * s, -28 * s, 32 * s, 9 * s);
+  ctx.fillRect(-16 * s, -28 * s, 6 * s, 28 * s);
+  ctx.fillRect(10 * s, -28 * s, 6 * s, 28 * s);
+  ctx.fillStyle = owned ? '#8fc47e' : '#e09a3a';       // 앉는 판
+  ctx.fillRect(-18 * s, 0, 36 * s, 9 * s);
+  ctx.fillStyle = owned ? '#54803f' : '#8a5a18';       // 다리
+  ctx.fillRect(-16 * s, 9 * s, 5 * s, 14 * s);
+  ctx.fillRect(11 * s, 9 * s, 5 * s, 14 * s);
+  ctx.restore();
+}
+
+// ---- 사다리 복불복 ----
+const SAD = { L: 8, left: 80, right: 820, top: 210, bot: 880, rows: 13, headY: 130, prizeY: 965, trace: 3600 };
+function sadLaneX(i) { return SAD.left + i * (SAD.right - SAD.left) / (SAD.L - 1); }
+function sadRowY(r) { return SAD.top + (r + 0.5) * (SAD.bot - SAD.top) / SAD.rows; }
+function sadariLaneAt(ax) {
+  const step = (SAD.right - SAD.left) / (SAD.L - 1);
+  return Math.max(0, Math.min(SAD.L - 1, Math.round((ax - SAD.left) / step)));
+}
+// 사다리 위에서 공이 t(0~1)만큼 내려갔을 때의 위치
+function sadTracePos(rungs, s, t) {
+  const steps = SAD.rows;
+  const ft = Math.min(steps, t * steps);
+  let lane = s, r = 0;
+  const done = Math.floor(ft);
+  while (r < done) {
+    if (rungs.some(([rr, ll]) => rr === r && ll === lane)) lane++;
+    else if (rungs.some(([rr, ll]) => rr === r && ll === lane - 1)) lane--;
+    r++;
+  }
+  const frac = ft - done;
+  const y0 = r === 0 ? SAD.top : sadRowY(r - 1);
+  const y1 = r >= steps ? SAD.bot : sadRowY(r);
+  let x = sadLaneX(lane);
+  const y = y0 + (y1 - y0) * frac;
+  if (r < steps) {  // 이 행 끝에서 옆으로 미끄러질 예정이면 마지막 25% 구간에 보간
+    let target = lane;
+    if (rungs.some(([rr, ll]) => rr === r && ll === lane)) target = lane + 1;
+    else if (rungs.some(([rr, ll]) => rr === r && ll === lane - 1)) target = lane - 1;
+    if (target !== lane && frac > 0.75)
+      x = sadLaneX(lane) + (sadLaneX(target) - sadLaneX(lane)) * ((frac - 0.75) / 0.25);
+  }
+  return { x, y, lane };
+}
+
+function drawSadari(latest, ox, oy, scale, dpr) {
+  const X = i => ox + sadLaneX(i) * scale;
+  const RY = r => oy + sadRowY(r) * scale;
+  if ((latest.round || 0) !== myPickRound) { myPickRound = latest.round || 0; myPick = -1; }
+  const picking = latest.sPhase === 'pick';
+
+  ctx.fillStyle = 'rgba(8,11,28,.6)';
+  ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
+
+  // 세로줄
+  ctx.lineWidth = 5 * dpr; ctx.strokeStyle = '#5a68a8'; ctx.lineCap = 'round';
+  for (let i = 0; i < SAD.L; i++) {
+    ctx.beginPath(); ctx.moveTo(X(i), oy + SAD.top * scale); ctx.lineTo(X(i), oy + SAD.bot * scale); ctx.stroke();
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (!picking && latest.rungs) {
+    // 가로줄 공개
+    ctx.strokeStyle = '#93a4e0';
+    for (const [r, l] of latest.rungs) {
+      ctx.beginPath(); ctx.moveTo(X(l), RY(r)); ctx.lineTo(X(l + 1), RY(r)); ctx.stroke();
+    }
+  } else {
+    // 선택 중엔 속이 안 보인다
+    ctx.fillStyle = 'rgba(150,160,220,.45)';
+    ctx.font = `800 ${52 * scale}px Pretendard, sans-serif`;
+    for (let k = 0; k < 3; k++)
+      ctx.fillText('?', ox + (240 + k * 210) * scale, oy + (SAD.top + 200 + k * 160) * scale);
+  }
+
+  // 위: 칸 번호 + 몇 명이 골랐는지 (눈치싸움)
+  for (let i = 0; i < SAD.L; i++) {
+    const x = X(i), y = oy + SAD.headY * scale;
+    const cnt = (latest.counts || [])[i] || 0;
+    const mine = !isHost && i === myPick;
+    ctx.fillStyle = mine ? '#ffb03a' : '#28315e';
+    ctx.beginPath(); ctx.arc(x, y, 32 * scale, 0, 7); ctx.fill();
+    ctx.strokeStyle = mine ? '#ffd27a' : '#8fa0d8'; ctx.lineWidth = 3 * dpr;
+    ctx.beginPath(); ctx.arc(x, y, 32 * scale, 0, 7); ctx.stroke();
+    ctx.fillStyle = mine ? '#241a05' : '#fff';
+    ctx.font = `800 ${32 * scale}px Pretendard, sans-serif`;
+    ctx.fillText(String(i + 1), x, y);
+    if (cnt > 0) {
+      ctx.fillStyle = '#3ddc84';
+      ctx.beginPath(); ctx.arc(x + 27 * scale, y - 26 * scale, 17 * scale, 0, 7); ctx.fill();
+      ctx.fillStyle = '#06210f'; ctx.font = `800 ${20 * scale}px Pretendard, sans-serif`;
+      ctx.fillText(String(cnt), x + 27 * scale, y - 26 * scale);
+    }
+  }
+
+  // 아래: 상품 (황금·꽝·폭탄)
+  const prz = latest.prizes || [];
+  for (let i = 0; i < SAD.L; i++) {
+    const x = X(i), y = oy + SAD.prizeY * scale;
+    const v = prz[i];
+    const txt = v > 0 ? '+' + v : v === 0 ? '꽝' : '💣' + v;
+    ctx.fillStyle = v >= 7 ? '#ffd700' : v > 0 ? '#8ecae6' : v === 0 ? '#93a0c4' : '#ff6b6b';
+    ctx.font = `800 ${(v >= 7 ? 36 : 30) * scale}px Pretendard, sans-serif`;
+    ctx.fillText(txt, x, y);
+  }
+
+  // 공개: 공이 사다리를 타고 내려간다
+  if (!picking && latest.revealAt && latest.rungs) {
+    const t = Math.max(0, Math.min(1, (serverNow() - latest.revealAt) / SAD.trace));
+    const startCnt = new Array(SAD.L).fill(0);
+    for (const [, pk] of (latest.picks || [])) if (pk >= 0) startCnt[pk]++;
+    for (let s = 0; s < SAD.L; s++) {
+      if (!startCnt[s]) continue;
+      const pos = sadTracePos(latest.rungs, s, t);
+      const bx = ox + pos.x * scale, by = oy + pos.y * scale;
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath(); ctx.arc(bx, by, 16 * scale, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#8a6a00'; ctx.lineWidth = 2 * dpr;
+      ctx.beginPath(); ctx.arc(bx, by, 16 * scale, 0, 7); ctx.stroke();
+      ctx.fillStyle = '#241a05'; ctx.font = `800 ${18 * scale}px Pretendard, sans-serif`;
+      ctx.fillText(String(startCnt[s]), bx, by);
+    }
+    // 도착: 결과 강조
+    if (t >= 1 && latest.map) {
+      for (let s = 0; s < SAD.L; s++) {
+        if (!startCnt[s]) continue;
+        const dst = latest.map[s];
+        const x = X(dst), y = oy + SAD.prizeY * scale;
+        ctx.strokeStyle = `rgba(255,215,0,${0.5 + 0.4 * Math.sin(performance.now() / 140)})`;
+        ctx.lineWidth = 4 * dpr;
+        ctx.beginPath(); ctx.arc(x, y, 42 * scale, 0, 7); ctx.stroke();
+      }
+    }
+  }
+
+  // 학생 안내
+  if (!isHost && picking) {
+    ctx.fillStyle = myPick < 0 ? '#ffb03a' : '#3ddc84';
+    ctx.font = `800 ${30 * scale}px Pretendard, sans-serif`;
+    ctx.fillText(myPick < 0 ? '👆 내려가고 싶은 칸을 골라요!' : `${myPick + 1}번 선택! (바꿔도 돼요)`,
+      ox + 450 * scale, oy + 1060 * scale);
+  }
+  ctx.textBaseline = 'alphabetic';
+}
+
+// ---- 해적왕 통아저씨 ----
+const PIR = { cx: 450, cy: 560, R: 300, topY: 340, botY: 850, rowY0: 460, rowH: 130, cols: 8, rows: 3 };
+function pirSlotPos(s) {
+  const col = s % PIR.cols, row = Math.floor(s / PIR.cols);
+  const ang = (col / PIR.cols) * Math.PI * 2 + pirRot;
+  const depth = Math.cos(ang);
+  if (depth < 0.18) return null;    // 통 뒤쪽은 안 보인다
+  return {
+    x: PIR.cx + Math.sin(ang) * PIR.R * 0.84,
+    y: PIR.rowY0 + row * PIR.rowH,
+    w: 96 * (0.45 + 0.55 * depth),
+    h: 62 * (0.6 + 0.4 * depth),
+    depth,
+  };
+}
+function pirateSlotAt(ax, ay) {
+  let best = -1, bd = 1e9;
+  for (let s = 0; s < 24; s++) {
+    const p = pirSlotPos(s);
+    if (!p) continue;
+    const dx = ax - p.x, dy = ay - p.y;
+    if (Math.abs(dx) < p.w * 0.65 && Math.abs(dy) < p.h * 0.8) {
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = s; }
+    }
+  }
+  return best;
+}
+function drawPirateHead(x, y, r) {
+  if (SPR.pirate) { drawSpr(SPR.pirate, x, y, r * 2.5); return; }
+  ctx.fillStyle = '#e8b48a';                                        // 얼굴
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.fillStyle = '#3a2a1a';                                        // 수염
+  ctx.beginPath(); ctx.arc(x, y + r * 0.42, r * 0.72, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = '#c1121f';                                        // 두건
+  ctx.beginPath(); ctx.arc(x, y - r * 0.18, r * 1.02, Math.PI, 0); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + r * 1.05, y - r * 0.28, r * 0.26, 0, 7); ctx.fill();  // 매듭
+  ctx.fillStyle = '#fff';                                           // 두건 물방울무늬
+  for (const [mx, my] of [[-0.5, -0.55], [0.1, -0.75], [0.55, -0.45]]) {
+    ctx.beginPath(); ctx.arc(x + r * mx, y + r * my, r * 0.09, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = '#222';                                           // 안대 + 눈
+  ctx.beginPath(); ctx.arc(x - r * 0.34, y + r * 0.02, r * 0.22, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#222'; ctx.lineWidth = r * 0.09;
+  ctx.beginPath(); ctx.moveTo(x - r * 0.95, y - r * 0.2); ctx.lineTo(x + r * 0.95, y - r * 0.32); ctx.stroke();
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.arc(x + r * 0.34, y + r * 0.04, r * 0.11, 0, 7); ctx.fill();
+}
+function drawKnife(x, y, s, color) {
+  // 슬롯에 꽂힌 단검 (손잡이가 위로 튀어나온 모습) + 주인 색 배지
+  if (SPR.knife) {
+    drawSpr(SPR.knife, x, y - s * 0.3, s * 1.9);
+    if (color) {
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, y - s * 1.2, s * 0.22, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y - s * 1.2, s * 0.22, 0, 7); ctx.stroke();
+    }
+    return;
+  }
+  ctx.fillStyle = '#cfd6e6';
+  ctx.fillRect(x - s * 0.07, y - s * 0.1, s * 0.14, s * 0.35);      // 날 밑동
+  ctx.fillStyle = color || '#8a5a2b';
+  ctx.fillRect(x - s * 0.3, y + s * 0.25, s * 0.6, s * 0.13);       // 가드
+  ctx.fillRect(x - s * 0.09, y + s * 0.38, s * 0.18, s * 0.4);      // 손잡이
+}
+
+function drawPirate(latest, ox, oy, scale, dpr) {
+  if ((latest.round || 0) !== myPickRound) { myPickRound = latest.round || 0; myPick = -1; pirRot = 0; }
+  const picking = latest.pPhase === 'pick';
+  const reveal = latest.pPhase === 'reveal';
+  const tp = reveal && latest.revealAt ? serverNow() - latest.revealAt : 0;
+
+  // TV는 통이 저절로 천천히 돈다 (학생은 손으로 돌린다)
+  if (isHost && picking) pirRot += 0.005;
+  let rotSave = pirRot;
+  if (reveal && tp < 1600) pirRot += Math.sin(performance.now() / 28) * 0.012;   // 두구두구 흔들림
+
+  ctx.fillStyle = 'rgba(8,11,28,.6)';
+  ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
+  const CX = ox + PIR.cx * scale;
+
+  // 통 몸통
+  const bx0 = CX - PIR.R * 0.95 * scale, bx1 = CX + PIR.R * 0.95 * scale;
+  const ty = oy + PIR.topY * scale, by = oy + PIR.botY * scale;
+  const grd = ctx.createLinearGradient(bx0, 0, bx1, 0);
+  grd.addColorStop(0, '#6a441f'); grd.addColorStop(0.5, '#9a6a35'); grd.addColorStop(1, '#5a3a1a');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.moveTo(bx0, ty); ctx.lineTo(bx1, ty); ctx.lineTo(bx1, by); ctx.lineTo(bx0, by); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(CX, by, PIR.R * 0.95 * scale, 34 * scale, 0, 0, Math.PI); ctx.fill();
+  // 해적: 공개 전엔 통 속에 숨어 눈만 빼꼼
+  if (!reveal || tp < 1600) {
+    if (Math.sin(performance.now() / 900) > 0.4) {  // 가끔 빼꼼
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(CX - 20 * scale, ty - 8 * scale, 6 * scale, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(CX + 20 * scale, ty - 8 * scale, 6 * scale, 0, 7); ctx.fill();
+    }
+  } else {
+    // 펑! 해적 등장 (희생자가 없으면 안도의 등장)
+    const pop = Math.min(1, (tp - 1600) / 450);
+    const jump = Math.sin(pop * Math.PI) * 60 + pop * 130;
+    drawPirateHead(CX, ty - (30 + jump) * scale, 78 * scale);
+    if ((latest.victims || []).length) {
+      ctx.save();
+      ctx.translate(ox + 180 * scale, oy + 170 * scale);
+      ctx.rotate(-0.18);
+      ctx.fillStyle = '#ff6b6b';
+      ctx.font = `900 ${80 * scale}px Pretendard, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('펑!!', 0, 0);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#3ddc84';
+      ctx.font = `900 ${48 * scale}px Pretendard, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('휴… 전원 무사!', ox + 230 * scale, oy + 170 * scale);
+    }
+  }
+  // 통 위 테두리 (해적 몸을 가린다)
+  ctx.fillStyle = '#5a3a1a';
+  ctx.beginPath(); ctx.ellipse(CX, ty, PIR.R * 0.95 * scale, 34 * scale, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7a5225';
+  ctx.beginPath(); ctx.ellipse(CX, ty, PIR.R * 0.82 * scale, 26 * scale, 0, 0, 7); ctx.fill();
+  // 쇠 밴드
+  ctx.fillStyle = 'rgba(40,44,60,.75)';
+  for (const yy of [PIR.topY + 55, PIR.cy + 60, PIR.botY - 45])
+    ctx.fillRect(bx0, oy + yy * scale, bx1 - bx0, 12 * scale);
+
+  // 슬롯 (뒤→앞 순서로)
+  const slots = [];
+  for (let s = 0; s < 24; s++) { const p = pirSlotPos(s); if (p) slots.push([s, p]); }
+  slots.sort((a, b) => a[1].depth - b[1].depth);
+  const pickMap = new Map();   // 공개 시: slot → [ci...]
+  if (reveal) for (const [pid, pk] of (latest.picks || [])) {
+    const meta = roster.get(pid);
+    if (!pickMap.has(pk)) pickMap.set(pk, []);
+    pickMap.get(pk).push(meta ? meta.ci : 0);
+  }
+  const trigSet = new Set(latest.triggers || []);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const [s, p] of slots) {
+    const x = ox + p.x * scale, y = oy + p.y * scale;
+    const w = p.w * scale, h = p.h * scale;
+    // 공개 순간: 위험 칸은 빨갛게
+    const danger = reveal && tp >= 1600 && trigSet.has(s);
+    ctx.fillStyle = danger ? 'rgba(255,60,60,.85)' : `rgba(20,14,8,${0.55 + 0.35 * p.depth})`;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x - w / 2, y - h / 2, w, h, 8 * scale) : ctx.rect(x - w / 2, y - h / 2, w, h);
+    ctx.fill();
+    ctx.strokeStyle = danger ? '#ff9a9a' : 'rgba(160,120,70,.6)'; ctx.lineWidth = 2 * dpr;
+    ctx.stroke();
+    ctx.fillStyle = danger ? '#fff' : `rgba(230,210,180,${0.5 + 0.4 * p.depth})`;
+    ctx.font = `700 ${19 * scale * (0.7 + 0.3 * p.depth)}px Pretendard, sans-serif`;
+    ctx.fillText(String(s + 1), x, y - h * 0.05);
+    // 칼: 내 선택(선택 중) / 전원 선택(공개)
+    if (!isHost && picking && s === myPick) {
+      drawKnife(x, y + h * 0.15, 34 * scale, '#ffb03a');
+      ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 3 * dpr;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x - w / 2 - 3 * dpr, y - h / 2 - 3 * dpr, w + 6 * dpr, h + 6 * dpr, 9 * scale) : ctx.rect(x - w / 2 - 3 * dpr, y - h / 2 - 3 * dpr, w + 6 * dpr, h + 6 * dpr);
+      ctx.stroke();
+    }
+    if (reveal && pickMap.has(s)) {
+      const cis = pickMap.get(s);
+      cis.slice(0, 3).forEach((ci, k) => {
+        drawKnife(x + (k - (Math.min(cis.length, 3) - 1) / 2) * 20 * scale, y + h * 0.12, 30 * scale, COLORS[ci % COLORS.length]);
+      });
+      if (cis.length > 3) {
+        ctx.fillStyle = '#fff'; ctx.font = `800 ${17 * scale}px Pretendard, sans-serif`;
+        ctx.fillText('+' + (cis.length - 3), x, y + h * 0.75);
+      }
+    }
+  }
+
+  // 공개: 희생자 이름
+  if (reveal && tp >= 1600 && (latest.victims || []).length) {
+    const names = latest.victims.map(id => (roster.get(id) || { nick: '?' }).nick).join(', ');
+    ctx.fillStyle = '#ff9a9a';
+    ctx.font = `800 ${30 * scale}px Pretendard, sans-serif`;
+    ctx.fillText(`☠️ ${names}`, CX, oy + 960 * scale);
+  }
+  // 학생 안내
+  if (!isHost && picking) {
+    ctx.fillStyle = myPick < 0 ? '#ffb03a' : '#3ddc84';
+    ctx.font = `800 ${28 * scale}px Pretendard, sans-serif`;
+    ctx.fillText(myPick < 0 ? '↔️ 통을 돌리고 칸을 눌러 칼을 꽂아요!' : `${myPick + 1}번에 꽂음! (바꿔도 돼요)`,
+      CX, oy + 1060 * scale);
+  }
+  ctx.textBaseline = 'alphabetic';
+  pirRot = rotSave;   // 흔들림은 렌더에만, 회전값은 원래대로
+}
+
 function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
   const right = ox + arena.w * scale;
   const bandW = W - right;
