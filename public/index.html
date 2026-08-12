@@ -404,6 +404,38 @@
     font-size: 14px; display: none; z-index: 50; text-align: center;
   }
 
+  /* 확인 모달 — 브라우저 confirm() 대신 게임 톤에 맞는 커스텀 창 */
+  .modal-wrap {
+    position: fixed; inset: 0; z-index: 200; display: none;
+    align-items: center; justify-content: center; padding: 24px;
+    background: rgba(6, 9, 24, .62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  .modal-wrap.on { display: flex; }
+  .modal-card {
+    background: linear-gradient(#222b52, #1a2140); border: 1.5px solid #3a4680;
+    border-radius: 22px; padding: 26px 24px 20px; width: min(88vw, 380px);
+    box-shadow: 0 22px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08);
+    text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center;
+    animation: modalPop .18s cubic-bezier(.34,1.4,.64,1);
+  }
+  @keyframes modalPop { from { transform: scale(.86); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal-icon { font-size: 44px; line-height: 1; filter: drop-shadow(0 4px 10px rgba(0,0,0,.45)); }
+  .modal-title { font-size: 19px; font-weight: 800; color: #e8ecf8; line-height: 1.4; }
+  .modal-desc { font-size: 14px; color: #93a0c4; line-height: 1.55; margin-top: -4px; }
+  .modal-btns { display: flex; gap: 10px; width: 100%; margin-top: 6px; }
+  .modal-btns button {
+    flex: 1; border: 0; border-radius: 14px; cursor: pointer; font-family: inherit;
+    font-size: 16px; font-weight: 800; padding: 14px 10px;
+    transition: transform .07s, box-shadow .07s;
+  }
+  .modal-btns button:active { transform: translateY(2px); }
+  #modalCancel { background: #2a3358; color: #aeb9dd; box-shadow: 0 4px 0 #1a2140; }
+  #modalOk { background: #ffb03a; color: #241a05; box-shadow: 0 4px 0 #c9871f; }
+  #modalOk.danger { background: #ff5d5d; color: #fff; box-shadow: 0 4px 0 #a92f2f; }
+  body.host .modal-card { width: min(88vw, 440px); padding: 32px 30px 24px; }
+  body.host .modal-title { font-size: 23px; }
+  body.host .modal-desc { font-size: 16px; }
+
   /* 음소거 버튼 — 교사 TV(기본 켬)와 학생 폰(기본 끔) 모두에서 온오프 가능 */
   #btnMute {
     position: fixed; bottom: 18px; right: 18px; z-index: 60; display: none;
@@ -803,6 +835,19 @@ body.host #tetLogo { height: 72px; }
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 확인 모달 (confirm() 대체) -->
+<div class="modal-wrap" id="modal">
+  <div class="modal-card">
+    <div class="modal-icon" id="modalIcon">❓</div>
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-desc" id="modalDesc"></div>
+    <div class="modal-btns">
+      <button id="modalCancel" type="button">취소</button>
+      <button id="modalOk" type="button">확인</button>
+    </div>
+  </div>
+</div>
 <button id="btnMute" title="효과음 켜기/끄기">🔊</button>
 
 <script>
@@ -905,6 +950,7 @@ let camX = null, camY = null;            // 레이싱 추적 카메라 (부드�
 let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 띄우기 위한 시각
 let champ = [];                          // 오늘의 챔피언 누적 [[id,nick,ci,pts,wins,games],…]
 let hostRestoreTried = false;            // 재배포 후 방 되살리기를 한 번만 시도
+let hostRestoreMidGame = false;          // 게임 도중에 서버가 재시작됐는지 (복원 후 안내 문구 분기)
 let rejoinTries = 0;                     // 학생: 방이 되살아나길 기다리며 재시도한 횟수
 
 // 밝기 68% — 어두운 아레나(#1a2140)에서 남색·보라 계열도 보이도록.
@@ -1074,6 +1120,32 @@ const SFX = (() => {
 let sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0,
                 bumps: 0, sumoAlive: -1, cphase: '', sat: 0, chairAlive: -1, sadariTotal: null, pirPop: 0 };
 
+// 확인 모달 — 브라우저 confirm()은 OS 기본 창이라 게임 분위기를 깬다
+function uiConfirm(title, desc, { ok = '확인', cancel = '취소', danger = false, icon = '❓' } = {}) {
+  return new Promise(resolve => {
+    $('modalIcon').textContent = icon;
+    $('modalTitle').textContent = title;
+    $('modalDesc').textContent = desc || '';
+    $('modalDesc').style.display = desc ? '' : 'none';
+    $('modalOk').textContent = ok;
+    $('modalCancel').textContent = cancel;
+    $('modalOk').classList.toggle('danger', danger);
+    $('modal').classList.add('on');
+    const done = v => {
+      $('modal').classList.remove('on');
+      $('modalOk').onclick = $('modalCancel').onclick = $('modal').onclick = null;
+      window.removeEventListener('keydown', onKey);
+      resolve(v);
+    };
+    const onKey = e => { if (e.key === 'Escape') done(false); if (e.key === 'Enter') done(true); };
+    $('modalOk').onclick = () => done(true);
+    $('modalCancel').onclick = () => done(false);
+    $('modal').onclick = e => { if (e.target === $('modal')) done(false); };   // 바깥 탭 = 취소
+    window.addEventListener('keydown', onKey);
+  });
+}
+const confirmAbort = () => uiConfirm('게임을 중단할까요?', '지금 판이 끝나고 모두 로비로 돌아가요.', { ok: '중단하기', danger: true, icon: '🛑' });
+
 function show(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
   $('game').classList.remove('on');
@@ -1176,7 +1248,12 @@ function handle(m) {
       SFX.unlock();
       saveHostSession();
       setupHostLobby();
-      if (m.restored) toast('방을 되살렸어요! 학생들이 곧 다시 들어옵니다 🔄', 5000);
+      if (m.restored) {
+        toast(hostRestoreMidGame
+          ? '방을 되살렸어요! 진행 중이던 판은 중단됐어요 — 학생들이 들어오면 다시 시작해 주세요 🔄'
+          : '방을 되살렸어요! 학생들이 곧 다시 들어옵니다 🔄', 7000);
+        hostRestoreMidGame = false;
+      }
       break;
     case 'host_rejoin_fail': {
       // 서버가 재배포돼 방이 사라진 경우 — 교사 화면이 같은 코드로 방을 되살린다
@@ -1185,6 +1262,8 @@ function handle(m) {
       const code = (saved && saved.code) || roomCode, tok = (saved && saved.hostToken) || hostToken;
       if (code && tok && !hostRestoreTried) {
         hostRestoreTried = true;
+        // 게임 도중이었는지 기억해 둔다 — 복원은 로비로 돌아오므로 판이 끊겼음을 알려야 한다
+        hostRestoreMidGame = phase === 'playing' || phase === 'countdown';
         send({ type: 'restore_room', code, hostToken: tok, champ: (saved && saved.champ) || champ || [] });
         break;
       }
@@ -1354,6 +1433,7 @@ function handle(m) {
         : `🎉 ${m.order}등! +${m.points}점`;
       $('wordFeedback').style.color = '#3ddc84';
       $('wordInput').readOnly = true; $('btnWordSubmit').disabled = true;
+      if (!isHost) SFX.ok();            // 소리 켠 학생: 내 정답 (이 메시지는 제출자에게만 온다)
       cheerMascot();
       break;
     case 'word_bad': {
@@ -1476,6 +1556,11 @@ function renderQuiz(m) {
   // 사운드 (교사 화면): 문제 공개 순간
   if (isHost && reveal && sndPrev.quizReveal !== m.qIdx) { sndPrev.quizReveal = m.qIdx; SFX.ok(); }
   if (isHost && m.qPhase === 'show' && sndPrev.quizShow !== m.qIdx) { sndPrev.quizShow = m.qIdx; SFX.countBeep(); }
+  // 소리 켠 학생: 공개 순간 내 결과만 (맞으면 딩동, 틀리면 삐)
+  if (!isHost && reveal && sndPrev.myQRev !== m.qIdx) {
+    sndPrev.myQRev = m.qIdx;
+    if (myQAnswer === m.correct) SFX.ok(); else if (myQAnswer >= 0) SFX.miss();
+  }
 }
 
 // ---- 순간 포착 렌더링 (퀴즈쇼 DOM 재사용 — 암기 장면은 교사 화면에만) ----
@@ -1578,6 +1663,11 @@ function renderFlash(m) {
   if (isHost && memo && sndPrev.flashMemo !== m.qIdx) { sndPrev.flashMemo = m.qIdx; SFX.swat(); }
   if (isHost && m.fPhase === 'show' && sndPrev.quizShow !== m.qIdx) { sndPrev.quizShow = m.qIdx; SFX.countBeep(); }
   if (isHost && reveal && sndPrev.quizReveal !== m.qIdx) { sndPrev.quizReveal = m.qIdx; SFX.ok(); }
+  // 소리 켠 학생: 공개 순간 내 결과만
+  if (!isHost && reveal && sndPrev.myQRev !== m.qIdx) {
+    sndPrev.myQRev = m.qIdx;
+    if (myQAnswer === m.correct) SFX.ok(); else if (myQAnswer >= 0) SFX.miss();
+  }
 }
 
 // ---- 사이먼 가라사대 렌더링 ----
@@ -1648,6 +1738,7 @@ document.querySelectorAll('#simonGame .simon-pad').forEach(p => {
     if (!me || !me[1] || me[2] || me[3]) return;
     const v = +p.dataset.i;
     padFlash(v, 170);
+    SFX.simon(v);                       // 소리 켠 학생: 내가 누른 음 (audible 게이트는 tone 내부)
     send({ type: 'skey', v });
     if (navigator.vibrate) navigator.vibrate(12);
   });
@@ -1726,7 +1817,8 @@ function renderPairs(m) {
       el.classList.toggle('match', matched);
       el.classList.toggle('up', matched || flipped);
     });
-    if (prs > pairsMatchSeen) { pairsMatchSeen = prs; if (navigator.vibrate) navigator.vibrate([20, 40, 20]); }
+    if (prs > pairsMatchSeen) { pairsMatchSeen = prs; SFX.coin(); if (navigator.vibrate) navigator.vibrate([20, 40, 20]); }   // 내 짝 맞춤
+    if (fin && !sndPrev.myPairsFin) { sndPrev.myPairsFin = 1; SFX.fanfare(); }   // 내 완주
     setText($('pairsInfo'), waiting ? '다음 판부터 참여해요'
       : fin ? `🏁 완주! ${prs}쌍 · ${score}점`
       : `${prs}/10쌍 · 시도 ${att}회 · ${score}점`);
@@ -2093,8 +2185,8 @@ $('btnDrawRandom').onclick = () => {
   if (!pool.length) return;
   send({ type: 'dpick', id: pool[Math.floor(Math.random() * pool.length)][0] });
 };
-$('btnDrawEnd').onclick = () => { if (confirm('게임을 끝내고 결과를 발표할까요?')) send({ type: 'dend' }); };
-$('btnDrawAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
+$('btnDrawEnd').onclick = async () => { if (await uiConfirm('결과를 발표할까요?', '그림 퀴즈를 끝내고 최종 순위를 공개해요.', { ok: '발표하기', icon: '🏁' })) send({ type: 'dend' }); };
+$('btnDrawAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
 
 // ---- 블록 배틀 입력 (버튼 + DAS 홀드 반복) ----
 function tetCanSend() {
@@ -2402,7 +2494,7 @@ function renderHostLobby() {
     const el = document.createElement('div');
     el.className = 'chip' + (p.connected ? '' : ' off');
     el.innerHTML = `<span class="dot" style="background:${COLORS[p.ci % COLORS.length]}"></span>${esc(p.nick)}`;
-    el.onclick = () => { if (confirm(`${p.nick} 님을 내보낼까요?`)) send({ type: 'kick', playerId: p.id }); };
+    el.onclick = async () => { if (await uiConfirm(`${p.nick} 님을 내보낼까요?`, '내보낸 학생은 다시 QR로 들어올 수 있어요.', { ok: '내보내기', danger: true, icon: '👋' })) send({ type: 'kick', playerId: p.id }); };
     $('chips').appendChild(el);
   });
   $('btnStart').disabled = list.filter(p => p.connected).length < 1;
@@ -2426,15 +2518,15 @@ $('btnStart').onclick = () => {
 };
 $('btnAgain').onclick = () => send({ type: 'start_game', game: gameType, opt: gameOpt(gameType) });
 $('btnLobby').onclick = () => send({ type: 'back_to_lobby' });
-$('btnCloseRoom').onclick = () => { if (confirm('방을 닫으면 모든 학생이 나가집니다. 닫을까요?')) { send({ type: 'close_room' }); goHome(); } };
-$('btnLeave').onclick = () => { send({ type: 'leave' }); goHome(); };
-$('btnLeave2').onclick = () => { send({ type: 'leave' }); goHome(); };
-$('btnAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
-$('btnWordAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
-$('btnQuizAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
-$('btnSimonAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
-$('btnPairsAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
-$('btnTetAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
+$('btnCloseRoom').onclick = async () => { if (await uiConfirm('방을 닫을까요?', '모든 학생이 나가지고 오늘의 챔피언 점수도 사라져요.', { ok: '방 닫기', danger: true, icon: '🚪' })) { send({ type: 'close_room' }); goHome(); } };
+$('btnLeave').onclick = async () => { if (await uiConfirm('방에서 나갈까요?', '다시 들어오려면 QR을 찍거나 코드를 입력해야 해요.', { ok: '나가기', danger: true, icon: '👋' })) { send({ type: 'leave' }); goHome(); } };
+$('btnLeave2').onclick = async () => { if (await uiConfirm('방에서 나갈까요?', '다시 들어오려면 QR을 찍거나 코드를 입력해야 해요.', { ok: '나가기', danger: true, icon: '👋' })) { send({ type: 'leave' }); goHome(); } };
+$('btnAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
+$('btnWordAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
+$('btnQuizAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
+$('btnSimonAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
+$('btnPairsAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
+$('btnTetAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
 $('btnMute').onclick = () => { $('btnMute').textContent = SFX.toggle() ? '🔇' : '🔊'; };
 
 // ---- 결과 ----
@@ -2459,8 +2551,8 @@ function renderChampLobby() {
   box.style.display = 'block';
   $('champLobbyRows').innerHTML = champRowsHTML(champ, 40);
 }
-$('btnChampReset').onclick = () => {
-  if (confirm('오늘의 챔피언 점수판을 초기화할까요? (다음 반 수업 시작 전에 쓰세요)')) send({ type: 'champ_reset' });
+$('btnChampReset').onclick = async () => {
+  if (await uiConfirm('챔피언 점수판을 초기화할까요?', '다음 반 수업을 시작하기 전에 쓰세요.', { ok: '초기화', danger: true, icon: '🏆' })) send({ type: 'champ_reset' });
 };
 function showResult(ranking, champArr) {
   show('result');
@@ -2761,7 +2853,9 @@ $('btnAction').addEventListener('pointerdown', e => {
   if (isHost || phase !== 'playing') return;
   if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run') return;
   send({ type: 'action' });
-  if (navigator.vibrate) navigator.vibrate(15);   // 학생 폰은 무음이라 진동으로 손맛
+  if (navigator.vibrate) navigator.vibrate(15);   // 진동으로 손맛 (소리는 기본 끔)
+  // 소리 켠 학생: 버튼 손맛 — 부스터/집게/대시만 (갤러그 연사는 시끄러워서 제외)
+  if (gameType === 'race' || gameType === 'claw' || gameType === 'sumo') SFX.swat();
   // 갤러그: 누르고 있는 동안 연사
   if (gameType === 'gala') {
     firePid = e.pointerId;
@@ -3405,6 +3499,23 @@ function draw() {
       if (sndPrev.oxAlive >= 0 && al < sndPrev.oxAlive) SFX.miss();
       sndPrev.oxAlive = al;
     }
+  }
+
+  // 개인 사운드 (소리 켠 학생 폰): 내 이벤트만 — 남의 소리까지 울리면 교실에서 TV와 뒤섞인다
+  if (!isHost && phase === 'playing') {
+    if (myAlive) {
+      if (wasAlive && !myAlive.alive) SFX.boom();                                       // 내 탈락
+      if (latest.mode === 'tag' && myAlive.infected && !sndPrev.myInf) SFX.zombie();    // 내 감염
+      sndPrev.myInf = myAlive.infected ? 1 : 0;
+      wasAlive = !!myAlive.alive;
+    }
+    if (typeof myScore === 'number' && sndPrev.mySc != null && myScore > sndPrev.mySc) { // 내 획득
+      if (latest.mode === 'coin' || latest.mode === 'chimp') SFX.coin();
+      else if (latest.mode === 'mos') SFX.swat();
+      else if (latest.mode === 'claw') SFX.grab();
+      else if (latest.mode === 'gala') SFX.swat();                                      // 내 격추
+    }
+    if (typeof myScore === 'number') sndPrev.mySc = myScore;
   }
 
   // 교사 화면: 좌우 여백이 비어 있으므로 실시간 순위를 크게 띄운다
