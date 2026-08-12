@@ -798,6 +798,11 @@ function show(viewId) {
   if (viewId === 'game') $('game').classList.add('on');
   else $(viewId).classList.add('on');
 }
+// 게임 화면(캔버스든 DOM 뷰든)이 실제로 떠 있는가 — samePlaying 오판 방지용
+function gameViewActive() {
+  return $('game').classList.contains('on')
+    || ['wordGame', 'quizGame', 'simonGame', 'pairsGame'].some(id => $(id).classList.contains('on'));
+}
 function toast(msg, ms = 2500) {
   $('toast').textContent = msg; $('toast').style.display = 'block';
   clearTimeout(toast._t); toast._t = setTimeout(() => $('toast').style.display = 'none', ms);
@@ -912,7 +917,9 @@ function handle(m) {
       if (m.course) runCourse = m.course;  // 설원 러너 코스 (시작·재접속 때 한 번 옴)
       // 이미 진행 중인 같은 게임의 playing 재수신(레이싱 1등 완주로 남은시간 30초 단축 등)은
       // 시간만 갱신하고 화면·입력을 건드리지 않는다. 안 그러면 주행 중 전원 조이스틱이 풀린다.
-      const samePlaying = phase === 'playing' && prev === 'playing' && gameType === prevGame;
+      // 단, 게임 화면이 실제로 떠 있을 때만 — 호스트 새로고침 복귀 때 roster가 phase를 먼저
+      // 'playing'으로 만들어 두면 초기값 게임(bomb)에서 오판해 TV가 로비에 갇힌다.
+      const samePlaying = phase === 'playing' && prev === 'playing' && gameType === prevGame && gameViewActive();
       if (samePlaying) break;
       if (phase === 'countdown' || phase === 'playing') {
         if (phase === 'countdown') {
@@ -1020,7 +1027,12 @@ function renderQuiz(m) {
     : (m.qPhase === 'reveal' ? '0%' : '100%');
   if (m.qIdx !== myQIdx) { myQIdx = m.qIdx; myQAnswer = -1; }
 
-  const json = JSON.stringify([m.qIdx, m.qPhase, m.q, m.answered, m.counts, m.scores, myQAnswer, phase]);
+  // 답변 창(show) 동안은 남이 답할 때마다 바뀌는 answered/scores로 버튼 DOM을 재구성하지 않는다
+  // (누르는 도중 노드가 교체되면 탭이 씹힌다) — 교사 카운터만 setText로 가볍게 갱신
+  const showing = m.qPhase === 'show';
+  if (isHost && showing) setText($('quizInfo'), `✋ ${m.answered}/${m.partCount}명 답함`);
+  const json = JSON.stringify([m.qIdx, m.qPhase, m.q,
+    showing ? 0 : m.answered, showing ? null : m.counts, showing ? null : m.scores, myQAnswer, phase]);
   if (json === lastQuizJson) return;
   lastQuizJson = json;
 
@@ -1093,7 +1105,11 @@ function renderFlash(m) {
     : (m.fPhase === 'reveal' ? '0%' : '100%');
   if (m.qIdx !== myQIdx) { myQIdx = m.qIdx; myQAnswer = -1; }
 
-  const json = JSON.stringify([m.qIdx, m.fPhase, m.q, m.answered, m.counts, m.scores, myQAnswer, phase, !!flashScene]);
+  // 퀴즈쇼와 같은 이유 — 답변 창에서는 버튼 DOM을 재구성하지 않는다 (탭 씹힘 방지)
+  const showing = m.fPhase === 'show';
+  if (isHost && showing) setText($('quizInfo'), `✋ ${m.answered}/${m.partCount}명 답함`);
+  const json = JSON.stringify([m.qIdx, m.fPhase, m.q,
+    showing ? 0 : m.answered, showing ? null : m.counts, showing ? null : m.scores, myQAnswer, phase, !!flashScene]);
   if (json === lastQuizJson) return;
   lastQuizJson = json;
 
@@ -1191,8 +1207,9 @@ function scheduleSimonSeq(m) {
   clearSimonTimers();
   const base = m.showAt - serverNow();
   (m.seq || []).forEach((v, i) => {
-    simonTimers.push(setTimeout(() => { padFlash(v, m.flashMs); SFX.simon(v); },
-      Math.max(0, base + i * m.gap)));
+    const t = base + i * m.gap;
+    if (t < -60) return;   // 이미 지나간 음(새로고침 복귀 재전송)은 건너뛴다 — 몰아서 번쩍이지 않게
+    simonTimers.push(setTimeout(() => { padFlash(v, m.flashMs); SFX.simon(v); }, Math.max(0, t)));
   });
 }
 function padFlash(v, ms) {
@@ -1259,10 +1276,16 @@ document.querySelectorAll('#simonGame .simon-pad').forEach(p => {
 let chimpNums = null, chimpPending = -1, chimpConfirmed = {}, chimpFailCell = -1;
 let chimpSeenIdx = 0, chimpSeenRound = 0;
 function chimpCellAt(st, ax, ay) {
+  // 히트박스(±70)가 이웃 타일과 살짝 겹칠 수 있으므로 첫 매치가 아니라 최근접 타일을 고른다
   const cells = st.cells || [];
-  for (let i = 0; i < cells.length; i++)
-    if (Math.abs(cells[i][0] - ax) <= 70 && Math.abs(cells[i][1] - ay) <= 70) return i;
-  return -1;
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < cells.length; i++) {
+    const dx = Math.abs(cells[i][0] - ax), dy = Math.abs(cells[i][1] - ay);
+    if (dx > 70 || dy > 70) continue;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
 }
 
 // ---- 같은 그림 찾기 렌더링 ----
@@ -1301,7 +1324,7 @@ function renderPairsCard(i) {
   el.classList.add('up');
 }
 function renderPairs(m) {
-  $('pairsTimerBar').style.width = Math.max(0, (m.timeLeft || 0) / 75000 * 100) + '%';
+  $('pairsTimerBar').style.width = Math.max(0, (m.timeLeft || 0) / (m.timeTotal || 75000) * 100) + '%';
   const me = (m.players || []).find(r => r[0] === myId);
 
   const json = JSON.stringify([m.finishedN, m.players, phase]);
@@ -1315,9 +1338,12 @@ function renderPairs(m) {
     document.querySelectorAll('#pairsGame .pcard').forEach(el => {
       const i = +el.dataset.i;
       const matched = !!(mask & (1 << i));
+      const flipped = i === fA || i === fB;
       if (matched) el.querySelector('.front').textContent = pairsFace[i] || '✅';   // 재접속 등으로 앞면을 모르면 체크로
+      else if (flipped && !pairsFace[i] && !el.querySelector('.front').textContent)
+        el.querySelector('.front').textContent = '❓';                              // 재접속 직후 판정 대기 카드
       el.classList.toggle('match', matched);
-      el.classList.toggle('up', matched || i === fA || i === fB);
+      el.classList.toggle('up', matched || flipped);
     });
     if (prs > pairsMatchSeen) { pairsMatchSeen = prs; if (navigator.vibrate) navigator.vibrate([20, 40, 20]); }
     setText($('pairsInfo'), waiting ? '다음 판부터 참여해요'
@@ -1750,7 +1776,7 @@ GRASS_IMG.src = 'sprites/grass.jpg';
 GRASS_IMG.onload = () => { grassReady = true; };
 // 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
 const FLOORS = {};
-['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp'].forEach(k => {
+['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing'].forEach(k => {
   const im = new Image();
   im.src = 'sprites/floor-' + k + '.jpg';
   im.onload = () => { FLOORS[k] = im; };

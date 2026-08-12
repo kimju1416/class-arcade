@@ -440,6 +440,21 @@ const QUIZ_DATA = {
     ['피구에서 공에 맞으면 어떻게 될까?', '밖으로 나간다', '점수를 얻는다', '한 번 더 던진다', '바로 이긴다'],
     ['이어달리기에서 주고받는 것은?', '배턴', '공', '깃발', '모자'],
     ['축구 경기 시간은 전·후반 각각 몇 분?', '45분', '30분', '60분', '20분'],
+    ['다음 중 수영 영법이 아닌 것은?', '드리블', '자유형', '배영', '평영'],
+    ['볼링에서 핀을 한 번에 다 쓰러뜨리면?', '스트라이크', '스페어', '홈런', '버디'],
+    ['야구에서 볼 4개로 타자가 걸어 나가는 것은?', '볼넷', '삼진', '번트', '도루'],
+    ['농구 골대에 공을 위에서 내리꽂는 기술은?', '덩크슛', '자유투', '드리블', '패스'],
+    ['태권도 띠 중 가장 높은 단계는?', '검은 띠', '노란 띠', '파란 띠', '초록 띠'],
+    ['양궁에서 과녁을 향해 쏘는 것은?', '화살', '창', '총알', '원반'],
+    ['펜싱에서 사용하는 것은?', '칼', '활', '라켓', '글러브'],
+    ['얼음판을 빗자루처럼 닦는 동계 종목은?', '컬링', '봅슬레이', '루지', '아이스하키'],
+    ['배구에서 공을 강하게 내리치는 공격은?', '스파이크', '서브', '토스', '블로킹'],
+    ['씨름 천하장사가 전통적으로 받던 상품은?', '황소', '자동차', '쌀가마', '자전거'],
+    ['럭비공의 모양은?', '타원형', '동그라미', '네모', '세모'],
+    ['탁구공을 치는 도구는?', '라켓', '배트', '스틱', '클럽'],
+    ['월드컵은 몇 년마다 열릴까?', '4년', '1년', '2년', '10년'],
+    ['테니스에서 0점을 부르는 말은?', '러브', '제로', '널', '아웃'],
+    ['마라톤은 어느 나라 전투에서 유래했을까?', '그리스', '로마', '이집트', '페르시아'],
   ],
   '역사': [
     ['한글을 만든 왕은?', '세종대왕', '이성계', '왕건', '광개토대왕'],
@@ -748,6 +763,17 @@ function sendCurrentPhase(room, ws) {
     track: room.gameType === 'race' && room.game && room.game.track ? trackForClient(room.game.track) : undefined,
     course: room.gameType === 'run' && room.game && room.game.course ? room.game.course : undefined,
   });
+  // 교사 화면 전용 라운드 페이로드 재전송 — TV를 새로고침해도 진행 중 라운드가 깨지지 않게.
+  // 정답 유출 방지를 위해 반드시 호스트 소켓에만 보낸다.
+  if (ws === room.hostWs && room.game && room.state === 'playing') {
+    const g = room.game;
+    if (room.gameType === 'simon' && g.seq && g.seq.length && g.siPhase === 'show')
+      roomSend(ws, { type: 'simon_seq', seq: g.seq, showAt: g.showAt, gap: SIMON_GAP, flashMs: SIMON_FLASH });
+    if (room.gameType === 'chimp' && g.nums && g.nums.length && g.chPhase === 'memo')
+      roomSend(ws, { type: 'chimp_nums', nums: g.nums, memoEndAt: g.memoEndAt });
+    if (room.gameType === 'flash' && g.questions && g.fPhase === 'memo' && g.questions[g.fIdx])
+      roomSend(ws, { type: 'flash_scene', scene: g.questions[g.fIdx].scene, memoEndAt: g.memoEndAt });
+  }
 }
 
 // 클라이언트가 트랙을 그릴 수 있게 중심선을 통째로 보낸다 (시작할 때 한 번만)
@@ -1094,6 +1120,8 @@ function tick(room) {
   for (const p of room.players.values()) {
     if (p.alive && !p.connected && p.dropAt && now - p.dropAt > DROP_GRACE_MS) {
       p.alive = false; p.deadAt = now; p.dropAt = 0;
+      // 사이먼은 순위·라벨이 outRound 기준 — 끊김 탈락도 몇 라운드까지 버텼는지 기록
+      if (room.gameType === 'simon' && room.game && !p.outRound) p.outRound = room.game.siRound || 0;
     }
   }
 
@@ -2310,7 +2338,9 @@ function simonTick(room, now) {
     g.inputEndAt = now + g.seq.length * 1300 + 3500;
   } else if (g.siPhase === 'input') {
     const alive = [...room.players.values()].filter(p => p.alive);
-    const allDone = alive.length > 0 && alive.every(p => p.simonDone);
+    // 조기 진행 판정은 접속 중인 생존자 기준 — 유예 중인 끊긴 학생이 매 라운드 시간을 다 끌지 않게
+    const present = alive.filter(p => p.connected);
+    const allDone = present.length > 0 && present.every(p => p.simonDone);
     if (allDone || now >= g.inputEndAt) {
       // 시간 안에 다 못 누른 생존자도 탈락
       for (const p of alive) if (!p.simonDone) { p.alive = false; p.deadAt = now; p.outRound = g.siRound; }
@@ -2602,16 +2632,27 @@ function sendState(room, now) {
     return;
   }
   if (type === 'pairs') {
-    broadcast(room, {
+    // 배치가 전원 동일이라 남의 pMask·pFlipA/pFlipB를 보면 짝을 유추할 수 있다(WS 프레임 관찰 치팅).
+    // 비밀 필드는 본인 행에만 담고, 타인·교사에게는 집계(시도·쌍·완주)만 보낸다.
+    const base = {
       type: 'state', mode: 'pairs', st: now,
       timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : PAIRS_MS,
+      timeTotal: PAIRS_MS,
       total: PAIRS_TOTAL, cols: 4, rows: 5,
       finishedN: g.finishedN || 0,
-      players: [...room.players.values()].map(p =>
-        [p.id, p.alive ? 1 : 0, p.waiting ? 1 : 0, p.score || 0,
-         p.pMask || 0, p.pFlipA != null ? p.pFlipA : -1, p.pFlipB != null ? p.pFlipB : -1,
-         p.pAttempts || 0, p.pPairs || 0, p.pFinAt ? 1 : 0]),
-    });
+    };
+    const pubRows = [...room.players.values()].map(p =>
+      [p.id, p.alive ? 1 : 0, p.waiting ? 1 : 0, p.score || 0,
+       0, -1, -1,
+       p.pAttempts || 0, p.pPairs || 0, p.pFinAt ? 1 : 0]);
+    if (room.hostWs) roomSend(room.hostWs, { ...base, players: pubRows });
+    for (const p of room.players.values()) {
+      if (!p.ws) continue;
+      const mine = [p.id, p.alive ? 1 : 0, p.waiting ? 1 : 0, p.score || 0,
+        p.pMask || 0, p.pFlipA != null ? p.pFlipA : -1, p.pFlipB != null ? p.pFlipB : -1,
+        p.pAttempts || 0, p.pPairs || 0, p.pFinAt ? 1 : 0];
+      roomSend(p.ws, { ...base, players: pubRows.map(r => r[0] === p.id ? mine : r) });
+    }
     return;
   }
   if (type === 'word' || type === 'cho') {
@@ -2881,6 +2922,12 @@ wss.on('connection', (ws) => {
           const old = [...r.players.values()].find(p => p.token === msg.token);
           if (old) {
             old.ws = ws; old.connected = true; old.dropAt = 0;
+            // 침팬지·같은 그림은 탈락 없는 점수형 — 유예(8초)를 넘겨 alive가 꺼진 학생도
+            // 복귀하면 계속 참여시킨다 (퀴즈쇼·순간 포착과 동일한 규칙으로 통일)
+            if ((r.gameType === 'chimp' || r.gameType === 'pairs')
+                && r.state === 'playing' && !old.waiting && !old.alive) {
+              old.alive = true; old.deadAt = 0;
+            }
             ws.roomCode = r.code; ws.playerId = old.id;
             roomSend(ws, { type: 'join_ok', id: old.id, token: old.token, code: r.code, nick: old.nick, ci: old.ci, state: r.state, gameType: r.gameType });
             sendRoster(r);
