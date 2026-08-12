@@ -107,6 +107,16 @@
   .chip.off { opacity: .4; }
   .count { color: #93a0c4; font-size: 15px; }
 
+  /* 게임 분류 탭 */
+  .game-tabs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; width: 100%; max-width: 720px; }
+  .gtab {
+    background: transparent; border: 1.5px solid #3a4680; border-radius: 999px;
+    color: #93a0c4; font-family: inherit; font-weight: 700; font-size: 13px;
+    padding: 6px 13px; cursor: pointer;
+  }
+  .gtab.on { background: #ffb03a; border-color: #ffb03a; color: #241a05; }
+  .gtab .n { opacity: .75; font-weight: 600; margin-left: 4px; font-size: 11px; }
+
   /* 게임 선택 카드 */
   .game-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; width: 100%; max-width: 720px; }
   .game-card {
@@ -340,6 +350,8 @@
     body.host #btnCloseRoom { grid-area: close; }
     body.host #hostRight { grid-area: right; width: 100%; }
     body.host .game-grid { grid-template-columns: 1fr 1fr; max-width: none; }
+    body.host .game-tabs { max-width: none; justify-content: flex-start; }
+    body.host .gtab { font-size: 15px; padding: 8px 16px; }
     body.host .game-card p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     body.host .game-card b { font-size: 19px; }
     body.host .game-card p { font-size: 14px; }
@@ -390,6 +402,7 @@
   <div class="count" id="playerCount">참가자 0명</div>
   <div id="hostRight">
     <div class="chips" id="chips"></div>
+    <div class="game-tabs" id="gameTabs"></div>
     <div class="game-grid" id="gameGrid"></div>
     <button class="btn green" id="btnStart" disabled>게임 시작</button>
   </div>
@@ -499,6 +512,22 @@ const GAMES_META = {
   ox:   { icon: '⭕', name: 'OX 서바이벌', desc: '문장을 읽고 몸으로 답해라! 맞으면 O땅, 틀리면 X땅으로 질주. 오답은 탈락, 전원 오답이면 전원 부활 — 최후의 1인 골든벨!', badge: '서바이벌', rule: '맞다고 생각하면 O구역, 틀리면 X구역!\n시간이 끝나기 전에 달려가세요' },
   timing:{ icon: '⏱️', name: '10초를 잡아라', desc: '시계가 숨는다! 머릿속으로 초를 세다가 목표 시간이 됐다 싶으면 탭. 오차가 작을수록 고득점, 0.05초 안이면 ⚡신의 감각!', badge: '감각 승부', rule: '목표 시간을 기억! 시계가 가려지면\n마음속으로 세다가 정확한 순간에 탭!' },
 };
+// 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
+const GAME_CATS = [
+  { key: 'all',   label: '전체' },
+  { key: 'sur',   label: '⚔️ 서바이벌' },
+  { key: 'score', label: '🏆 점수 경쟁' },
+  { key: 'quiz',  label: '🧠 퀴즈·두뇌' },
+  { key: 'luck',  label: '🎲 복불복' },
+];
+const GAME_CAT_OF = {
+  bomb: ['sur'], tag: ['sur'], dodge: ['sur'], sumo: ['sur'], chair: ['sur'],
+  ox: ['sur', 'quiz'], gala: ['sur', 'score'], pirate: ['luck', 'sur'],
+  coin: ['score'], mos: ['score'], claw: ['score'], race: ['score'],
+  timing: ['score', 'luck'],
+  word: ['quiz'], cho: ['quiz'], quiz: ['quiz'],
+  sadari: ['luck'],
+};
 const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식', '내문제'];
 // 붙여넣은 텍스트 → 문제 배열. 한 줄 = "문제 / 정답 / 오답1 / 오답2 / 오답3" (| 구분도 허용)
 function parseCustomQ(text) {
@@ -534,6 +563,7 @@ let myPicks = [];                        // 통아저씨: 내가 꽂은 칼들
 let pirKnives = 1;                       // 통아저씨: 1인당 칼 개수 (서버 상태로 갱신)
 let pirRot = 0, pirDrag = null;          // 통아저씨: 통 회전각·드래그 상태
 let pirateKnives = Math.max(1, Math.min(3, +(localStorage.getItem('ca_knives') || 1)));  // 호스트가 고른 위험도
+let gameTabSel = localStorage.getItem('ca_gtab') || 'all';        // 로비 게임 분류 탭
 let quizCatSel = localStorage.getItem('ca_qcat') || '믹스';       // 퀴즈쇼: 카테고리
 let quizCountSel = +(localStorage.getItem('ca_qcnt') || 10);      // 퀴즈쇼: 문제 수
 let myQAnswer = -1, myQIdx = -1, lastQuizJson = '';               // 퀴즈쇼: 내 답·문제 추적
@@ -1004,11 +1034,24 @@ function setupHostLobby() {
 }
 
 function renderGameGrid() {
+  // 분류 탭 (선택은 localStorage에 기억, 모르는 값이면 전체로)
+  if (!GAME_CATS.some(c => c.key === gameTabSel)) gameTabSel = 'all';
+  $('gameTabs').innerHTML = '';
+  for (const c of GAME_CATS) {
+    const n = c.key === 'all' ? Object.keys(GAMES_META).length
+      : Object.keys(GAMES_META).filter(k => (GAME_CAT_OF[k] || []).includes(c.key)).length;
+    const b = document.createElement('button');
+    b.className = 'gtab' + (c.key === gameTabSel ? ' on' : '');
+    b.innerHTML = `${c.label}<span class="n">${n}</span>`;
+    b.onclick = () => { gameTabSel = c.key; localStorage.setItem('ca_gtab', c.key); renderGameGrid(); };
+    $('gameTabs').appendChild(b);
+  }
   $('gameGrid').innerHTML = '';
   const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
                      race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
                      sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox', timing: 'timing' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
+    if (gameTabSel !== 'all' && !(GAME_CAT_OF[key] || []).includes(gameTabSel)) continue;
     const el = document.createElement('div');
     el.className = 'game-card' + (key === selectedGame ? ' sel' : '');
     el.innerHTML = `<div class="gc-head"><img class="gc-ico" src="sprites/${CARD_SPR[key]}.png" alt=""
