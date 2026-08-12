@@ -679,7 +679,7 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.cphase, round: r.game.cRound, list: r.game.chairs.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), owner: c.owner })) }
         : undefined,
       sadari: r.gameType === 'sadari' && r.game && r.game.round
-        ? { phase: r.game.sPhase, round: r.game.round, prizes: r.game.prizes, map: r.game.map, picks: [...r.players.values()].map(p => [p.nick, p.pick]) }
+        ? { phase: r.game.sPhase, round: r.game.round, lanes: r.game.lanes, prizes: r.game.prizes, map: r.game.map, picks: [...r.players.values()].map(p => [p.nick, p.pick]) }
         : undefined,
       pirate: r.gameType === 'pirate' && r.game && r.game.round
         ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
@@ -1935,10 +1935,21 @@ function endChair(room) {
 }
 
 // ---------- 사다리 복불복 ----------
+// 칸 수는 인원수대로 (최소 3, 최대 8) — 4명이 하는데 8칸이면 빈 칸투성이라 눈치싸움이 안 된다
+function sadariLanes(room) {
+  const n = [...room.players.values()].filter(p => p.alive && p.connected).length;
+  return Math.max(3, Math.min(SADARI_LANES, n));
+}
+// 상품은 전체 배열(황금 10 ~ 폭탄 -5)에서 칸 수만큼 고르게 뽑는다 — 몇 칸이든 황금과 폭탄은 반드시 있다
+function sadariPrizes(L) {
+  const src = SADARI_PRIZES;
+  return Array.from({ length: L }, (_, i) => src[Math.round(i * (src.length - 1) / (L - 1))]);
+}
+
 function startSadariRound(room, now) {
   const g = room.game;
   g.round++;
-  const L = SADARI_LANES, rows = 13;
+  const L = g.lanes = sadariLanes(room), rows = 13;
   // 가로줄: 같은 행에서 이웃한 두 줄이 연달아 붙지 않게 (표준 사다리 규칙)
   g.rungs = [];
   for (let r = 0; r < rows; r++) {
@@ -1947,7 +1958,7 @@ function startSadariRound(room, now) {
       if (l - prev >= 2 && Math.random() < 0.34) { g.rungs.push([r, l]); prev = l; }
     }
   }
-  g.prizes = [...SADARI_PRIZES].sort(() => Math.random() - 0.5);
+  g.prizes = sadariPrizes(L).sort(() => Math.random() - 0.5);
   // 각 출발 칸이 어느 도착 칸으로 가는지 미리 계산
   g.map = [];
   for (let s = 0; s < L; s++) {
@@ -1972,7 +1983,7 @@ function sadariTick(room, now) {
     if (now >= g.pickEndAt || allPicked) {
       // 못 고른 사람은 랜덤 칸 (복불복이니 억울할 것 없음)
       for (const p of room.players.values())
-        if (p.alive && p.pick < 0) p.pick = Math.floor(Math.random() * SADARI_LANES);
+        if (p.alive && p.pick < 0) p.pick = Math.floor(Math.random() * g.lanes);
       g.sPhase = 'reveal';
       g.revealAt = now; g.revealEndAt = now + SADARI_REVEAL_MS;
     }
@@ -3103,10 +3114,10 @@ function sendState(room, now) {
   }
   if (type === 'sadari') {
     msg.sPhase = g.sPhase; msg.round = g.round; msg.totalRounds = SADARI_ROUNDS;
-    msg.lanes = SADARI_LANES; msg.prizes = g.prizes;
+    msg.lanes = g.lanes || SADARI_LANES; msg.prizes = g.prizes;
     msg.pickLeft = g.sPhase === 'pick' ? Math.max(0, g.pickEndAt - now) : 0;
     // 선택 중엔 칸별 인원수만 (눈치싸움). 가로줄·경로는 공개 순간에만 — 미리 보내면 추적해서 치팅 가능
-    const counts = new Array(SADARI_LANES).fill(0);
+    const counts = new Array(g.lanes || SADARI_LANES).fill(0);
     for (const p of room.players.values()) if (p.alive && p.pick >= 0) counts[p.pick]++;
     msg.counts = counts;
     if (g.sPhase === 'reveal') {
@@ -3211,6 +3222,43 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // 서버가 재배포·재시작되면 방이 메모리에서 사라진다. 교사 화면이 자기가 들고 있던
+      // 방 코드·토큰·챔피언 점수로 같은 방을 되살린다 (학생들은 기존 코드로 자동 재입장).
+      case 'restore_room': {
+        const code = String(msg.code || '');
+        if (!/^\d{4}$/.test(code) || typeof msg.hostToken !== 'string' || msg.hostToken.length < 8) return;
+        if (rooms.get(code)) { roomSend(ws, { type: 'host_rejoin_fail' }); return; }   // 이미 살아있으면 rejoin으로
+        if (++ws.roomsMade > 3 || rooms.size >= 500) { roomSend(ws, { type: 'host_rejoin_fail' }); return; }
+        detachFromRoom(ws);
+        const r = {
+          code, hostWs: ws, hostToken: String(msg.hostToken),
+          players: new Map(), state: 'lobby', gameType: null,
+          nextId: 1, lastActive: Date.now(), game: null, timer: null, phaseEndAt: 0,
+          champ: new Map(),
+        };
+        // 챔피언 점수 복원 — 교사 자신의 화면이 보낸 값이라 신뢰하되, 형식·범위는 검증한다
+        if (Array.isArray(msg.champ)) {
+          for (const c of msg.champ.slice(0, 40)) {
+            if (!Array.isArray(c) || c.length < 6) continue;
+            const [id, nick, ci, pts, wins, games] = c;
+            if (!Number.isInteger(id) || id < 1 || typeof nick !== 'string') continue;
+            r.champ.set(id, {
+              nick: cleanNick(nick), ci: Math.max(0, Math.min(29, Math.floor(finite(ci)))),
+              pts: Math.max(0, Math.min(9999, Math.floor(finite(pts)))),
+              wins: Math.max(0, Math.min(999, Math.floor(finite(wins)))),
+              games: Math.max(0, Math.min(999, Math.floor(finite(games)))),
+            });
+            r.nextId = Math.max(r.nextId, id + 1);   // 되살아난 학생이 같은 id를 받도록
+          }
+        }
+        rooms.set(code, r);
+        ws.roomCode = code; ws.isHost = true;
+        console.log('[방 복원]', code, '챔피언', r.champ.size + '명');
+        roomSend(ws, { type: 'room_created', code, hostToken: r.hostToken, restored: 1 });
+        sendRoster(r);
+        break;
+      }
+
       case 'rejoin_host': {
         const r = rooms.get(String(msg.code));
         if (!r || r.hostToken !== msg.hostToken) { roomSend(ws, { type: 'host_rejoin_fail' }); return; }
@@ -3224,7 +3272,8 @@ wss.on('connection', (ws) => {
 
       case 'join': {
         const r = rooms.get(String(msg.code));
-        if (!r) { roomSend(ws, { type: 'error', msg: '방이 없습니다. 코드를 확인하세요.' }); return; }
+        // code 'noroom' — 재접속 중인 학생은 이걸 보고 (서버 재시작 직후일 수 있으니) 잠시 뒤 다시 시도한다
+        if (!r) { roomSend(ws, { type: 'error', code: 'noroom', msg: '방이 없습니다. 코드를 확인하세요.' }); return; }
         // 학생으로 들어오는 순간 호스트 권한은 사라진다 (자기 방을 만든 뒤 남의 방을 조종하는 것 차단)
         if (ws.isHost) {
           const own = ws.roomCode ? rooms.get(ws.roomCode) : null;
@@ -3536,7 +3585,7 @@ wss.on('connection', (ws) => {
         const g = room.game;
         const v = Math.floor(finite(msg.v));
         if (room.gameType === 'sadari' && g.sPhase === 'pick') {
-          if (v >= 0 && v < SADARI_LANES) p.pick = v;
+          if (v >= 0 && v < (g.lanes || SADARI_LANES)) p.pick = v;
         } else if (room.gameType === 'pirate' && g.pPhase === 'pick') {
           if (v >= 0 && v < PIRATE_SLOTS) {
             const i = p.picks.indexOf(v);
@@ -3705,6 +3754,25 @@ setInterval(() => {
 }, 60 * 1000);
 
 server.listen(PORT, () => console.log(`교실 아케이드 서버 실행 중 → http://localhost:${PORT}`));
+
+// 재배포·재시작 예고 — 수업 중에 배포되면 교사 화면이 방을 되살릴 수 있게 미리 알린다.
+// (Render는 새 컨테이너로 교체하므로 디스크 저장은 소용없다. 복원 주체는 교사 화면이다.)
+let shuttingDown = false;
+function gracefulExit(sig) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[${sig}] 종료 준비 — 방 ${rooms.size}개에 재시작 예고`);
+  for (const r of rooms.values()) {
+    try {
+      clearInterval(r.timer); r.timer = null;
+      broadcast(r, { type: 'server_restart' });
+    } catch {}
+  }
+  // 예고 메시지가 나갈 시간을 준 뒤 종료
+  setTimeout(() => process.exit(0), 700);
+}
+process.on('SIGTERM', () => gracefulExit('SIGTERM'));
+process.on('SIGINT', () => gracefulExit('SIGINT'));
 
 // Render 무료 서버 자기 핑 — GitHub Actions 크론이 지연·결번돼도(실측 90분 공백 있었음)
 // 깨어 있는 동안은 스스로 inbound 트래픽을 만들어 잠들지 않는다. 수업시간(07~22시 KST)에만.
