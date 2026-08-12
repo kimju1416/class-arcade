@@ -549,7 +549,14 @@ const OX_DATA = [
   ['부산에는 바다가 없다', 1], ['라면은 얼음물에 끓여야 맛있다', 1],
 ];
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox'];
+// 10초를 잡아라 (시간 감각 — 시계가 숨으면 목표 시간에 정확히 탭)
+const TIMING_TARGETS = [5000, 7000, 8000, 10000, 12000, 15000];
+const TIMING_ROUNDS = 4;
+const TIMING_READY_MS = 3500;
+const TIMING_REVEAL_MS = 6500;
+const TIMING_EXTRA_MS = 8000;    // 목표 시간 + 8초까지 기다렸다가 마감
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -589,6 +596,11 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
         : undefined,
       sumo: r.gameType === 'sumo' && r.game ? { ring: Math.round(r.game.ringR) } : undefined,
+      timing: r.gameType === 'timing' && r.game && r.game.tTargets
+        ? { phase: r.game.tPhase, round: r.game.tIdx, target: r.game.tTargets[r.game.tIdx],
+            startAt: r.game.startAt || 0, results: r.game.results,
+            scores: [...r.players.values()].map(p => [p.nick, p.score]) }
+        : undefined,
       ox: r.gameType === 'ox' && r.game && r.game.oxQs
         ? { phase: r.game.oxPhase, idx: r.game.oxIdx, q: (r.game.oxQs[r.game.oxIdx] || [''])[0],
             answer: (r.game.oxQs[r.game.oxIdx] || [0, 0])[1], revived: r.game.oxRevived }
@@ -747,7 +759,7 @@ function startGame(room, type, opt) {
     p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.startS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
     p.vx = 0; p.vy = 0; p.dashUntil = 0; p.dashReadyAt = 0; p.dashDx = 0; p.dashDy = 0; p.bumpAt = 0;
     p.satChair = null; p.outRound = 0; p.pick = -1; p.picks = [];
-    p.qAnswer = -1; p.qAnswerAt = 0; p.qGain = 0;
+    p.qAnswer = -1; p.qAnswerAt = 0; p.qGain = 0; p.tapAt = 0;
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -883,6 +895,13 @@ function startGame(room, type, opt) {
       return { q, choices: order.map(i => cs[i]), correct: order.indexOf(0) };
     });
     g.quizCat = cat; g.qIdx = 0; g.qPhase = 'idle';
+  } else if (type === 'timing') {
+    g.roundMs = 0;
+    g.arenaW = 900; g.arenaH = 980;
+    // 목표 시간은 0.5초 단위 완전 랜덤 — 라운드가 갈수록 길어져 어려워진다 (예: 4.5초 → 13.5초)
+    const randT = (min, max) => (min * 2 + Math.floor(Math.random() * ((max - min) * 2 + 1))) / 2 * 1000;
+    g.tTargets = [randT(4, 6), randT(6, 9), randT(9, 12), randT(12, 16)];
+    g.tIdx = 0; g.tPhase = 'idle';
   } else if (type === 'ox') {
     g.roundMs = 0;
     g.arenaW = 1100; g.arenaH = 760;   // 가로로 넓게 — 왼쪽 O, 오른쪽 X
@@ -941,6 +960,7 @@ function tick(room) {
       if (room.gameType === 'pirate') startPirateRound(room, now);
       if (room.gameType === 'quiz') startQuizQ(room, now);
       if (room.gameType === 'ox') startOxQ(room, now);
+      if (room.gameType === 'timing') startTimingRound(room, now);
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
     }
     sendState(room, now);
@@ -972,6 +992,7 @@ function tick(room) {
   else if (room.gameType === 'pirate') pirateTick(room, now);
   else if (room.gameType === 'quiz') quizTick(room, now);
   else if (room.gameType === 'ox') oxTick(room, now, dt);
+  else if (room.gameType === 'timing') timingTick(room, now);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -1848,6 +1869,57 @@ function endOx(room) {
     p => p.alive ? 'alive' : String(p.outRound || 0));
 }
 
+// ---------- 10초를 잡아라 ----------
+function startTimingRound(room, now) {
+  const g = room.game;
+  g.tPhase = 'ready';
+  g.readyEndAt = now + TIMING_READY_MS;
+  g.results = null;
+  for (const p of room.players.values()) p.tapAt = 0;
+}
+
+function timingTick(room, now) {
+  const g = room.game;
+  const target = g.tTargets[g.tIdx];
+  if (g.tPhase === 'ready') {
+    if (now >= g.readyEndAt) {
+      g.tPhase = 'run';
+      g.startAt = now;
+      // 처음 일부만 시계를 보여주고 가린다 (최대 3초)
+      g.hideAt = now + Math.min(3000, Math.round(target * 0.35));
+    }
+  } else if (g.tPhase === 'run') {
+    const parts = [...room.players.values()].filter(p => !p.waiting && p.connected);
+    const allTapped = parts.length > 0 && parts.every(p => p.tapAt > 0);
+    if (allTapped || now >= g.startAt + target + TIMING_EXTRA_MS) {
+      // 판정: 서버 도착 시각 기준 (클라 시계 조작 불가). 오차 50ms당 1점 감점, 0.05초 이내면 보너스
+      g.results = [];
+      for (const p of [...room.players.values()].filter(p2 => !p2.waiting)) {
+        if (p.tapAt > 0) {
+          const diff = p.tapAt - g.startAt - target;
+          const ad = Math.abs(diff);
+          let pts = Math.max(0, 100 - Math.round(ad / 50));
+          const perfect = ad <= 50 ? 1 : 0;
+          if (perfect) pts += 50;
+          p.score += pts;
+          g.results.push([p.id, diff, pts, perfect]);
+        } else {
+          g.results.push([p.id, null, 0, 0]);
+        }
+      }
+      g.tPhase = 'reveal';
+      g.revealEndAt = now + TIMING_REVEAL_MS;
+    }
+  } else if (g.tPhase === 'reveal') {
+    if (now >= g.revealEndAt) {
+      if (g.tIdx + 1 >= g.tTargets.length) { endWord(room); return; }   // 점수 순위
+      g.tIdx++;
+      startTimingRound(room, now);
+    }
+  }
+  sendState(room, now);
+}
+
 // ---------- 퀴즈쇼 ----------
 function startQuizQ(room, now) {
   const g = room.game;
@@ -2098,7 +2170,7 @@ function sendState(room, now) {
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
-        : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'sadari') ? p.score
+        : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'sadari' || type === 'timing') ? p.score
         : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0) : 0;
       const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
       // 스모: 대시 중 / 대시 쿨타임(0.1초 단위) / 최근 충돌
@@ -2112,6 +2184,7 @@ function sendState(room, now) {
       // 사다리·통아저씨: 다 골랐는지 (뭘 골랐는지는 공개 시점에만)
       if (type === 'sadari') row.push(p.pick >= 0 ? 1 : 0);
       if (type === 'pirate') row.push(p.picks.length >= g.knives ? 1 : 0);
+      if (type === 'timing') row.push(p.tapAt > 0 ? 1 : 0);
       // 폭탄 밟은 직후 1초간 "0원!" 연출
       if (type === 'coin') row.push(now - (p.lostAt || 0) < 1000 ? 1 : 0);
       // 파리채 위치·최근 명중 표시
@@ -2190,6 +2263,17 @@ function sendState(room, now) {
       msg.rungs = g.rungs; msg.map = g.map; msg.revealAt = g.revealAt;
       msg.picks = [...room.players.values()].filter(p => !p.waiting && p.pick >= 0).map(p => [p.id, p.pick]);
     }
+  }
+  if (type === 'timing') {
+    const parts = [...room.players.values()].filter(p => !p.waiting);
+    msg.tPhase = g.tPhase; msg.round = g.tIdx; msg.totalRounds = g.tTargets.length;
+    msg.target = g.tTargets[g.tIdx];
+    msg.startAt = g.tPhase === 'run' ? g.startAt : 0;      // 클라가 serverNow()로 부드럽게 애니메이션
+    msg.hideAt = g.tPhase === 'run' ? g.hideAt : 0;
+    msg.tappedCount = parts.filter(p => p.tapAt > 0).length;
+    msg.partCount = parts.length;
+    msg.pickLeft = g.tPhase === 'ready' ? Math.max(0, g.readyEndAt - now) : 0;   // 시작 전 카운트다운만 공개
+    if (g.tPhase === 'reveal' && g.results) msg.results = g.results;             // [id, 오차ms(±), 점수, 퍼펙트]
   }
   if (type === 'ox') {
     const [q, answer] = g.oxQs[g.oxIdx] || ['', 0];
@@ -2393,6 +2477,16 @@ wss.on('connection', (ws) => {
             p.dashReadyAt = now2 + SUMO_DASH_CD;
           }
         }
+        break;
+      }
+
+      // 10초를 잡아라: 탭! (한 번 누르면 확정, 서버 도착 시각으로 판정)
+      case 'stop': {
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'timing') return;
+        const p = room.players.get(ws.playerId);
+        const g = room.game;
+        if (!p || p.waiting || g.tPhase !== 'run' || p.tapAt > 0) return;
+        p.tapAt = Date.now();
         break;
       }
 
