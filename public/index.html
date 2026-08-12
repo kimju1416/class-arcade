@@ -848,7 +848,9 @@ let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 
 // 황금각(137.5도)으로 돌려 30명이어도 인접 색이 겹쳐 보이지 않게 한다.
 const COLORS = Array.from({ length: 30 }, (_, i) => `hsl(${(i * 137.5) % 360} 78% 68%)`);
 
-// ---- 효과음 (TV/교사 화면에서만 재생, 외부 파일 없이 WebAudio 합성) ----
+// ---- 효과음 (TV/교사 화면에서만 재생) ----
+// 진짜 게임 사운드(sfx/*.mp3, Mixkit 무료 라이선스)를 우선 재생하고,
+// 파일이 아직 안 왔거나 실패하면 예전 WebAudio 합성음으로 자동 폴백한다.
 const SFX = (() => {
   let ac = null;
   let muted = localStorage.getItem('ca_mute') === '1';
@@ -857,6 +859,36 @@ const SFX = (() => {
     if (ac.state === 'suspended') ac.resume();
     return ac;
   }
+  // ---- 샘플 로더 ----
+  const FILES = ['count', 'go', 'coin', 'ok', 'fanfare', 'boom', 'zombie', 'swat', 'grab', 'miss', 'clear', 'bigclear', 'hit', 'melody'];
+  const bufs = {}, raw = {};
+  let fetched = false, decoded = false;
+  function prefetch() {   // 네트워크는 제스처 없이도 가능 — 페이지 뜨자마자 받아둔다
+    if (fetched) return;
+    fetched = true;
+    for (const n of FILES)
+      fetch('sfx/' + n + '.mp3').then(r => r.ok ? r.arrayBuffer() : null)
+        .then(b => { if (b) { raw[n] = b; if (ac) decodeOne(n); } }).catch(() => {});
+  }
+  function decodeOne(n) {
+    if (!raw[n] || bufs[n]) return;
+    try { ctx().decodeAudioData(raw[n].slice(0), b => { bufs[n] = b; }, () => {}); } catch {}
+  }
+  function decodeAll() { if (decoded) return; decoded = true; for (const n of FILES) decodeOne(n); }
+  function play(name, { vol = 1, rate = 1 } = {}) {
+    if (muted || !isHost) return true;      // 재생 대상이 아니면 폴백도 불필요
+    const b = bufs[name];
+    if (!b) return false;                   // 아직 디코딩 전 → 신스 폴백
+    try {
+      const a = ctx(), s = a.createBufferSource(), g = a.createGain();
+      s.buffer = b; s.playbackRate.value = rate;
+      g.gain.value = vol;
+      s.connect(g); g.connect(a.destination); s.start();
+      return true;
+    } catch { return false; }
+  }
+  if (document.readyState === 'complete') prefetch();
+  else window.addEventListener('load', prefetch);
   function tone(f, dur, { type = 'square', vol = .15, slide = 0, delay = 0 } = {}) {
     if (muted || !isHost) return;
     try {
@@ -892,31 +924,63 @@ const SFX = (() => {
     } catch {}
   }
   return {
-    // 오디오 컨텍스트는 사용자 제스처 안에서 열어야 한다 (교사 화면 여부와 무관하게 미리 열어둠)
-    unlock() { if (!muted) try { ctx(); } catch {} },
-    countBeep() { tone(660, .12, { type: 'sine', vol: .2 }); },
-    go() { tone(523, .12); tone(659, .12, { delay: .1 }); tone(784, .3, { delay: .2 }); },
-    boom() { if (gate('boom', 90)) { noise(.35, .3); tone(90, .3, { type: 'sine', vol: .3, slide: -55 }); } },
-    coin() { if (gate('coin', 70)) { tone(988, .07, { vol: .1 }); tone(1319, .15, { vol: .1, delay: .07 }); } },
-    zombie() { tone(300, .35, { type: 'sawtooth', vol: .18, slide: -190 }); },
-    swat() { if (gate('swat', 70)) { noise(.09, .18); tone(420, .07, { type: 'square', vol: .12, slide: -180 }); } },
-    grab() { if (gate('grab', 90)) { tone(587, .09, { vol: .14 }); tone(880, .16, { vol: .14, delay: .09 }); } },
-    miss() { tone(200, .18, { type: 'sine', vol: .13, slide: -70 }); },
-    ok() { if (gate('ok', 90)) { tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 }); } },
-    fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .22, { vol: .16, delay: i * .13 })); },
-    // 사이먼 가라사대: 패드별 고정 음 (도·미·솔·높은도 — 어떤 순서로 이어져도 화음이 됨)
+    // 오디오 컨텍스트는 사용자 제스처 안에서 열어야 한다 — 열리는 김에 받아둔 샘플을 디코딩
+    unlock() { if (!muted) try { ctx(); prefetch(); decodeAll(); } catch {} },
+    countBeep() { if (!play('count', { vol: .8 })) tone(660, .12, { type: 'sine', vol: .2 }); },
+    go() { if (!play('go')) { tone(523, .12); tone(659, .12, { delay: .1 }); tone(784, .3, { delay: .2 }); } },
+    boom() { if (gate('boom', 90) && !play('boom', { vol: .75 })) { noise(.35, .3); tone(90, .3, { type: 'sine', vol: .3, slide: -55 }); } },
+    coin() { if (gate('coin', 70) && !play('coin', { vol: .55 })) { tone(988, .07, { vol: .1 }); tone(1319, .15, { vol: .1, delay: .07 }); } },
+    zombie() { if (!play('zombie', { vol: .8 })) tone(300, .35, { type: 'sawtooth', vol: .18, slide: -190 }); },
+    swat() { if (gate('swat', 70) && !play('swat', { vol: .65 })) { noise(.09, .18); tone(420, .07, { type: 'square', vol: .12, slide: -180 }); } },
+    grab() { if (gate('grab', 90) && !play('grab', { vol: .7 })) { tone(587, .09, { vol: .14 }); tone(880, .16, { vol: .14, delay: .09 }); } },
+    miss() { if (!play('miss', { vol: .55 })) tone(200, .18, { type: 'sine', vol: .13, slide: -70 }); },
+    ok() { if (gate('ok', 90) && !play('ok', { vol: .7 })) { tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 }); } },
+    fanfare() { if (!play('fanfare', { vol: .8 })) [523, 659, 784, 1047].forEach((f, i) => tone(f, .22, { vol: .16, delay: i * .13 })); },
+    // 블록 배틀: 줄 클리어 (4줄=테트리스는 보물 사운드)
+    clear(n) {
+      if (gate('clear', 90) && !play(n >= 4 ? 'bigclear' : 'clear', { vol: n >= 4 ? .85 : .6 })) {
+        tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 });
+      }
+    },
+    hit() { if (gate('hit', 90)) play('hit', { vol: .6 }); },
+    // 사이먼 가라사대: 패드별 고정 음 (도·미·솔·높은도) — 음정이 정확해야 해서 합성음 유지
     simon(i) { tone([262, 330, 392, 523][i] || 262, .3, { type: 'triangle', vol: .22 }); },
-    // 의자 뺏기: 음악이 흐르다 뚝 멈추는 게 게임의 전부라 진짜 멜로디를 튼다
+    // 의자 뺏기: 진짜 게임 BGM 루프 (뚝 멈추는 게 게임의 전부 — 정지는 80ms 페이드로 클릭만 방지)
     melodyStart() {
-      if (this._melIv || muted || !isHost) return;
+      if (this._melSrc || this._melIv || muted || !isHost) return;
+      const b = bufs.melody;
+      if (b) {
+        try {
+          const a = ctx(), s = a.createBufferSource(), g = a.createGain();
+          s.buffer = b; s.loop = true;
+          g.gain.setValueAtTime(0, a.currentTime);
+          g.gain.linearRampToValueAtTime(.65, a.currentTime + .25);
+          s.connect(g); g.connect(a.destination); s.start();
+          this._melSrc = s; this._melGain = g;
+          return;
+        } catch {}
+      }
+      // 폴백: 예전 합성 멜로디
       const notes = [523, 659, 784, 659, 880, 784, 659, 523, 587, 698, 880, 698, 784, 659, 587, 523];
       this._melStep = 0;
       this._melIv = setInterval(() => {
         tone(notes[this._melStep++ % notes.length], .17, { type: 'triangle', vol: .13 });
       }, 220);
     },
-    melodyStop() { clearInterval(this._melIv); this._melIv = null; },
+    melodyStop() {
+      clearInterval(this._melIv); this._melIv = null;
+      if (this._melSrc) {
+        try {
+          const a = ctx(), s = this._melSrc, g = this._melGain;
+          g.gain.setValueAtTime(g.gain.value, a.currentTime);
+          g.gain.linearRampToValueAtTime(0, a.currentTime + .08);
+          s.stop(a.currentTime + .1);
+        } catch {}
+        this._melSrc = null; this._melGain = null;
+      }
+    },
     get muted() { return muted; },
+    get ready() { return Object.keys(bufs).length; },   // 디코딩된 샘플 수 (검증·디버깅용)
     toggle() {
       muted = !muted;
       localStorage.setItem('ca_mute', muted ? '1' : '0');
@@ -1696,7 +1760,7 @@ function renderTetHost(m) {
     if (fx > 0) {
       el.classList.add('flash');
       clearTimeout(el._ft); el._ft = setTimeout(() => el.classList.remove('flash'), 450);
-      if (fx >= 4) SFX.ok(); else SFX.coin();
+      SFX.clear(fx);
     }
     if (tetPrevAlive[id] === 1 && !alive) SFX.boom();   // 탈락 순간
     tetPrevAlive[id] = alive;
