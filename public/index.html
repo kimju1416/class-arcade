@@ -260,6 +260,103 @@
   #wordInput.shake { animation: shake .3s; border-color: #ff6b6b; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
 
+  /* 순간 포착: 퀴즈 뷰 재사용 + 스튜디오 배경 + 장면 밴드 */
+  #quizGame.flashmode {
+    background: linear-gradient(rgba(8,11,26,.35), rgba(8,11,26,.55)),
+                url('sprites/bg-flash.jpg') center/cover no-repeat;
+  }
+  #flashScene { display: none; }
+  #flashScene.on {
+    display: flex; flex-wrap: wrap; gap: 10px 20px; justify-content: center; align-content: center;
+    width: 100%; max-width: 860px; min-height: 150px; font-size: 54px;
+  }
+  body.host #flashScene.on { font-size: 82px; min-height: 250px; }
+  #flashScene span { animation: fsPop .32s ease-out backwards; text-shadow: 0 6px 18px rgba(0,0,0,.6); }
+  #flashScene.small { min-height: 0; font-size: 30px; opacity: .85; }
+  body.host #flashScene.small { font-size: 42px; min-height: 0; }
+  @keyframes fsPop { from { transform: scale(.25); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+
+  /* 사이먼 가라사대: 무대 배경 + 4색 원형 휠 */
+  #simonGame {
+    justify-content: flex-start; padding-top: 4vh; gap: 14px;
+    background: linear-gradient(rgba(8,11,26,.38), rgba(8,11,26,.55)),
+                url('sprites/bg-simon.jpg') center/cover no-repeat;
+  }
+  .simon-wrap { position: relative; width: min(86vw, 380px); }
+  body.host .simon-wrap { width: min(46vh, 470px); }
+  .simon-pads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .simon-pad {
+    aspect-ratio: 1; border: none; cursor: pointer; padding: 0;
+    filter: brightness(.52) saturate(.8);
+    transition: filter .1s, transform .08s, box-shadow .1s;
+    box-shadow: inset 0 -10px 0 rgba(0,0,0,.32), inset 0 4px 0 rgba(255,255,255,.14), 0 8px 20px rgba(0,0,0,.45);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .simon-pad:active { transform: scale(.96); }
+  .simon-pad.s0 { background: #e04a60; border-radius: 100% 20px 20px 20px; }
+  .simon-pad.s1 { background: #3c82e8; border-radius: 20px 100% 20px 20px; }
+  .simon-pad.s2 { background: #e8b02a; border-radius: 20px 20px 20px 100%; }
+  .simon-pad.s3 { background: #47b34f; border-radius: 20px 20px 100% 20px; }
+  .simon-pad.on { filter: brightness(1.45) saturate(1.3); }
+  .simon-pad.s0.on { box-shadow: 0 0 44px #ff6b81, inset 0 0 30px rgba(255,255,255,.4); }
+  .simon-pad.s1.on { box-shadow: 0 0 44px #6aa9ff, inset 0 0 30px rgba(255,255,255,.4); }
+  .simon-pad.s2.on { box-shadow: 0 0 44px #ffd45e, inset 0 0 30px rgba(255,255,255,.4); }
+  .simon-pad.s3.on { box-shadow: 0 0 44px #7ee787, inset 0 0 30px rgba(255,255,255,.4); }
+  .simon-pad.lock { filter: brightness(.34) saturate(.55); cursor: default; }
+  .simon-hub {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 36%; aspect-ratio: 1; border-radius: 50%; z-index: 2;
+    background: radial-gradient(#1d2550, #10162b);
+    border: 5px solid #3a4680; box-shadow: 0 10px 26px rgba(0,0,0,.55), inset 0 0 0 2px rgba(120,150,255,.22);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+    pointer-events: none;
+  }
+  .simon-hub .rd { font-size: 12px; color: #93a0c4; font-weight: 700; }
+  .simon-hub .n { font-size: 30px; font-weight: 800; color: #ffb03a; line-height: 1.1; }
+  body.host .simon-hub .rd { font-size: 15px; }
+  body.host .simon-hub .n { font-size: 40px; }
+  .simon-dots { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; min-height: 14px; }
+  .simon-dots i {
+    width: 13px; height: 13px; border-radius: 50%; background: #232c4d; border: 2px solid #3a4680;
+  }
+  .simon-dots i.f { background: #ffb03a; border-color: #ffd27a; box-shadow: 0 0 10px rgba(255,176,58,.6); }
+  #simonMsg { font-size: 20px; font-weight: 800; text-align: center; min-height: 30px; }
+  body.host #simonMsg { font-size: 30px; }
+  #simonInfo { font-size: 17px; font-weight: 700; color: #93a0c4; min-height: 24px; text-align: center; }
+
+  /* 같은 그림 찾기: 카드 테이블 배경 + 3D 뒤집기 카드 */
+  #pairsGame {
+    justify-content: flex-start; padding-top: 3vh; gap: 12px;
+    background: linear-gradient(rgba(8,11,26,.3), rgba(8,11,26,.5)),
+                url('sprites/bg-pairs.jpg') center/cover no-repeat;
+  }
+  .pairs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; width: 100%; max-width: min(88vw, 400px); }
+  .pcard { aspect-ratio: 3/4; perspective: 700px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .pcard .inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .38s cubic-bezier(.3,1.4,.5,1); }
+  .pcard.up .inner { transform: rotateY(180deg); }
+  .pcard .face {
+    position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .pcard .back {
+    background: url('sprites/card-back.jpg') center/cover no-repeat;
+    box-shadow: 0 4px 10px rgba(0,0,0,.45), inset 0 0 0 2px rgba(255,215,120,.25);
+  }
+  .pcard .front {
+    transform: rotateY(180deg); font-size: clamp(26px, 8vw, 40px);
+    background: linear-gradient(#f7f0dc, #e6d9ba);
+    border: 2px solid #c9b98a; box-shadow: 0 4px 10px rgba(0,0,0,.45);
+  }
+  .pcard.match .front { border-color: #3ddc84; box-shadow: 0 0 18px rgba(61,220,132,.75); }
+  .pcard.match { animation: pMatch .45s ease-out; }
+  @keyframes pMatch { 0% { transform: scale(1) } 45% { transform: scale(1.14) } 100% { transform: scale(1) } }
+  #pairsInfo { font-size: 17px; font-weight: 800; min-height: 26px; text-align: center; }
+  .pairs-prow { display: flex; gap: 10px; align-items: center; background: rgba(16,22,43,.88); border-radius: 10px; padding: 8px 14px; font-size: 15px; }
+  .pairs-prow .bar { flex: 1; height: 10px; background: #232c4d; border-radius: 5px; overflow: hidden; }
+  .pairs-prow .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #ffb03a, #ffd700); border-radius: 5px; transition: width .3s; }
+  .pairs-prow .n { width: 70px; text-align: right; color: #93a0c4; font-size: 13px; flex-shrink: 0; }
+  body.host #pairsBoard { max-width: 560px; max-height: calc(100vh - 250px); overflow-y: auto; }
+
   /* 결과 */
   #result { justify-content: flex-start; padding-top: 4vh; }
   body.host #result { padding-bottom: 0; }
@@ -452,15 +549,44 @@
   <button class="btn danger-ghost" id="btnWordAbort" style="display:none">게임 중단</button>
 </div>
 
-<!-- 퀴즈쇼 (카훗 스타일 4지선다) -->
+<!-- 퀴즈쇼 (카훗 스타일 4지선다) — 순간 포착(flash)도 이 뷰를 재사용한다 -->
 <div class="view" id="quizGame">
   <div class="word-round" id="quizProgress">문제 1 / 10</div>
   <div class="quiz-q" id="quizQ">준비하세요…</div>
+  <div id="flashScene"></div>
   <div class="word-timer"><div id="quizTimerBar" style="width:100%"></div></div>
   <div class="quiz-grid" id="quizGrid"></div>
   <div id="quizInfo"></div>
   <div class="word-list" id="quizBoard"></div>
   <button class="btn danger-ghost" id="btnQuizAbort" style="display:none">게임 중단</button>
+</div>
+
+<!-- 사이먼 가라사대 (4색 멜로디 기억) -->
+<div class="view" id="simonGame">
+  <div class="word-round" id="simonRound">라운드 1</div>
+  <div class="quiz-q" id="simonMsg">준비하세요…</div>
+  <div class="simon-wrap">
+    <div class="simon-pads">
+      <button class="simon-pad s0 lock" data-i="0"></button>
+      <button class="simon-pad s1 lock" data-i="1"></button>
+      <button class="simon-pad s2 lock" data-i="2"></button>
+      <button class="simon-pad s3 lock" data-i="3"></button>
+    </div>
+    <div class="simon-hub"><span class="rd">음</span><b class="n" id="simonLen">3</b></div>
+  </div>
+  <div class="simon-dots" id="simonDots"></div>
+  <div id="simonInfo"></div>
+  <button class="btn danger-ghost" id="btnSimonAbort" style="display:none">게임 중단</button>
+</div>
+
+<!-- 같은 그림 찾기 (짝 맞추기) -->
+<div class="view" id="pairsGame">
+  <div class="word-round" id="pairsHead">🃏 같은 그림 찾기</div>
+  <div class="word-timer"><div id="pairsTimerBar" style="width:100%"></div></div>
+  <div class="pairs-grid" id="pairsGrid"></div>
+  <div id="pairsInfo"></div>
+  <div class="word-list" id="pairsBoard"></div>
+  <button class="btn danger-ghost" id="btnPairsAbort" style="display:none">게임 중단</button>
 </div>
 
 <!-- 결과 -->
@@ -512,6 +638,10 @@ const GAMES_META = {
   quiz: { icon: '🧠', name: '퀴즈쇼', desc: '카훗처럼 4지선다 퀴즈! 빨리 맞힐수록 점수가 크다. 카테고리와 문제 수를 골라 아이스브레이킹 하자.', badge: '객관식', rule: 'TV의 문제를 보고 폰에서\n정답 색깔 버튼을 빠르게 누르세요!' },
   ox:   { icon: '⭕', name: 'OX 서바이벌', desc: '문장을 읽고 몸으로 답해라! 맞으면 O땅, 틀리면 X땅으로 질주. 오답은 탈락, 전원 오답이면 전원 부활 — 최후의 1인 골든벨!', badge: '서바이벌', rule: '맞다고 생각하면 O구역, 틀리면 X구역!\n시간이 끝나기 전에 달려가세요' },
   timing:{ icon: '⏱️', name: '10초를 잡아라', desc: '시계가 숨는다! 머릿속으로 초를 세다가 목표 시간이 됐다 싶으면 탭. 오차가 작을수록 고득점, 0.05초 안이면 ⚡신의 감각!', badge: '감각 승부', rule: '목표 시간을 기억! 시계가 가려지면\n마음속으로 세다가 정확한 순간에 탭!' },
+  simon: { icon: '🎵', name: '사이먼 가라사대', desc: 'TV가 연주하는 4색 멜로디를 순서대로 기억해 따라 눌러라! 한 음씩 길어진다. 틀리면 탈락 — 전원 틀리면 전원 부활!', badge: '서바이벌', rule: 'TV의 불빛 순서를 외웠다가\n내 폰에서 같은 순서로 누르세요!' },
+  chimp: { icon: '🐵', name: '침팬지 테스트', desc: '숫자가 잠깐 보였다 사라진다! 위치를 외워 1부터 순서대로 탭. 라운드마다 숫자가 늘어난다 — 당신의 작업기억력은?', badge: '8라운드', rule: 'TV의 숫자 위치를 외웠다가\n1부터 순서대로 칸을 누르세요!' },
+  flash: { icon: '⚡', name: '순간 포착', desc: '그림들이 2초 만에 사라진다! 몇 개였는지, 뭐가 없었는지 4지선다로 맞혀라. 빠를수록 보너스!', badge: '8문제', rule: 'TV에 잠깐 뜨는 그림을 눈에 새기고\n문제가 나오면 색깔 버튼으로 답!' },
+  pairs: { icon: '🃏', name: '같은 그림 찾기', desc: '뒤집힌 카드 20장에서 짝을 찾아라! 배치는 모두 동일 — 적게 뒤집고 빨리 끝낼수록 고득점. 탈락 없음.', badge: '75초', rule: '카드 두 장을 뒤집어 짝을 맞추세요!\n먼저 다 찾으면 완주 보너스' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
 const GAME_CATS = [
@@ -519,6 +649,7 @@ const GAME_CATS = [
   { key: 'sur',   label: '⚔️ 서바이벌' },
   { key: 'score', label: '🏆 점수 경쟁' },
   { key: 'quiz',  label: '🧠 퀴즈·두뇌' },
+  { key: 'memory', label: '🧩 기억력' },
   { key: 'luck',  label: '🎲 복불복' },
 ];
 const GAME_CAT_OF = {
@@ -528,6 +659,7 @@ const GAME_CAT_OF = {
   run: ['score'],
   timing: ['score', 'luck'],
   word: ['quiz'], cho: ['quiz'], quiz: ['quiz'],
+  simon: ['memory', 'sur'], chimp: ['memory'], flash: ['memory', 'quiz'], pairs: ['memory'],
   sadari: ['luck'],
 };
 const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식', '내문제'];
@@ -634,6 +766,8 @@ const SFX = (() => {
     miss() { tone(200, .18, { type: 'sine', vol: .13, slide: -70 }); },
     ok() { if (gate('ok', 90)) { tone(880, .1, { type: 'sine', vol: .18 }); tone(1109, .18, { type: 'sine', vol: .18, delay: .09 }); } },
     fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .22, { vol: .16, delay: i * .13 })); },
+    // 사이먼 가라사대: 패드별 고정 음 (도·미·솔·높은도 — 어떤 순서로 이어져도 화음이 됨)
+    simon(i) { tone([262, 330, 392, 523][i] || 262, .3, { type: 'triangle', vol: .22 }); },
     // 의자 뺏기: 음악이 흐르다 뚝 멈추는 게 게임의 전부라 진짜 멜로디를 튼다
     melodyStart() {
       if (this._melIv || muted || !isHost) return;
@@ -795,20 +929,43 @@ function handle(m) {
         enterGameView(prev === 'countdown' && phase === 'playing');
       } else if (phase === 'lobby') {
         SFX.melodyStop();
+        clearSimonTimers();
         show(isHost ? 'hostLobby' : 'playerLobby');
       }
       break;
     }
     case 'state':
       if (m.mode === 'quiz') { renderQuiz(m); break; }
+      if (m.mode === 'flash') { window.__lastState = m; window.__myId = myId; renderFlash(m); break; }
+      if (m.mode === 'simon') { window.__lastState = m; window.__myId = myId; renderSimon(m); break; }
+      if (m.mode === 'pairs') { window.__lastState = m; window.__myId = myId; renderPairs(m); break; }
       if (m.mode === 'word' || m.mode === 'cho') { renderWord(m); break; }
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
       arena = m.arena;
       window.__lastState = m; window.__myId = myId;  // 자동 검증용 훅
       break;
+    // 사이먼: 패턴은 교사 화면에만 온다 — 서버 시각 기준으로 발광·멜로디 예약
+    case 'simon_seq':
+      scheduleSimonSeq(m);
+      break;
+    // 침팬지: 숫자 배치는 교사 화면에만 온다
+    case 'chimp_nums':
+      chimpNums = m.nums;
+      break;
+    // 순간 포착: 장면은 교사 화면에만 온다
+    case 'flash_scene':
+      flashScene = m.scene;
+      lastQuizJson = '';   // 장면이 도착했으니 다음 state에서 다시 그린다
+      break;
+    // 같은 그림: 내가 뒤집은 카드의 앞면 (본인에게만 온다)
+    case 'pairs_flip':
+      pairsFace[m.i] = m.face;
+      renderPairsCard(m.i);
+      break;
     case 'result':
       SFX.melodyStop();
+      clearSimonTimers();
       showResult(m.ranking);
       break;
     case 'word_ok':
@@ -928,14 +1085,298 @@ function renderQuiz(m) {
   if (isHost && m.qPhase === 'show' && sndPrev.quizShow !== m.qIdx) { sndPrev.quizShow = m.qIdx; SFX.countBeep(); }
 }
 
+// ---- 순간 포착 렌더링 (퀴즈쇼 DOM 재사용 — 암기 장면은 교사 화면에만) ----
+let flashScene = null, flashSceneShown = -1;
+function renderFlash(m) {
+  $('quizTimerBar').style.width = m.fPhase === 'show'
+    ? Math.max(0, m.timeLeft / m.timeTotal * 100) + '%'
+    : (m.fPhase === 'reveal' ? '0%' : '100%');
+  if (m.qIdx !== myQIdx) { myQIdx = m.qIdx; myQAnswer = -1; }
+
+  const json = JSON.stringify([m.qIdx, m.fPhase, m.q, m.answered, m.counts, m.scores, myQAnswer, phase, !!flashScene]);
+  if (json === lastQuizJson) return;
+  lastQuizJson = json;
+
+  setText($('quizProgress'), `⚡ 문제 ${m.qIdx + 1} / ${m.qTotal}`);
+  const memo = m.fPhase === 'memo';
+  const reveal = m.fPhase === 'reveal';
+  setText($('quizQ'),
+    phase === 'countdown' || m.fPhase === 'idle' ? '⚡ 준비하세요…'
+    : memo ? (isHost ? '👀 눈에 새기세요!' : '👀 TV를 보세요!')
+    : (m.q || ''));
+
+  // 장면 밴드: 암기 때는 교사 화면에만(flash_scene), 정답 공개 때는 전원(state.scene)
+  const band = $('flashScene');
+  const sceneData = memo && isHost ? flashScene : reveal ? m.scene : null;
+  if (sceneData) {
+    const key = m.qIdx + (reveal ? 'r' : 'm');
+    if (flashSceneShown !== key) {
+      flashSceneShown = key;
+      const items = [];
+      sceneData.forEach(([emo, cnt]) => { for (let k = 0; k < cnt; k++) items.push(emo); });
+      for (let i = items.length - 1; i > 0; i--) {   // 순서는 정답과 무관 — 보기 좋게 섞는다
+        const j = Math.floor(Math.random() * (i + 1)); [items[i], items[j]] = [items[j], items[i]];
+      }
+      band.innerHTML = items.map((e, i) =>
+        `<span style="animation-delay:${(i * 0.045).toFixed(2)}s">${e}</span>`).join('');
+    }
+    band.className = reveal ? 'on small' : 'on';
+  } else {
+    band.className = ''; band.innerHTML = ''; flashSceneShown = -1;
+  }
+
+  const grid = $('quizGrid');
+  grid.innerHTML = '';
+  (m.choices || []).forEach((c, i) => {
+    const b = document.createElement('button');
+    b.className = 'quiz-choice ' + QUIZ_COLORS[i]
+      + (reveal && i === m.correct ? ' ok' : '')
+      + (reveal && i !== m.correct ? ' dim' : '')
+      + (!reveal && myQAnswer === i ? ' sel' : '')
+      + (!reveal && myQAnswer >= 0 && myQAnswer !== i ? ' dim' : '');
+    b.innerHTML = `<span class="shp">${QUIZ_SHAPES[i]}</span><span>${esc(c)}</span>`
+      + (reveal && m.counts ? `<span class="cnt">${m.counts[i]}명</span>` : '');
+    if (!isHost && !reveal && myQAnswer < 0 && m.fPhase === 'show' && phase === 'playing') {
+      b.onclick = () => {
+        myQAnswer = i;
+        send({ type: 'answer', v: i });
+        if (navigator.vibrate) navigator.vibrate(15);
+        lastQuizJson = '';
+        renderFlash(m);
+      };
+    }
+    grid.appendChild(b);
+  });
+
+  if (isHost) {
+    setText($('quizInfo'), m.fPhase === 'show' ? `✋ ${m.answered}/${m.partCount}명 답함` : '');
+    $('quizInfo').style.color = '#93a0c4';
+  } else {
+    const mine = (m.scores || []).find(s => s[0] === myId);
+    if (reveal && mine) {
+      const gained = mine[3] || 0;
+      setText($('quizInfo'), gained > 0 ? `🎉 정답! +${gained}점 (총 ${mine[1]}점)`
+        : mine[4] >= 0 ? `😭 땡! (총 ${mine[1]}점)` : `⏰ 시간 초과! (총 ${mine[1]}점)`);
+      $('quizInfo').style.color = gained > 0 ? '#3ddc84' : '#ff6b6b';
+    } else {
+      setText($('quizInfo'), m.fPhase === 'show' && myQAnswer >= 0 ? '답 제출 완료! 두구두구…'
+        : memo ? '문제가 곧 나와요…' : '');
+      $('quizInfo').style.color = '#93a0c4';
+    }
+  }
+
+  if (isHost && reveal && m.scores) {
+    const top = [...m.scores].sort((a, b2) => b2[1] - a[1]).slice(0, 5);
+    $('quizBoard').innerHTML = top.map(([pid, sc2], i) => {
+      const meta = roster.get(pid) || { nick: '?', ci: 0 };
+      return `<div class="word-row"><b>${i + 1}.</b>
+        <span style="width:10px;height:10px;border-radius:50%;background:${COLORS[meta.ci % COLORS.length]}"></span>
+        ${esc(meta.nick)}<span class="pts">${sc2}점</span></div>`;
+    }).join('');
+  } else if (isHost) {
+    $('quizBoard').innerHTML = '';
+  }
+
+  // 사운드 (교사 화면): 장면 등장 = 셔터, 문제 = 삑, 정답 공개 = 딩동
+  if (isHost && memo && sndPrev.flashMemo !== m.qIdx) { sndPrev.flashMemo = m.qIdx; SFX.swat(); }
+  if (isHost && m.fPhase === 'show' && sndPrev.quizShow !== m.qIdx) { sndPrev.quizShow = m.qIdx; SFX.countBeep(); }
+  if (isHost && reveal && sndPrev.quizReveal !== m.qIdx) { sndPrev.quizReveal = m.qIdx; SFX.ok(); }
+}
+
+// ---- 사이먼 가라사대 렌더링 ----
+let lastSimonJson = '', simonTimers = [];
+function clearSimonTimers() { simonTimers.forEach(clearTimeout); simonTimers = []; }
+// 패턴 재생 예약: 서버 시각(showAt) 기준이라 교사 화면 어디서든 같은 타이밍
+function scheduleSimonSeq(m) {
+  clearSimonTimers();
+  const base = m.showAt - serverNow();
+  (m.seq || []).forEach((v, i) => {
+    simonTimers.push(setTimeout(() => { padFlash(v, m.flashMs); SFX.simon(v); },
+      Math.max(0, base + i * m.gap)));
+  });
+}
+function padFlash(v, ms) {
+  const pad = document.querySelector(`#simonGame .simon-pad[data-i="${v}"]`);
+  if (!pad) return;
+  pad.classList.add('on');
+  clearTimeout(pad.__t);
+  pad.__t = setTimeout(() => pad.classList.remove('on'), ms || 180);
+}
+function renderSimon(m) {
+  const me = (m.players || []).find(r => r[0] === myId);
+  const alive = me ? !!me[1] : true, waiting = me ? !!me[2] : false;
+  const done = me ? !!me[3] : false, myProg = me ? me[4] : 0;
+  const canPress = !isHost && phase === 'playing' && m.siPhase === 'input' && alive && !waiting && !done;
+  document.querySelectorAll('#simonGame .simon-pad').forEach(p => p.classList.toggle('lock', !canPress));
+
+  const json = JSON.stringify([m.siPhase, m.round, m.seqLen, m.doneN, m.aliveN, m.revived, me, phase]);
+  if (json === lastSimonJson) return;
+  lastSimonJson = json;
+
+  setText($('simonRound'), `라운드 ${m.round || 1} · 생존 ${m.aliveN}명`);
+  setText($('simonLen'), String(m.seqLen || 0));
+  setText($('simonMsg'),
+    phase === 'countdown' || m.siPhase === 'idle' ? '🎵 준비하세요…'
+    : m.siPhase === 'show' ? (isHost ? '🎵 잘 보고 기억하세요!' : '👀 TV를 보세요!')
+    : m.siPhase === 'input' ? (isHost ? '📱 폰에서 입력 중…'
+        : waiting ? '다음 판부터 참여해요' : !alive ? '💀 탈락 — 관전 중'
+        : done ? '✅ 입력 완료!' : '🎹 같은 순서로 누르세요!')
+    : m.revived ? '🎉 전원 탈락 — 전원 부활!'
+    : (isHost ? `라운드 ${m.round} 통과자 ${m.aliveN}명!` : alive ? '🎉 통과!' : '💀 탈락 — 관전 중'));
+
+  // 진행 점: 학생 = 내 입력 진행
+  if (!isHost && alive && !waiting) {
+    let dots = '';
+    for (let i = 0; i < (m.seqLen || 0); i++) dots += `<i class="${i < myProg ? 'f' : ''}"></i>`;
+    $('simonDots').innerHTML = dots;
+  } else $('simonDots').innerHTML = '';
+  setText($('simonInfo'), isHost && m.siPhase === 'input' ? `✋ ${m.doneN}/${m.aliveN}명 완료` : '');
+
+  // 사운드 (교사 화면)
+  if (isHost) {
+    if (m.siPhase === 'input' && sndPrev.simPhase !== 'input') SFX.countBeep();
+    if (m.siPhase === 'reveal' && sndPrev.simPhase !== 'reveal') { if (m.revived) SFX.fanfare(); else SFX.ok(); }
+    sndPrev.simPhase = m.siPhase;
+  }
+}
+// 학생: 4색 패드 입력 (정답 대조는 전부 서버 — 클라는 누른 것만 보낸다)
+document.querySelectorAll('#simonGame .simon-pad').forEach(p => {
+  p.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (isHost || phase !== 'playing') return;
+    const st = window.__lastState;
+    if (!st || st.mode !== 'simon' || st.siPhase !== 'input') return;
+    const me = (st.players || []).find(r => r[0] === myId);
+    if (!me || !me[1] || me[2] || me[3]) return;
+    const v = +p.dataset.i;
+    padFlash(v, 170);
+    send({ type: 'skey', v });
+    if (navigator.vibrate) navigator.vibrate(12);
+  });
+});
+
+// ---- 침팬지 테스트 로컬 상태 (내가 어느 칸을 맞혔는지 시각 표시용 — 판정은 서버) ----
+let chimpNums = null, chimpPending = -1, chimpConfirmed = {}, chimpFailCell = -1;
+let chimpSeenIdx = 0, chimpSeenRound = 0;
+function chimpCellAt(st, ax, ay) {
+  const cells = st.cells || [];
+  for (let i = 0; i < cells.length; i++)
+    if (Math.abs(cells[i][0] - ax) <= 70 && Math.abs(cells[i][1] - ay) <= 70) return i;
+  return -1;
+}
+
+// ---- 같은 그림 찾기 렌더링 ----
+let pairsFace = {}, lastPairsJson = '', pairsMatchSeen = 0;
+function buildPairsGrid() {
+  const grid = $('pairsGrid');
+  grid.style.display = isHost ? 'none' : 'grid';
+  grid.innerHTML = '';
+  if (isHost) return;
+  for (let i = 0; i < 20; i++) {
+    const el = document.createElement('div');
+    el.className = 'pcard';
+    el.dataset.i = i;
+    el.innerHTML = '<div class="inner"><div class="face back"></div><div class="face front"></div></div>';
+    el.onpointerdown = e => {
+      e.preventDefault();
+      if (phase !== 'playing') return;
+      const st = window.__lastState;
+      if (!st || st.mode !== 'pairs') return;
+      const me = (st.players || []).find(r => r[0] === myId);
+      if (!me || me[2]) return;                    // 대기자
+      if (me[6] >= 0) return;                      // 두 장째 판정 대기 중 잠금
+      if (me[4] & (1 << i)) return;                // 이미 맞춘 칸
+      if (me[5] === i) return;                     // 같은 카드 재탭
+      send({ type: 'pick', v: i });
+      if (navigator.vibrate) navigator.vibrate(10);
+    };
+    grid.appendChild(el);
+  }
+}
+// pairs_flip 수신: 앞면을 채우고 뒤집는다 (앞면은 뒤집은 본인에게만 온다)
+function renderPairsCard(i) {
+  const el = document.querySelector(`#pairsGame .pcard[data-i="${i}"]`);
+  if (!el) return;
+  el.querySelector('.front').textContent = pairsFace[i] || '';
+  el.classList.add('up');
+}
+function renderPairs(m) {
+  $('pairsTimerBar').style.width = Math.max(0, (m.timeLeft || 0) / 75000 * 100) + '%';
+  const me = (m.players || []).find(r => r[0] === myId);
+
+  const json = JSON.stringify([m.finishedN, m.players, phase]);
+  if (json === lastPairsJson) return;
+  lastPairsJson = json;
+
+  if (!isHost && me) {
+    const waiting = me[2], score = me[3], mask = me[4], fA = me[5], fB = me[6];
+    const att = me[7], prs = me[8], fin = me[9];
+    // 카드 동기화: 맞춘 칸은 계속 앞면, 판정 끝난 칸은 도로 덮는다
+    document.querySelectorAll('#pairsGame .pcard').forEach(el => {
+      const i = +el.dataset.i;
+      const matched = !!(mask & (1 << i));
+      if (matched) el.querySelector('.front').textContent = pairsFace[i] || '✅';   // 재접속 등으로 앞면을 모르면 체크로
+      el.classList.toggle('match', matched);
+      el.classList.toggle('up', matched || i === fA || i === fB);
+    });
+    if (prs > pairsMatchSeen) { pairsMatchSeen = prs; if (navigator.vibrate) navigator.vibrate([20, 40, 20]); }
+    setText($('pairsInfo'), waiting ? '다음 판부터 참여해요'
+      : fin ? `🏁 완주! ${prs}쌍 · ${score}점`
+      : `${prs}/10쌍 · 시도 ${att}회 · ${score}점`);
+    $('pairsInfo').style.color = fin ? '#3ddc84' : '#e8ecf8';
+  }
+  setText($('pairsHead'), `🃏 같은 그림 찾기 · 완주 ${m.finishedN || 0}명`);
+
+  // 교사 화면: 전원 진행 현황 보드
+  if (isHost) {
+    const rows = (m.players || []).filter(r => !r[2])
+      .sort((a, b) => (b[8] - a[8]) || (a[7] - b[7]));
+    $('pairsBoard').innerHTML = rows.map(r => {
+      const meta = roster.get(r[0]) || { nick: '?', ci: 0 };
+      return `<div class="pairs-prow">
+        <span style="width:10px;height:10px;border-radius:50%;background:${COLORS[meta.ci % COLORS.length]};flex-shrink:0"></span>
+        <span style="min-width:70px">${esc(meta.nick)}${r[9] ? ' 🏁' : ''}</span>
+        <span class="bar"><i style="width:${Math.min(100, r[8] * 10)}%"></i></span>
+        <span class="n">${r[8]}쌍 · ${r[3]}점</span></div>`;
+    }).join('');
+    const total = rows.reduce((s, r) => s + r[8], 0);
+    if (sndPrev.pairsSum >= 0 && total > sndPrev.pairsSum) SFX.coin();
+    sndPrev.pairsSum = total;
+    if ((m.finishedN || 0) > (sndPrev.pairsFin || 0)) SFX.fanfare();
+    sndPrev.pairsFin = m.finishedN || 0;
+  }
+}
+
 function enterGameView(keepInput) {
-  if (gameType === 'quiz') {
+  if (gameType === 'quiz' || gameType === 'flash') {
     show('quizGame');
+    $('quizGame').classList.toggle('flashmode', gameType === 'flash');
+    $('flashScene').className = ''; $('flashScene').innerHTML = '';
     $('btnQuizAbort').style.display = isHost ? 'block' : 'none';
     $('quizQ').textContent = '준비하세요…';
+    $('quizProgress').textContent = gameType === 'flash' ? '⚡ 순간 포착' : '문제 1 / 10';
     $('quizGrid').innerHTML = ''; $('quizInfo').textContent = ''; $('quizBoard').innerHTML = '';
     $('quizTimerBar').style.width = '100%';
     lastQuizJson = ''; myQAnswer = -1; myQIdx = -1;
+    // 1번 문제의 장면(flash_scene)은 phase(playing)보다 먼저 도착한다 — 전환 재진입 때 지우면 안 됨
+    flashSceneShown = -1;
+    if (!keepInput) flashScene = null;
+  } else if (gameType === 'simon') {
+    show('simonGame');
+    $('btnSimonAbort').style.display = isHost ? 'block' : 'none';
+    $('simonMsg').textContent = '준비하세요…';
+    $('simonRound').textContent = '라운드 1'; $('simonInfo').textContent = '';
+    $('simonDots').innerHTML = ''; $('simonLen').textContent = '3';
+    // 1라운드 패턴(simon_seq)은 playing 직전에 예약된다 — 전환 재진입 때 취소하면 안 됨
+    if (!keepInput) clearSimonTimers();
+    lastSimonJson = '';
+  } else if (gameType === 'pairs') {
+    show('pairsGame');
+    $('btnPairsAbort').style.display = isHost ? 'block' : 'none';
+    $('pairsInfo').textContent = ''; $('pairsBoard').innerHTML = '';
+    $('pairsTimerBar').style.width = '100%';
+    pairsFace = {}; lastPairsJson = ''; pairsMatchSeen = 0;
+    buildPairsGrid();
   } else if (gameType === 'word' || gameType === 'cho') {
     show('wordGame');
     $('wordPlayerUI').style.display = isHost ? 'none' : 'flex';
@@ -961,6 +1402,11 @@ function enterGameView(keepInput) {
       : gameType === 'sumo' ? '대시!<br>💨'
       : gameType === 'run' ? '점프<br>🐧' : '집게<br>내리기';
     myPick = -1; myPickRound = 0; myPicks = []; pirRot = 0; pirDrag = null;
+    // 1라운드 숫자(chimp_nums)는 playing 직전에 도착한다 — 전환 재진입 때 지우면 안 됨
+    if (!keepInput) {
+      chimpNums = null; chimpPending = -1; chimpConfirmed = {}; chimpFailCell = -1;
+      chimpSeenIdx = 0; chimpSeenRound = 0;
+    }
     $('btnAction').classList.remove('wait');
     if (!isHost) initInput();
   }
@@ -1061,7 +1507,8 @@ function renderGameGrid() {
   $('gameGrid').innerHTML = '';
   const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
                      race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
-                     sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox', timing: 'timing', run: 'runner' };
+                     sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox', timing: 'timing', run: 'runner',
+                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     if (gameTabSel !== 'all' && !(GAME_CAT_OF[key] || []).includes(gameTabSel)) continue;
     const el = document.createElement('div');
@@ -1167,6 +1614,8 @@ $('btnLeave2').onclick = () => { send({ type: 'leave' }); goHome(); };
 $('btnAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
 $('btnWordAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
 $('btnQuizAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
+$('btnSimonAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
+$('btnPairsAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
 $('btnMute').onclick = () => { $('btnMute').textContent = SFX.toggle() ? '🔇' : '🔊'; };
 
 // ---- 결과 ----
@@ -1301,7 +1750,7 @@ GRASS_IMG.src = 'sprites/grass.jpg';
 GRASS_IMG.onload = () => { grassReady = true; };
 // 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
 const FLOORS = {};
-['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari'].forEach(k => {
+['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp'].forEach(k => {
   const im = new Image();
   im.src = 'sprites/floor-' + k + '.jpg';
   im.onload = () => { FLOORS[k] = im; };
@@ -1389,6 +1838,18 @@ function initInput() {
       if (phase !== 'playing') return;
       pirDrag = { pid: e.pointerId, x0: e.clientX, rot0: pirRot, moved: 0 };
       try { g.setPointerCapture(e.pointerId); } catch {}
+      return;
+    }
+    if (gameType === 'chimp') {
+      // 침팬지: 타일 탭 = pick (입력 페이즈에만, 판정은 서버)
+      if (phase !== 'playing') return;
+      const st = window.__lastState;
+      if (!st || st.mode !== 'chimp' || st.chPhase !== 'input') return;
+      const me = (st.players || []).find(r => r[0] === myId);
+      if (!me || me[2] || me[5] || me[6]) return;   // 대기자·실패·완주
+      const a = toArena(e.clientX, e.clientY);
+      const i = chimpCellAt(st, a.x, a.y);
+      if (i >= 0) { chimpPending = i; send({ type: 'pick', v: i }); if (navigator.vibrate) navigator.vibrate(12); }
       return;
     }
     const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
@@ -1789,6 +2250,7 @@ function draw() {
   if (latest.mode === 'sadari') drawSadari(latest, ox, oy, scale, dpr);
   if (latest.mode === 'pirate') drawPirate(latest, ox, oy, scale, dpr);
   if (latest.mode === 'timing') drawTiming(latest, ox, oy, scale, dpr);
+  if (latest.mode === 'chimp') drawChimpTiles(latest, ox, oy, scale, dpr);
   // OX 서바이벌: 왼쪽 O 구역 / 오른쪽 X 구역 + 문제 배너
   if (latest.mode === 'ox') {
     const W2 = arena.w * scale, H2 = arena.h * scale, half = W2 / 2;
@@ -1918,7 +2380,19 @@ function draw() {
     }
   }
 
-  for (const pb of ((tapMode || raceMode || boardMode) ? [] : b.m.players)) {
+  // 침팬지도 판 게임 — 행 구조가 달라(waiting=2, score=3) 따로 집계한다
+  const chimpMode = latest.mode === 'chimp';
+  if (chimpMode) {
+    for (const pb of latest.players) {
+      if (pb[2]) continue;
+      aliveCount++;
+      if (pb[0] === myId) { myScore = pb[3]; myAlive = { alive: true }; }
+    }
+    tapHud = `🐵 ${latest.round || 1}/${latest.totalRounds || 8}라운드`
+      + (isHost ? ` · 참가 ${aliveCount}명` : ` · 내 점수 ${myScore}점`);
+  }
+
+  for (const pb of ((tapMode || raceMode || boardMode || chimpMode) ? [] : b.m.players)) {
     const [id, x2, y2, alive, waiting, extra] = pb;
     if (waiting) continue;
     const pa = posA.get(id) || pb;
@@ -2106,8 +2580,12 @@ function draw() {
       const left = Math.max(0, phaseEndAt - serverNow());
       setText($('hudTime'), Math.ceil(left / 1000) + '초');
     } else {
-      // 라운드형 게임(사다리·통아저씨)은 선택 남은 시간을 보여준다
-      const pl = latest.pickLeft || 0;
+      // 라운드형 게임(사다리·통아저씨·침팬지)은 현재 페이즈 남은 시간을 보여준다
+      const chLeft = latest.mode === 'chimp'
+        ? Math.max(0, (latest.chPhase === 'memo' ? latest.memoEndAt
+            : latest.chPhase === 'input' ? latest.inputEndAt : latest.revealEndAt || 0) - serverNow())
+        : 0;
+      const pl = latest.pickLeft || chLeft || 0;
       setText($('hudTime'), pl > 0 ? '⏱️ ' + Math.ceil(pl / 1000) + '초' : '');
     }
   }
@@ -2188,6 +2666,98 @@ function drawChair(x, y, r, dpr, owned) {
   ctx.fillRect(-16 * s, 9 * s, 5 * s, 14 * s);
   ctx.fillRect(11 * s, 9 * s, 5 * s, 14 * s);
   ctx.restore();
+}
+
+// ---- 침팬지 테스트: 기억 타일 ----
+function drawChimpTiles(latest, ox, oy, scale, dpr) {
+  const cells = latest.cells || [];
+  const ph = latest.chPhase;
+  const me = (latest.players || []).find(r => r[0] === myId);
+  const myProg = me ? me[4] : 0, myFail = me ? !!me[5] : false;
+
+  // 라운드가 바뀌면 내 탭 기록 초기화
+  if ((latest.round || 0) !== chimpSeenRound) {
+    chimpSeenRound = latest.round || 0;
+    chimpPending = -1; chimpConfirmed = {}; chimpFailCell = -1; chimpSeenIdx = 0;
+  }
+  // 서버가 내 정답을 인정하면(chIdx 증가) 마지막 탭 칸을 확정 표시
+  if (me && myProg > chimpSeenIdx) {
+    if (chimpPending >= 0) chimpConfirmed[chimpPending] = myProg;
+    chimpSeenIdx = myProg;
+  }
+  if (myFail && chimpFailCell < 0 && chimpPending >= 0) chimpFailCell = chimpPending;
+
+  const R = 62 * scale;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  cells.forEach((c, i) => {
+    const x = ox + c[0] * scale, y = oy + c[1] * scale;
+    const num = ph === 'reveal' && latest.nums ? latest.nums[i]
+      : ph === 'memo' && isHost && chimpNums ? chimpNums[i] : 0;
+    const mineOk = chimpConfirmed[i];
+    const isFail = i === chimpFailCell;
+
+    // 타일 몸체 (유리 느낌)
+    const rr = 16 * scale;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x - R, y - R, R * 2, R * 2, rr) : ctx.rect(x - R, y - R, R * 2, R * 2);
+    ctx.fillStyle = isFail ? 'rgba(140,30,40,.9)'
+      : mineOk ? 'rgba(28,96,58,.92)'
+      : num ? 'rgba(30,40,86,.94)' : 'rgba(22,30,62,.88)';
+    ctx.fill();
+    ctx.strokeStyle = isFail ? '#ff6b6b' : mineOk ? '#3ddc84' : num ? '#8fa0d8' : '#4a5890';
+    ctx.lineWidth = 3 * dpr;
+    ctx.stroke();
+    // 위쪽 하이라이트
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(x - R + 6 * scale, y - R + 6 * scale, R * 2 - 12 * scale, R * 0.6, 10 * scale);
+      ctx.fillStyle = 'rgba(255,255,255,.07)';
+      ctx.fill();
+    }
+
+    if (num) {           // 암기(교사 화면)·정답 공개: 숫자
+      ctx.fillStyle = ph === 'reveal' && me && num <= myProg ? '#3ddc84' : '#ffd700';
+      ctx.font = `800 ${64 * scale}px Pretendard, sans-serif`;
+      ctx.fillText(String(num), x, y + 2 * scale);
+    } else if (mineOk) { // 입력 중 내가 맞힌 칸: 몇 번째였는지
+      ctx.fillStyle = '#c9f7dd';
+      ctx.font = `800 ${52 * scale}px Pretendard, sans-serif`;
+      ctx.fillText(String(mineOk), x, y + 2 * scale);
+    } else if (isFail) {
+      ctx.fillStyle = '#ffd7d7';
+      ctx.font = `800 ${56 * scale}px Pretendard, sans-serif`;
+      ctx.fillText('✕', x, y + 2 * scale);
+    } else if (ph === 'input' || (ph === 'memo' && !isHost)) {
+      ctx.fillStyle = 'rgba(150,160,220,.5)';
+      ctx.font = `800 ${44 * scale}px Pretendard, sans-serif`;
+      ctx.fillText('?', x, y + 2 * scale);
+    }
+  });
+
+  // 상단 안내 문구
+  const W2 = arena.w * scale;
+  ctx.font = `800 ${40 * scale}px Pretendard, sans-serif`;
+  if (ph === 'memo') {
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText(isHost ? '🧠 위치를 외우세요!' : '👀 TV의 숫자 위치를 외우세요!', ox + W2 / 2, oy + 44 * scale);
+  } else if (ph === 'input') {
+    if (!isHost && myFail) { ctx.fillStyle = '#ff6b6b'; ctx.fillText('😵 이번 라운드 실패!', ox + W2 / 2, oy + 44 * scale); }
+    else if (!isHost && me && myProg >= (latest.n || 99)) { ctx.fillStyle = '#3ddc84'; ctx.fillText('🎉 완주! +15점', ox + W2 / 2, oy + 44 * scale); }
+    else {
+      ctx.fillStyle = '#e8ecf8';
+      ctx.fillText(isHost ? '📱 폰에서 입력 중…' : `1부터 순서대로! 다음: ${myProg + 1}`, ox + W2 / 2, oy + 44 * scale);
+    }
+  } else if (ph === 'reveal') {
+    ctx.fillStyle = '#8fa0d8';
+    ctx.fillText('🔎 정답 공개!', ox + W2 / 2, oy + 44 * scale);
+  }
+  ctx.textBaseline = 'alphabetic';
+
+  // 사운드 (교사 화면): 새 라운드 시작·정답 공개
+  if (isHost) {
+    if ((latest.round || 0) !== sndPrev.chRound) { sndPrev.chRound = latest.round || 0; SFX.countBeep(); }
+    if (ph === 'reveal' && sndPrev.chReveal !== latest.round) { sndPrev.chReveal = latest.round; SFX.ok(); }
+  }
 }
 
 // ---- 사다리 복불복 ----
@@ -2703,6 +3273,27 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
   if (bandW < 210 * dpr) return;           // 좁으면 생략 (겹침 방지)
   const x0 = right + 24 * dpr;
   let y = oy + 46 * dpr;
+
+  // 침팬지는 행 구조가 달라(waiting=2, score=3) 점수 순위를 따로 그린다
+  if (latest.mode === 'chimp') {
+    const rows2 = latest.players.filter(pb => !pb[2])
+      .map(pb => ({ nick: (roster.get(pb[0]) || { nick: '?' }).nick, score: pb[3] || 0 }))
+      .sort((a, c) => c.score - a.score);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#93a0c4';
+    ctx.font = `700 ${20 * dpr}px Pretendard, sans-serif`;
+    ctx.fillText('실시간 순위', x0, y); y += 40 * dpr;
+    rows2.slice(0, 8).forEach((r, i) => {
+      ctx.fillStyle = i < 3 ? '#ffb03a' : '#c8d0e8';
+      ctx.font = `800 ${26 * dpr}px Pretendard, sans-serif`;
+      ctx.fillText(`${i + 1}. ${r.nick}`, x0, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(r.score + '점', W - 24 * dpr, y);
+      ctx.textAlign = 'left';
+      y += 46 * dpr;
+    });
+    return;
+  }
 
   const rows = [];
   for (const pb of latest.players) {

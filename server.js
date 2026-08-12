@@ -294,6 +294,20 @@ const RUN_FEVER_MS = 4000;
 const RUN_FEVER_MULT = 1.6;      // 피버 속도 배율 (+무적)
 const RUN_COIN_SCORE = 15;       // 코인 1개 = 15점 (1점 = 1m)
 
+// ---------- 기억력 게임 4종 ----------
+const SIMON_START_LEN = 3;       // 사이먼: 첫 라운드 음 개수
+const SIMON_GAP = 620;           // 패턴 음 간격 (ms)
+const SIMON_FLASH = 430;         // 패드 발광 시간
+const SIMON_MAX_ROUND = 14;
+const CHIMP_ROUNDS = 8;          // 침팬지: 라운드 수 (숫자 4→11개)
+const FLASH_QS = 8;              // 순간 포착: 문제 수
+const FLASH_MEMO_MS = 2600;      // 장면 노출 시간
+const FLASH_TIME_MS = 12000;     // 답변 제한 시간
+const PAIRS_MS = 75000;          // 같은 그림: 제한 시간
+const PAIRS_TOTAL = 20;          // 카드 수 (10쌍)
+const FLASH_POOL = ['🍎', '🍌', '🍇', '🍉', '🍓', '🥕', '🍔', '🍕', '🍦', '🚗', '🚀', '⚽', '🏀', '🎸', '🐶', '🐱', '🐰', '🦊', '🐢', '🐟', '🦋', '🌸'];
+const PAIRS_POOL = ['🍎', '🍌', '🍇', '🍉', '🚗', '🚀', '⚽', '🏀', '🐶', '🐱', '🐰', '🦊', '🐢', '🦋', '🌸', '🍕', '🍦', '🎸', '🎁', '🎈'];
+
 // 트랙 중심선: 제어점을 카트무-롬 스플라인으로 이어 만든 서킷
 // (차의 진행도·트랙 이탈 판정·클라이언트 트랙 그리기가 전부 이 점 목록 하나로 돌아간다)
 function crSpline(ctrl, step) {
@@ -573,7 +587,7 @@ const TIMING_READY_MS = 3500;
 const TIMING_REVEAL_MS = 6500;
 const TIMING_EXTRA_MS = 8000;    // 목표 시간 + 8초까지 기다렸다가 마감
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -630,6 +644,23 @@ const server = http.createServer((req, res) => {
             q: r.game.questions[r.game.qIdx] ? r.game.questions[r.game.qIdx].q : '',
             correct: r.game.questions[r.game.qIdx] ? r.game.questions[r.game.qIdx].correct : -1,
             scores: [...r.players.values()].map(p => [p.nick, p.score, p.qAnswer]) }
+        : undefined,
+      simon: r.gameType === 'simon' && r.game
+        ? { phase: r.game.siPhase, round: r.game.siRound, seq: r.game.seq,
+            players: [...r.players.values()].map(p => [p.nick, p.alive, p.simonIdx, p.simonDone, p.outRound]) }
+        : undefined,
+      chimp: r.gameType === 'chimp' && r.game
+        ? { phase: r.game.chPhase, round: r.game.chRound, n: r.game.chN, nums: r.game.nums, cells: r.game.cells,
+            players: [...r.players.values()].map(p => [p.nick, p.score, p.chIdx, p.chFail]) }
+        : undefined,
+      flash: r.gameType === 'flash' && r.game && r.game.questions
+        ? { phase: r.game.fPhase, idx: r.game.fIdx,
+            correct: r.game.questions[r.game.fIdx] ? r.game.questions[r.game.fIdx].correct : -1,
+            scores: [...r.players.values()].map(p => [p.nick, p.score, p.qAnswer]) }
+        : undefined,
+      pairs: r.gameType === 'pairs' && r.game
+        ? { faces: r.game.faces, finishedN: r.game.finishedN,
+            players: [...r.players.values()].map(p => [p.nick, p.pPairs, p.pAttempts, p.pMask, !!p.pFinAt]) }
         : undefined,
     }))));
     return;
@@ -822,6 +853,9 @@ function startGame(room, type, opt) {
     p.dist = 0; p.prevDist = 0; p.lane = 1; p.laneTarget = 1; p.lanePush = 0;
     p.jumpStartAt = 0; p.jumpY = 0; p.stumbleUntil = 0; p.stumbleAt = 0; p.invUntil = 0;
     p.feverUntil = 0; p.coins = 0; p.gauge = 0; p.obIdx = 0; p.coinIdx = 0; p.lastCoinAt = 0;
+    p.simonIdx = 0; p.simonDone = false;
+    p.chIdx = 0; p.chFail = false; p.chDoneAt = 0;
+    p.pMask = 0; p.pFlipA = -1; p.pFlipB = -1; p.pResolveAt = 0; p.pAttempts = 0; p.pPairs = 0; p.pFinAt = 0;
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -978,6 +1012,24 @@ function startGame(room, type, opt) {
     g.roundMs = RUN_ROUND_MS;
     g.arenaW = 900; g.arenaH = 1500;   // 러너는 원근 렌더라 아레나 좌표는 사실상 미사용
     g.course = buildRunCourse();
+  } else if (type === 'simon') {
+    g.roundMs = 0;
+    g.seq = []; g.siRound = 0; g.siPhase = 'idle'; g.siRevived = false;
+  } else if (type === 'chimp') {
+    g.roundMs = 0;
+    g.arenaW = 900; g.arenaH = 900;
+    g.chRound = 0; g.chPhase = 'idle'; g.chN = 0; g.cells = []; g.nums = [];
+  } else if (type === 'flash') {
+    g.roundMs = 0;
+    g.questions = buildFlashQs();
+    g.fIdx = 0; g.fPhase = 'idle';
+  } else if (type === 'pairs') {
+    g.roundMs = PAIRS_MS;
+    g.arenaW = 900; g.arenaH = 1100;
+    // 10쌍 20장 셔플 — 전원 동일 배치. 앞면은 뒤집은 본인에게만 전송(컨닝 방지)
+    const faces = [...PAIRS_POOL].sort(() => Math.random() - 0.5).slice(0, PAIRS_TOTAL / 2);
+    g.faces = [...faces, ...faces].sort(() => Math.random() - 0.5);
+    g.finishedN = 0;
   }
 
   room.state = 'countdown';
@@ -1028,6 +1080,9 @@ function tick(room) {
       if (room.gameType === 'quiz') startQuizQ(room, now);
       if (room.gameType === 'ox') startOxQ(room, now);
       if (room.gameType === 'timing') startTimingRound(room, now);
+      if (room.gameType === 'simon') startSimonRound(room, now);
+      if (room.gameType === 'chimp') startChimpRound(room, now);
+      if (room.gameType === 'flash') startFlashQ(room, now);
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
     }
     sendState(room, now);
@@ -1061,6 +1116,10 @@ function tick(room) {
   else if (room.gameType === 'ox') oxTick(room, now, dt);
   else if (room.gameType === 'timing') timingTick(room, now);
   else if (room.gameType === 'run') runTick(room, now, dt);
+  else if (room.gameType === 'simon') simonTick(room, now);
+  else if (room.gameType === 'chimp') chimpTick(room, now);
+  else if (room.gameType === 'flash') flashTick(room, now);
+  else if (room.gameType === 'pairs') pairsTick(room, now);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -2229,6 +2288,226 @@ function endRun(room) {
     p => String(p.score || 0));
 }
 
+// ---------- 사이먼 가라사대 ----------
+function startSimonRound(room, now) {
+  const g = room.game;
+  g.siRound++;
+  g.seq.push(Math.floor(Math.random() * 4));
+  while (g.seq.length < SIMON_START_LEN) g.seq.push(Math.floor(Math.random() * 4));
+  g.siPhase = 'show';
+  g.siRevived = false;
+  g.showAt = now + 1200;
+  g.showEndAt = g.showAt + g.seq.length * SIMON_GAP + 500;
+  g.inputEndAt = 0; g.revealEndAt = 0;
+  for (const p of room.players.values()) { p.simonIdx = 0; p.simonDone = false; }
+  // 패턴은 교사 화면에만 전송 — 학생 폰 개발자도구로는 절대 못 본다
+  if (room.hostWs) roomSend(room.hostWs, { type: 'simon_seq', seq: g.seq, showAt: g.showAt, gap: SIMON_GAP, flashMs: SIMON_FLASH });
+}
+function simonTick(room, now) {
+  const g = room.game;
+  if (g.siPhase === 'show' && now >= g.showEndAt) {
+    g.siPhase = 'input';
+    g.inputEndAt = now + g.seq.length * 1300 + 3500;
+  } else if (g.siPhase === 'input') {
+    const alive = [...room.players.values()].filter(p => p.alive);
+    const allDone = alive.length > 0 && alive.every(p => p.simonDone);
+    if (allDone || now >= g.inputEndAt) {
+      // 시간 안에 다 못 누른 생존자도 탈락
+      for (const p of alive) if (!p.simonDone) { p.alive = false; p.deadAt = now; p.outRound = g.siRound; }
+      const nowAlive = [...room.players.values()].filter(p => p.alive);
+      // 전원 탈락이면 전원 부활 (다음 라운드 재도전 — OX와 같은 규칙)
+      if (nowAlive.length === 0 && g.startingCount >= 2) {
+        for (const p of room.players.values()) if (!p.waiting && p.connected) { p.alive = true; p.deadAt = 0; }
+        g.siRevived = true;
+      }
+      g.siPhase = 'reveal';
+      g.revealEndAt = now + 2600;
+    }
+  } else if (g.siPhase === 'reveal' && now >= g.revealEndAt) {
+    const nowAlive = [...room.players.values()].filter(p => p.alive);
+    if ((g.startingCount >= 2 && nowAlive.length <= 1) || g.siRound >= SIMON_MAX_ROUND || nowAlive.length === 0) {
+      endSimon(room); return;
+    }
+    startSimonRound(room, now);
+  }
+  sendState(room, now);
+}
+function endSimon(room) {
+  const g = room.game;
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    if (!!a.alive !== !!b.alive) return a.alive ? -1 : 1;
+    return (b.outRound || 0) - (a.outRound || 0);
+  });
+  finishGame(room, sorted,
+    p => p.alive ? `${g.siRound}라운드 정복 🏆` : `${p.outRound || 1}라운드에서 탈락`,
+    p => p.alive ? 'win' : 'r' + (p.outRound || 0));
+}
+
+// ---------- 침팬지 테스트 ----------
+function startChimpRound(room, now) {
+  const g = room.game;
+  g.chRound++;
+  g.chN = 3 + g.chRound;                          // 4 → 11개
+  // 서로 겹치지 않게 셀 배치
+  const cells = [];
+  let guard = 0;
+  while (cells.length < g.chN && guard++ < 600) {
+    const x = 90 + Math.random() * (g.arenaW - 180);
+    const y = 90 + Math.random() * (g.arenaH - 180);
+    if (cells.every(c => Math.hypot(c[0] - x, c[1] - y) > 150)) cells.push([Math.round(x), Math.round(y)]);
+  }
+  g.chN = cells.length;                            // 배치 실패 시 실제 개수로
+  g.cells = cells;
+  // 숫자 1..n을 셀에 무작위 배정 — 셀 배열 순서로는 숫자를 유추할 수 없다
+  g.nums = [...Array(cells.length).keys()].map(i => i + 1).sort(() => Math.random() - 0.5);
+  g.chPhase = 'memo';
+  g.memoEndAt = now + 1600 + cells.length * 320;
+  g.inputEndAt = 0; g.revealEndAt = 0;
+  for (const p of room.players.values()) { p.chIdx = 0; p.chFail = false; p.chDoneAt = 0; }
+  // 숫자는 교사 화면에만 — 학생은 TV를 보고 외워야 한다
+  if (room.hostWs) roomSend(room.hostWs, { type: 'chimp_nums', nums: g.nums, memoEndAt: g.memoEndAt });
+}
+function chimpTick(room, now) {
+  const g = room.game;
+  if (g.chPhase === 'memo' && now >= g.memoEndAt) {
+    g.chPhase = 'input';
+    g.inputEndAt = now + g.chN * 1800 + 2500;
+  } else if (g.chPhase === 'input') {
+    const actives = [...room.players.values()].filter(p => p.alive && p.connected);
+    const allDone = actives.length > 0 && actives.every(p => p.chFail || p.chIdx >= g.chN);
+    if (allDone || now >= g.inputEndAt) {
+      g.chPhase = 'reveal';
+      g.revealEndAt = now + 3000;
+    }
+  } else if (g.chPhase === 'reveal' && now >= g.revealEndAt) {
+    if (g.chRound >= CHIMP_ROUNDS) { endScoreGame(room, '점'); return; }
+    startChimpRound(room, now);
+  }
+  sendState(room, now);
+}
+
+// ---------- 순간 포착 ----------
+function buildFlashQs() {
+  const qs = [];
+  for (let i = 0; i < FLASH_QS; i++) {
+    const pool = [...FLASH_POOL].sort(() => Math.random() - 0.5);
+    const k = 4 + Math.floor(Math.random() * 3);            // 화면에 나올 이모지 종류 4~6
+    const scene = pool.slice(0, k).map(e => [e, 1 + Math.floor(Math.random() * 3)]);
+    const absent = pool.slice(k);
+    const typ = Math.floor(Math.random() * 4);
+    let q, choices, correct;
+    if (typ === 0) {          // 특정 그림 개수
+      const pickI = Math.floor(Math.random() * scene.length);
+      const emo = scene[pickI][0], cnt = scene[pickI][1];
+      q = `${emo} 는 몇 개였을까?`;
+      const set = new Set([cnt]);
+      while (set.size < 4) set.add(Math.max(0, cnt + Math.floor(Math.random() * 7) - 3));
+      choices = [...set].sort(() => Math.random() - 0.5).map(String);
+      correct = choices.indexOf(String(cnt));
+    } else if (typ === 1) {   // 없었던 것
+      const wrong = [...scene].sort(() => Math.random() - 0.5).slice(0, 3).map(s => s[0]);
+      const ans = absent[0];
+      choices = [...wrong, ans].sort(() => Math.random() - 0.5);
+      correct = choices.indexOf(ans);
+      q = '화면에 없었던 것은?';
+    } else if (typ === 2) {   // 있었던 것
+      const ans = scene[Math.floor(Math.random() * scene.length)][0];
+      choices = [...absent.slice(0, 3), ans].sort(() => Math.random() - 0.5);
+      correct = choices.indexOf(ans);
+      q = '화면에 있었던 것은?';
+    } else {                  // 전체 개수
+      const total = scene.reduce((s, it) => s + it[1], 0);
+      q = '그림은 모두 몇 개였을까?';
+      const set = new Set([total]);
+      while (set.size < 4) set.add(Math.max(1, total + Math.floor(Math.random() * 9) - 4));
+      choices = [...set].sort(() => Math.random() - 0.5).map(String);
+      correct = choices.indexOf(String(total));
+    }
+    qs.push({ scene, q, choices, correct });
+  }
+  return qs;
+}
+function startFlashQ(room, now) {
+  const g = room.game;
+  g.fPhase = 'memo';
+  g.memoEndAt = now + FLASH_MEMO_MS + 900;
+  for (const p of room.players.values()) { p.qAnswer = -1; p.qAnswerAt = 0; p.qGain = 0; }
+  const Q = g.questions[g.fIdx];
+  // 장면은 교사 화면에만 — 문제가 나올 때까지 폰에는 아무것도 없다
+  if (room.hostWs) roomSend(room.hostWs, { type: 'flash_scene', scene: Q.scene, memoEndAt: g.memoEndAt });
+}
+function flashTick(room, now) {
+  const g = room.game;
+  const Q = g.questions[g.fIdx];
+  if (g.fPhase === 'memo' && now >= g.memoEndAt) {
+    g.fPhase = 'show';
+    g.qEndAt = now + FLASH_TIME_MS;
+  } else if (g.fPhase === 'show') {
+    const parts = [...room.players.values()].filter(p => !p.waiting && p.connected);
+    const allAns = parts.length > 0 && parts.every(p => p.qAnswer >= 0);
+    if (allAns || now >= g.qEndAt) {
+      // 채점: 정답 100 + 남은 시간 비례 보너스 최대 100 (퀴즈쇼와 동일)
+      for (const p of room.players.values()) {
+        if (p.waiting) continue;
+        if (p.qAnswer === Q.correct) {
+          const left = Math.max(0, g.qEndAt - (p.qAnswerAt || g.qEndAt));
+          p.qGain = 100 + Math.round(Math.min(100, left / FLASH_TIME_MS * 100));
+          p.score += p.qGain;
+        } else p.qGain = 0;
+      }
+      g.fPhase = 'reveal';
+      g.revealEndAt = now + 5200;
+    }
+  } else if (g.fPhase === 'reveal' && now >= g.revealEndAt) {
+    g.fIdx++;
+    if (g.fIdx >= g.questions.length) { endScoreGame(room, '점'); return; }
+    startFlashQ(room, now);
+  }
+  sendState(room, now);
+}
+
+// ---------- 같은 그림 찾기 ----------
+function pairsTick(room, now) {
+  const g = room.game;
+  for (const p of room.players.values()) {
+    if (p.waiting) continue;
+    // 두 장 뒤집힘 → 650ms 열어 보여준 뒤 판정
+    if (p.pFlipB >= 0 && now >= p.pResolveAt) {
+      if (g.faces[p.pFlipA] === g.faces[p.pFlipB]) {
+        p.pMask |= (1 << p.pFlipA) | (1 << p.pFlipB);
+        p.pPairs++;
+        if (p.pPairs >= PAIRS_TOTAL / 2 && !p.pFinAt) { p.pFinAt = now; g.finishedN++; }
+      }
+      p.pFlipA = -1; p.pFlipB = -1;
+    }
+    p.score = p.pPairs * 100 - p.pAttempts * 2
+      + (p.pFinAt ? Math.round(Math.max(0, room.phaseEndAt - p.pFinAt) / 1000) * 4 : 0);   // 완주 보너스 = 남긴 초×4
+  }
+  const actives = [...room.players.values()].filter(p => !p.waiting && p.connected);
+  if (now >= room.phaseEndAt || (actives.length > 0 && actives.every(p => p.pFinAt))) { endPairs(room); return; }
+  sendState(room, now);
+}
+function endPairs(room) {
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    if ((b.pPairs || 0) !== (a.pPairs || 0)) return (b.pPairs || 0) - (a.pPairs || 0);
+    const af = a.pFinAt || Infinity, bf = b.pFinAt || Infinity;
+    if (af !== bf) return af - bf;
+    return (a.pAttempts || 0) - (b.pAttempts || 0);
+  });
+  finishGame(room, sorted,
+    p => `${p.pPairs}쌍 · 시도 ${p.pAttempts}회${p.pFinAt ? ' 🏁' : ''}`,
+    p => `${p.pPairs}|${p.pFinAt || 0}|${p.pAttempts}`);
+}
+
+// 점수순 공통 종료 (침팬지·순간 포착)
+function endScoreGame(room, unit) {
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => (b.score || 0) - (a.score || 0));
+  finishGame(room, sorted, p => `${p.score}${unit}`, p => String(p.score || 0));
+}
+
 // ---------- 공통 종료·상태 ----------
 function finishGame(room, sorted, labelOf, keyOf) {
   clearInterval(room.timer); room.timer = null;
@@ -2267,6 +2546,71 @@ function sendState(room, now) {
       scores: parts.map(p => [p.id, p.score, p.qAnswer >= 0 ? 1 : 0,
         g.qPhase === 'reveal' ? (p.qGain || 0) : 0,
         g.qPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]),
+    });
+    return;
+  }
+  if (type === 'simon') {
+    const g2 = room.game;
+    broadcast(room, {
+      type: 'state', mode: 'simon', st: now,
+      siPhase: g2.siPhase || 'idle', round: g2.siRound || 0, seqLen: (g2.seq || []).length,
+      showAt: g2.showAt || 0, gap: SIMON_GAP, flashMs: SIMON_FLASH,
+      inputEndAt: g2.inputEndAt || 0, revealEndAt: g2.revealEndAt || 0,
+      aliveN: [...room.players.values()].filter(p => p.alive).length,
+      doneN: [...room.players.values()].filter(p => p.alive && p.simonDone).length,
+      revived: !!g2.siRevived,
+      players: [...room.players.values()].map(p =>
+        [p.id, p.alive ? 1 : 0, p.waiting ? 1 : 0, p.simonDone ? 1 : 0, p.simonIdx || 0, p.outRound || 0]),
+    });
+    return;
+  }
+  if (type === 'chimp') {
+    broadcast(room, {
+      type: 'state', mode: 'chimp', st: now,
+      chPhase: g.chPhase || 'idle', round: g.chRound || 0, totalRounds: CHIMP_ROUNDS, n: g.chN || 0,
+      arena: { w: g.arenaW, h: g.arenaH },
+      cells: g.cells || [],
+      nums: g.chPhase === 'reveal' ? g.nums : undefined,   // 숫자는 공개 시점에만 전원 전송
+      memoEndAt: g.memoEndAt || 0, inputEndAt: g.inputEndAt || 0, revealEndAt: g.revealEndAt || 0,
+      players: [...room.players.values()].map(p =>
+        [p.id, p.alive ? 1 : 0, p.waiting ? 1 : 0, p.score || 0, p.chIdx || 0, p.chFail ? 1 : 0,
+         (p.chIdx || 0) >= (g.chN || 99) ? 1 : 0]),
+    });
+    return;
+  }
+  if (type === 'flash') {
+    const Q = g.questions[g.fIdx];
+    const parts = [...room.players.values()].filter(p => !p.waiting);
+    const open = g.fPhase === 'show' || g.fPhase === 'reveal';
+    broadcast(room, {
+      type: 'state', mode: 'flash', st: now,
+      fPhase: g.fPhase || 'idle', qIdx: g.fIdx, qTotal: g.questions.length,
+      q: open && Q ? Q.q : '',
+      choices: open && Q ? Q.choices : [],
+      timeLeft: g.fPhase === 'show' ? Math.max(0, g.qEndAt - now)
+        : g.fPhase === 'memo' ? Math.max(0, g.memoEndAt - now) : 0,
+      timeTotal: FLASH_TIME_MS,
+      answered: parts.filter(p => p.qAnswer >= 0).length,
+      partCount: parts.length,
+      correct: g.fPhase === 'reveal' && Q ? Q.correct : undefined,
+      counts: g.fPhase === 'reveal' && Q ? [0, 1, 2, 3].map(i => parts.filter(p => p.qAnswer === i).length) : undefined,
+      scene: g.fPhase === 'reveal' && Q ? Q.scene : undefined,   // 장면은 정답 공개 때만 전원에게
+      scores: parts.map(p => [p.id, p.score, p.qAnswer >= 0 ? 1 : 0,
+        g.fPhase === 'reveal' ? (p.qGain || 0) : 0,
+        g.fPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]),
+    });
+    return;
+  }
+  if (type === 'pairs') {
+    broadcast(room, {
+      type: 'state', mode: 'pairs', st: now,
+      timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : PAIRS_MS,
+      total: PAIRS_TOTAL, cols: 4, rows: 5,
+      finishedN: g.finishedN || 0,
+      players: [...room.players.values()].map(p =>
+        [p.id, p.alive ? 1 : 0, p.waiting ? 1 : 0, p.score || 0,
+         p.pMask || 0, p.pFlipA != null ? p.pFlipA : -1, p.pFlipB != null ? p.pFlipB : -1,
+         p.pAttempts || 0, p.pPairs || 0, p.pFinAt ? 1 : 0]),
     });
     return;
   }
@@ -2642,14 +2986,33 @@ wss.on('connection', (ws) => {
         break;
       }
 
-      // 퀴즈쇼: 4지선다 답 제출 (한 번 누르면 확정 — 카훗과 동일)
+      // 퀴즈쇼·순간 포착: 4지선다 답 제출 (한 번 누르면 확정 — 카훗과 동일)
       case 'answer': {
-        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'quiz') return;
+        if (!room || ws.playerId == null || room.state !== 'playing') return;
+        if (room.gameType !== 'quiz' && room.gameType !== 'flash') return;
         const p = room.players.get(ws.playerId);
         const g = room.game;
-        if (!p || p.waiting || g.qPhase !== 'show' || p.qAnswer >= 0) return;
+        const ph = room.gameType === 'quiz' ? g.qPhase : g.fPhase;
+        if (!p || p.waiting || ph !== 'show' || p.qAnswer >= 0) return;
         const v = Math.floor(finite(msg.v));
         if (v >= 0 && v < 4) { p.qAnswer = v; p.qAnswerAt = Date.now(); }
+        break;
+      }
+
+      // 사이먼: 4색 패드 입력 — 시퀀스는 서버에만 있어 서버가 대조한다
+      case 'skey': {
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'simon') return;
+        const p = room.players.get(ws.playerId);
+        const g = room.game;
+        if (!p || !p.alive || p.waiting || g.siPhase !== 'input' || p.simonDone) return;
+        const v = Math.floor(finite(msg.v));
+        if (v < 0 || v > 3) return;
+        if (v === g.seq[p.simonIdx]) {
+          p.simonIdx++;
+          if (p.simonIdx >= g.seq.length) p.simonDone = true;
+        } else {
+          p.alive = false; p.deadAt = Date.now(); p.outRound = g.siRound;   // 틀리면 즉시 탈락
+        }
         break;
       }
 
@@ -2667,6 +3030,29 @@ wss.on('connection', (ws) => {
             const i = p.picks.indexOf(v);
             if (i >= 0) p.picks.splice(i, 1);                        // 같은 칸 다시 누르면 칼 뽑기(취소)
             else { if (p.picks.length >= g.knives) p.picks.shift(); p.picks.push(v); }  // 꽉 찼으면 오래된 칼 이동
+          }
+        } else if (room.gameType === 'chimp' && g.chPhase === 'input') {
+          // 침팬지: 1부터 순서대로 탭 — 정답이면 +10, 라운드 완주 +15, 틀리면 이번 라운드 실패
+          if (v >= 0 && v < g.cells.length && !p.chFail && p.chIdx < g.chN) {
+            const expected = p.chIdx + 1;
+            if (g.nums[v] === expected) {
+              p.chIdx++; p.score += 10;
+              if (p.chIdx >= g.chN) { p.chDoneAt = Date.now(); p.score += 15; }
+            } else if (g.nums[v] > 0 && g.nums[v] <= p.chIdx) {
+              // 이미 맞힌 칸 재탭 — 실수로 두 번 눌러도 봐준다
+            } else {
+              p.chFail = true;
+            }
+          }
+        } else if (room.gameType === 'pairs') {
+          // 같은 그림: 카드 뒤집기 — 앞면은 뒤집은 본인에게만 알려준다
+          if (v >= 0 && v < PAIRS_TOTAL
+              && !(p.pMask & (1 << v))                 // 이미 맞춘 칸은 무시
+              && p.pFlipB < 0                          // 판정 대기 중엔 잠금
+              && v !== p.pFlipA) {
+            if (p.pFlipA < 0) p.pFlipA = v;
+            else { p.pFlipB = v; p.pAttempts++; p.pResolveAt = Date.now() + 650; }
+            roomSend(ws, { type: 'pairs_flip', i: v, face: g.faces[v] });
           }
         }
         break;
