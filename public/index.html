@@ -459,7 +459,7 @@
   }
   #hostRight { display: flex; flex-direction: column; gap: 14px; align-items: center; width: 100%; max-width: 720px; }
 /* ---- 블록 배틀 (CUBE STACK) — 넷마블풍 글로시 ---- */
-#tetrisGame { background: #0e1030 url('sprites/tet-bg.jpg') center/cover no-repeat; gap: 8px; padding: 10px; }
+#tetrisGame { background: #0e1030 url('sprites/tet-bg.jpg') center/cover no-repeat; gap: 8px; padding: 10px; justify-content: flex-start; }
 #tetLogo { height: 52px; image-rendering: auto; filter: drop-shadow(0 4px 10px rgba(0,0,0,.6)); }
 body.host #tetLogo { height: 72px; }
 .tet-hud { display: flex; gap: 14px; align-items: center; font-weight: 800; color: #cfe0ff;
@@ -493,6 +493,12 @@ body.host #tetLogo { height: 72px; }
 .tet-btn.drop:active { box-shadow: 0 1px 0 #9c4a00, inset 0 2px 3px rgba(255,255,255,.3); }
 #tetHostGrid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-content: flex-start;
   width: 100%; max-width: 1500px; }
+/* 27명 이상: 여백을 줄여 3줄 안에 전원 중계 */
+#tetHostGrid.compact { gap: 7px; }
+#tetHostGrid.compact .tet-mini { padding: 4px 6px; border-radius: 8px; }
+#tetHostGrid.compact .tet-mini .nm { font-size: 11px; max-width: 66px; }
+#tetHostGrid.compact .tet-mini .sc { font-size: 9px; }
+#tetrisGame.compactview #tetLogo { height: 40px; }
 .tet-mini { display: flex; flex-direction: column; align-items: center; gap: 4px;
   background: rgba(8,10,34,.78); border: 1px solid rgba(120,140,255,.3); border-radius: 12px; padding: 8px 10px;
   box-shadow: 0 6px 16px rgba(0,0,0,.45); }
@@ -1567,6 +1573,9 @@ function renderTetHost(m) {
   const boards = m.boards || [];
   // 미니보드 셀 크기: 인원수에 맞춰 (많으면 작게) — TV에서 잘 보이는 게 우선
   const mini = boards.length <= 4 ? 15 : boards.length <= 8 ? 12 : boards.length <= 18 ? 8 : 6;
+  // 27명 이상은 여백·로고를 줄여 스크롤 없이 전원 중계
+  grid.classList.toggle('compact', boards.length > 26);
+  $('tetrisGame').classList.toggle('compactview', boards.length > 26);
   for (const row of boards) {
     const [id, alive, score, lines, board, piece, rot, x, y, fx] = row;
     let el = tetMinis[id];
