@@ -535,6 +535,32 @@ body.host #tetLogo { height: 72px; }
 #drawTicker b { color: #ffd21f; }
 #drawInfo { font-weight: 800; color: #cfe0ff; text-align: center; }
 #drawInfo .hint { color: #ff7ad9; }
+/* 그림 퀴즈: 제시어 추천 칩 */
+.draw-suggest { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.draw-sug-chip { padding: 10px 18px; border-radius: 999px; border: 2px solid #7c8cff; background: #232c5c;
+  color: #eef1fa; font-weight: 800; font-size: 16px; cursor: pointer; }
+.draw-sug-chip:active { transform: scale(.95); }
+.draw-sug-reroll { padding: 10px 14px; border-radius: 999px; border: 2px solid #3a4470; background: #1a2142;
+  color: #9fb2e8; font-weight: 700; font-size: 14px; cursor: pointer; }
+/* ---- 오늘의 챔피언 ---- */
+#champLobby { width: 100%; max-width: 560px; background: rgba(20,26,60,.75); border: 1px solid #2c3768;
+  border-radius: 14px; padding: 10px 14px; }
+.champ-head { font-weight: 900; color: #ffd21f; font-size: 16px; display: flex; align-items: center;
+  justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.champ-head button { border: 1px solid #3a4470; background: #1a2142; color: #9fb2e8; border-radius: 8px;
+  padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.champ-rows { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.champ-row { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #dfe8ff; }
+.champ-row .cr { width: 34px; font-weight: 900; color: #9fb2e8; flex-shrink: 0; }
+.champ-row .cd { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.champ-row .cn { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.champ-row .cp { margin-left: auto; font-weight: 900; color: #ffd21f; flex-shrink: 0; }
+.champ-row .cw { color: #9fb2e8; font-size: 12px; flex-shrink: 0; }
+.champ-row.top1 .cr { color: #ffd21f; }
+/* 결과 화면: 게임 순위 + 챔피언 나란히 (좁으면 세로로) */
+.result-cols { display: flex; gap: 18px; justify-content: center; align-items: flex-start; flex-wrap: wrap; width: 100%; }
+#champResult { width: 300px; max-width: 92vw; background: rgba(20,26,60,.75); border: 1px solid #2c3768;
+  border-radius: 14px; padding: 10px 14px; }
 </style>
 </head>
 <body>
@@ -574,6 +600,10 @@ body.host #tetLogo { height: 72px; }
   <div class="qr-wrap"><canvas id="qr"></canvas></div>
   <div class="join-url" id="joinUrl"></div>
   <div class="count" id="playerCount">참가자 0명</div>
+  <div id="champLobby" style="display:none">
+    <div class="champ-head">🏆 오늘의 챔피언 <button id="btnChampReset" title="점수판 초기화">↺ 초기화</button></div>
+    <div class="champ-rows" id="champLobbyRows"></div>
+  </div>
   <div id="hostRight">
     <div class="chips" id="chips"></div>
     <div class="game-tabs" id="gameTabs"></div>
@@ -707,7 +737,8 @@ body.host #tetLogo { height: 72px; }
     </div>
   </div>
   <div id="drawWriteWrap" style="display:none; flex-direction:column; align-items:center; gap:10px; width:100%; max-width:420px;">
-    <input class="field" id="drawAnswerIn" placeholder="정답 단어 입력 (2~12자)" maxlength="12" style="width:100%">
+    <div class="draw-suggest" id="drawSuggest"></div>
+    <input class="field" id="drawAnswerIn" placeholder="직접 입력해도 돼요 (2~12자)" maxlength="12" style="width:100%">
     <button class="btn green" id="btnDrawWord" style="width:100%">이걸로 결정! 🤫</button>
     <div class="err" id="drawWriteErr"></div>
   </div>
@@ -729,7 +760,13 @@ body.host #tetLogo { height: 72px; }
   <div id="resultHost" style="display:none; flex-direction:column; align-items:center; gap:16px; width:100%;">
     <img id="trophyImg" src="sprites/trophy.png" alt="" onerror="this.remove()">
     <div class="podium" id="podium"></div>
-    <div class="rank-list" id="rankList"></div>
+    <div class="result-cols">
+      <div class="rank-list" id="rankList"></div>
+      <div id="champResult" style="display:none">
+        <div class="champ-head">🏆 오늘의 챔피언</div>
+        <div class="champ-rows" id="champResultRows"></div>
+      </div>
+    </div>
     <div class="result-actions">
       <button class="btn" id="btnAgain">한 판 더! (같은 게임)</button>
       <button class="btn ghost" id="btnLobby">다른 게임 고르기</button>
@@ -739,6 +776,7 @@ body.host #tetLogo { height: 72px; }
     <div class="sub">내 순위</div>
     <div class="my-rank" id="myRank">-</div>
     <div class="sub" id="myRankSub" style="font-size:17px;color:#c8d0e8"></div>
+    <div class="sub" id="myChamp" style="font-size:16px;color:#ffd21f;font-weight:800"></div>
     <p class="sub">TV에서 전체 순위를 확인하세요!<br>선생님이 다음 판을 시작하면 자동 입장돼요.</p>
     <button class="btn danger-ghost" id="btnLeave2">방 나가기</button>
   </div>
@@ -844,6 +882,7 @@ let myQAnswer = -1, myQIdx = -1, lastQuizJson = '';               // 퀴즈쇼: 
 let myTap = false, myTapRound = -1;                               // 10초를 잡아라: 내가 탭했나
 let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
 let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 띄우기 위한 시각
+let champ = [];                          // 오늘의 챔피언 누적 [[id,nick,ci,pts,wins,games],…]
 
 // 밝기 68% — 어두운 아레나(#1a2140)에서 남색·보라 계열도 보이도록.
 // 황금각(137.5도)으로 돌려 30명이어도 인접 색이 겹쳐 보이지 않게 한다.
@@ -1129,6 +1168,8 @@ function handle(m) {
     case 'roster':
       roster = new Map(m.players.map(p => [p.id, p]));
       phase = m.state;
+      if (m.champ) champ = m.champ;                   // 오늘의 챔피언 누적 (빈 배열 = 초기화됨)
+      renderChampLobby();
       if (isHost && phase === 'lobby') renderHostLobby();
       break;
     case 'phase': {
@@ -1214,6 +1255,22 @@ function handle(m) {
     case 'dword_ok':
       $('drawWriteErr').textContent = '';
       break;
+    // 그림 퀴즈: 제시어 추천 (출제자에게만) — 칩 탭 = 입력창에 채움, 🔄 = 다시 뽑기
+    case 'dsuggest': {
+      const box = $('drawSuggest');
+      box.innerHTML = '';
+      for (const w of (m.words || [])) {
+        const chip = document.createElement('button');
+        chip.className = 'draw-sug-chip'; chip.textContent = w;
+        chip.onclick = () => { $('drawAnswerIn').value = w; };
+        box.appendChild(chip);
+      }
+      const re = document.createElement('button');
+      re.className = 'draw-sug-reroll'; re.textContent = '🔄 다른 단어';
+      re.onclick = () => send({ type: 'dsuggest' });
+      box.appendChild(re);
+      break;
+    }
     case 'dword_bad':
       $('drawWriteErr').textContent = m.reason === 'bad' ? '나쁜 말은 안 돼요!' : '한글·영어·숫자 2~12자로 정해주세요';
       break;
@@ -1242,7 +1299,7 @@ function handle(m) {
     case 'result':
       SFX.melodyStop();
       clearSimonTimers();
-      showResult(m.ranking);
+      showResult(m.ranking, m.champ);
       break;
     case 'word_ok':
       $('wordFeedback').textContent = m.word
@@ -1762,8 +1819,8 @@ function renderTetris(m) {
 function renderTetHost(m) {
   const grid = $('tetHostGrid');
   const boards = m.boards || [];
-  // 미니보드 셀 크기: 인원수에 맞춰 (많으면 작게) — TV에서 잘 보이는 게 우선
-  const mini = boards.length <= 4 ? 15 : boards.length <= 8 ? 12 : boards.length <= 18 ? 8 : 6;
+  // 미니보드 셀 크기: 인원수에 맞춰 (많으면 작게) — TV 화면을 가득 채우는 게 우선
+  const mini = boards.length <= 4 ? 20 : boards.length <= 8 ? 15 : boards.length <= 12 ? 11 : boards.length <= 18 ? 8 : 6;
   // 27명 이상은 여백·로고를 줄여 스크롤 없이 전원 중계
   grid.classList.toggle('compact', boards.length > 26);
   $('tetrisGame').classList.toggle('compactview', boards.length > 26);
@@ -1883,7 +1940,8 @@ function drawBindPen() {
 }
 function drawSizeCanvas() {
   const cv = $('drawCanvas');
-  const side = isHost ? Math.min(560, window.innerHeight - 320)
+  // TV는 화면을 가득 채우게 (1080p에서 ~720px), 폰은 화면 폭에 맞춤
+  const side = isHost ? Math.min(720, window.innerHeight - 320, window.innerWidth - 80)
     : Math.min(window.innerWidth - 28, window.innerHeight - 330, 430);
   cv.style.width = side + 'px'; cv.style.height = side + 'px';
 }
@@ -1900,7 +1958,7 @@ function renderDraw(m) {
     $('drawTicker').innerHTML = '';
     $('drawGuessIn').value = ''; $('drawGuessIn').readOnly = false; $('btnDrawGuess').disabled = false;
   }
-  const key = [m.dPhase, m.round, m.correctN, m.drawer, phase].join('|');
+  const key = [m.dPhase, m.round, m.correctN, m.drawer, m.hint || '', phase].join('|');
   if (key === renderDraw._k && m.dPhase !== 'pick') return;   // pick은 로스터 갱신 위해 매번
   renderDraw._k = key;
 
@@ -1948,7 +2006,7 @@ function renderDraw(m) {
     } else {
       setText($('drawMsg'), `${drawerMeta.nick} 님의 그림!`);
     }
-    $('drawInfo').innerHTML = `<span class="hint">힌트: ${m.ansLen}글자</span> · ✋ ${m.correctN}/${m.guessN}명 정답`;
+    $('drawInfo').innerHTML = `<span class="hint">힌트: ${m.ansLen}글자${m.hint ? ` · 초성 <b>${esc(m.hint)}</b>` : ''}</span> · ✋ ${m.correctN}/${m.guessN}명 정답`;
   } else if (m.dPhase === 'reveal') {
     $('drawBoardWrap').style.display = 'flex';
     drawSizeCanvas();
@@ -2076,7 +2134,7 @@ function enterGameView(keepInput) {
     $('drawWriteWrap').style.display = 'none';
     $('drawBoardWrap').style.display = 'none';
     $('drawTicker').innerHTML = ''; $('drawInfo').textContent = '';
-    $('drawAnswerIn').value = ''; $('drawWriteErr').textContent = '';
+    $('drawAnswerIn').value = ''; $('drawWriteErr').textContent = ''; $('drawSuggest').innerHTML = '';
     $('drawGuessIn').value = ''; $('drawGuessIn').readOnly = false;
     $('btnDrawGuess').disabled = false; $('btnDrawGuess').textContent = '정답!';
     drawStrokes = []; drawPrevRound = -1; drawGuessLock = false; drawTickerArr = [];
@@ -2325,9 +2383,34 @@ $('btnTetAbort').onclick = () => { if (confirm('게임을 중단하고 로비로
 $('btnMute').onclick = () => { $('btnMute').textContent = SFX.toggle() ? '🔇' : '🔊'; };
 
 // ---- 결과 ----
-function showResult(ranking) {
+// 챔피언 순위 행 HTML (동점 공동 순위)
+function champRowsHTML(arr, limit) {
+  let rank = 0, prevPts = null;
+  return arr.slice(0, limit).map((c, i) => {
+    const [id, nick, ci, pts, wins] = c;
+    if (pts !== prevPts) { rank = i + 1; prevPts = pts; }
+    return `<div class="champ-row${rank === 1 ? ' top1' : ''}">
+      <span class="cr">${rank === 1 ? '👑' : rank + '위'}</span>
+      <span class="cd" style="background:${COLORS[ci % COLORS.length]}"></span>
+      <span class="cn">${esc(nick)}</span>
+      ${wins ? `<span class="cw">🥇×${wins}</span>` : ''}
+      <span class="cp">${pts}점</span>
+    </div>`;
+  }).join('');
+}
+function renderChampLobby() {
+  const box = $('champLobby');
+  if (!isHost || phase !== 'lobby' || !champ.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  $('champLobbyRows').innerHTML = champRowsHTML(champ, 40);
+}
+$('btnChampReset').onclick = () => {
+  if (confirm('오늘의 챔피언 점수판을 초기화할까요? (다음 반 수업 시작 전에 쓰세요)')) send({ type: 'champ_reset' });
+};
+function showResult(ranking, champArr) {
   show('result');
   SFX.fanfare();
+  if (champArr) champ = champArr;
   if (isHost) {
     $('resultHost').style.display = 'flex';
     $('resultPlayer').style.display = 'none';
@@ -2340,12 +2423,19 @@ function showResult(ranking) {
         <span>${esc(r.nick)}</span>
         <span class="t">${esc(r.label)}</span>
       </div>`).join('');
+    // 오늘의 챔피언 — 두 게임째부터 의미가 생기니 그때부터 보여준다
+    const anyMulti = champ.some(c => c[5] >= 2);
+    $('champResult').style.display = champ.length && anyMulti ? 'block' : 'none';
+    if (champ.length) $('champResultRows').innerHTML = champRowsHTML(champ, 8);
   } else {
     $('resultHost').style.display = 'none';
     $('resultPlayer').style.display = 'flex';
     const me = ranking.find(r => r.id === myId);
     $('myRank').textContent = me ? me.rank + '위' : '-';
     $('myRankSub').textContent = me ? `${ranking.length}명 중 · ${me.label}` : '';
+    // 내 누적 포인트·순위
+    const idx = champ.findIndex(c => c[0] === myId);
+    $('myChamp').textContent = idx >= 0 ? `🏆 오늘 누적 ${champ[idx][3]}점 · 전체 ${idx + 1}위` : '';
   }
 }
 

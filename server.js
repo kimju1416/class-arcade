@@ -628,9 +628,18 @@ const TET_ATTACK = [0, 0, 1, 2, 4];    // 지운 줄 수 → 상대에게 보내
 const DRAW_WRITE_MS = 30000;     // 출제자가 답을 정하는 시간
 const DRAW_ROUND_MS = 90000;     // 그리기 + 맞히기
 const DRAW_REVEAL_MS = 6000;     // 정답 공개
+const DRAW_HINT_MS = 45000;      // 이 시간이 지나도 다 못 맞히면 초성 힌트 자동 공개
 const DRAW_MAX_ROUNDS = 15;      // 안전 캡 (보통은 방장이 결과 발표로 끝냄)
 const DRAW_MAX_STROKES = 400;    // 선 개수 상한
 const DRAW_MAX_PTS = 3000;       // 선 하나의 좌표쌍 상한 (도배 방지)
+// 제시어 추천 풀: 초성 사전에서 그리기 적당한 2~5자 단어 (출제자가 "뭘 그리지?" 고민으로 30초 날리는 것 방지)
+const DRAW_POOL = [...CHO_DATA['음식'], ...CHO_DATA['동물'], ...CHO_DATA['사물·장소']]
+  .filter(w => w.length >= 2 && w.length <= 5);
+function drawSuggest() {
+  const out = new Set();
+  while (out.size < 3) out.add(DRAW_POOL[Math.floor(Math.random() * DRAW_POOL.length)]);
+  return [...out];
+}
 
 const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw'];
 
@@ -760,6 +769,7 @@ function createRoom() {
     code, hostWs: null, hostToken: token(),
     players: new Map(), state: 'lobby', gameType: null,
     nextId: 1, lastActive: Date.now(), game: null, timer: null, phaseEndAt: 0,
+    champ: new Map(),   // 오늘의 챔피언 — 방이 사는 동안 게임별 순위 포인트 누적 (id → {nick,ci,pts,wins,games})
   };
   rooms.set(code, room);
   return room;
@@ -792,6 +802,7 @@ function sendRoster(room) {
       id: p.id, nick: p.nick, ci: p.ci, connected: p.connected, waiting: p.waiting,
     })),
     state: room.state,
+    champ: champArr(room),   // 로비에서도 누적 순위를 — 빈 배열도 보내야 초기화가 클라에 반영된다
   });
 }
 
@@ -2778,6 +2789,13 @@ function endScoreGame(room, unit) {
 }
 
 // ---------- 공통 종료·상태 ----------
+// 오늘의 챔피언: 게임 순위 → 누적 포인트 (1등 10, 2등 8, … 8등부터 1점 — 참가만 해도 쌓인다)
+const CHAMP_PTS = [10, 8, 6, 5, 4, 3, 2];
+function champArr(room) {
+  return [...room.champ.entries()]
+    .map(([id, c]) => [id, c.nick, c.ci, c.pts, c.wins, c.games])
+    .sort((a, b) => b[3] - a[3]);
+}
 function finishGame(room, sorted, labelOf, keyOf) {
   clearInterval(room.timer); room.timer = null;
   room.state = 'result';
@@ -2787,7 +2805,14 @@ function finishGame(room, sorted, labelOf, keyOf) {
     if (key !== prevKey) { rank = i + 1; prevKey = key; }
     return { id: p.id, nick: p.nick, ci: p.ci, rank, label: labelOf(p) };
   });
-  broadcast(room, { type: 'result', gameType: room.gameType, ranking });
+  for (const r of ranking) {
+    const c = room.champ.get(r.id) || { nick: r.nick, ci: r.ci, pts: 0, wins: 0, games: 0 };
+    c.nick = r.nick; c.pts += CHAMP_PTS[r.rank - 1] || 1;
+    if (r.rank === 1) c.wins++;
+    c.games++;
+    room.champ.set(r.id, c);
+  }
+  broadcast(room, { type: 'result', gameType: room.gameType, ranking, champ: champArr(room) });
   sendRoster(room);
 }
 
@@ -2885,6 +2910,8 @@ function sendState(room, now) {
       correctN: parts.filter(p => p.dGuessed).length,
       guessN: Math.max(0, parts.filter(p => p.id !== g.drawer).length),
       ansLen: g.dPhase === 'draw' ? g.answer.length : 0,       // 글자 수 힌트
+      // 절반이 지나도록 다 못 맞히면 초성 힌트 자동 공개 (루즈함 방지)
+      hint: g.dPhase === 'draw' && g.hintAt && now >= g.hintAt ? g.hintCho : undefined,
       answer: g.dPhase === 'reveal' ? g.answer : undefined,    // 정답은 공개 시점에만!
       // [id, 점수, 이번 판 맞힘, 출제 이력, 접속]
       players: parts.map(p => [p.id, p.score || 0, p.dGuessed ? 1 : 0,
@@ -3395,8 +3422,18 @@ wss.on('connection', (ws) => {
         if (!t || t.waiting || !t.connected) return;
         g.drawer = t.id; g.dPhase = 'write'; g.writeEndAt = Date.now() + DRAW_WRITE_MS;
         g.answer = ''; g.strokes = []; g.round++; g.correctOrder = [];
+        g.hintCho = ''; g.hintAt = 0;
         g.drawnIds.add(t.id);
         for (const p of room.players.values()) p.dGuessed = false;
+        if (t.ws) roomSend(t.ws, { type: 'dsuggest', words: drawSuggest() });   // 제시어 추천 3개
+        break;
+      }
+      case 'dsuggest': {   // 출제자: 추천 단어 다시 뽑기
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'draw') return;
+        const g = room.game;
+        const p = room.players.get(ws.playerId);
+        if (!p || p.id !== g.drawer || g.dPhase !== 'write') return;
+        roomSend(ws, { type: 'dsuggest', words: drawSuggest() });
         break;
       }
       case 'dword': {
@@ -3410,6 +3447,9 @@ wss.on('connection', (ws) => {
         }
         if (hasBadWord(norm)) { roomSend(ws, { type: 'dword_bad', reason: 'bad' }); return; }
         g.answer = norm; g.dPhase = 'draw'; g.drawEndAt = Date.now() + DRAW_ROUND_MS;
+        g.hintAt = Date.now() + DRAW_HINT_MS;
+        // 자동 힌트: 한글이면 초성, 영어·숫자면 첫 글자만
+        g.hintCho = /^[가-힣]+$/.test(norm) ? choseongOf(norm) : norm[0] + '○'.repeat(norm.length - 1);
         roomSend(ws, { type: 'dword_ok' });
         break;
       }
@@ -3580,6 +3620,13 @@ wss.on('connection', (ws) => {
 
       case 'back_to_lobby':
         if (isRoomHost(room, ws)) backToLobby(room);
+        break;
+
+      case 'champ_reset':   // 오늘의 챔피언 초기화 (다음 반 수업 시작할 때)
+        if (isRoomHost(room, ws) && room.state === 'lobby') {
+          room.champ.clear();
+          sendRoster(room);
+        }
         break;
 
       case 'close_room':
