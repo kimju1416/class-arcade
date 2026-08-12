@@ -508,6 +508,32 @@ body.host #tetLogo { height: 72px; }
   text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px #000; }
 .tet-mini .sc { font-size: 11px; color: #ffd21f; font-weight: 700; }
 .tet-mini canvas { border-radius: 6px; background: rgba(6,8,28,.95); box-shadow: 0 0 0 2px rgba(120,140,255,.35); }
+/* ---- 그림 퀴즈 ---- */
+#drawGame { gap: 10px; justify-content: flex-start; }
+#drawCanvas { background: #fff; border-radius: 12px; touch-action: none;
+  box-shadow: 0 0 0 3px rgba(120,140,255,.35), 0 10px 26px rgba(0,0,0,.45); }
+.draw-pick-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 760px; }
+.draw-chip { padding: 10px 16px; border-radius: 999px; border: 2px solid #3a4470; background: #1a2142;
+  color: #dfe8ff; font-weight: 800; font-size: 15px; cursor: pointer; }
+.draw-chip:hover { border-color: #7c8cff; background: #232c5c; }
+.draw-chip.drew { opacity: .55; }
+.draw-chip.drew::after { content: ' 🎨'; }
+.draw-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center;
+  background: rgba(10,14,40,.7); border-radius: 12px; padding: 7px 10px; }
+.draw-dot { width: 34px; height: 34px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+.draw-dot.sel { border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,.7); }
+.draw-size { width: 34px; height: 34px; border-radius: 8px; background: #1a2142; border: 2px solid #3a4470;
+  color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.draw-size.sel { border-color: #7c8cff; background: #2a3568; }
+.draw-size i { background: #fff; border-radius: 50%; display: block; }
+.draw-tool-btn { height: 34px; padding: 0 12px; border-radius: 8px; background: #1a2142; border: 2px solid #3a4470;
+  color: #dfe8ff; font-weight: 700; font-size: 13px; cursor: pointer; }
+#drawGuessWrap { display: flex; gap: 8px; width: 100%; max-width: 460px; }
+#drawGuessIn { flex: 1; }
+#drawTicker { min-height: 22px; font-size: 14px; color: #9fb2e8; text-align: center; max-width: 700px; }
+#drawTicker b { color: #ffd21f; }
+#drawInfo { font-weight: 800; color: #cfe0ff; text-align: center; }
+#drawInfo .hint { color: #ff7ad9; }
 </style>
 </head>
 <body>
@@ -667,6 +693,36 @@ body.host #tetLogo { height: 72px; }
   <button class="btn danger-ghost" id="btnTetAbort" style="display:none">게임 중단</button>
 </div>
 
+<!-- 그림 퀴즈 (캐치마인드식) -->
+<div class="view" id="drawGame">
+  <div class="word-round" id="drawHead">🎨 그림 퀴즈</div>
+  <div class="word-timer"><div id="drawTimerBar" style="width:100%"></div></div>
+  <div class="quiz-q" id="drawMsg">준비하세요…</div>
+  <div id="drawPickWrap" style="display:none; flex-direction:column; align-items:center; gap:12px;">
+    <div class="draw-pick-grid" id="drawPickGrid"></div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn" id="btnDrawRandom">🎲 아무나 지목!</button>
+      <button class="btn green" id="btnDrawEnd">🏁 결과 발표</button>
+    </div>
+  </div>
+  <div id="drawWriteWrap" style="display:none; flex-direction:column; align-items:center; gap:10px; width:100%; max-width:420px;">
+    <input class="field" id="drawAnswerIn" placeholder="정답 단어 입력 (2~12자)" maxlength="12" style="width:100%">
+    <button class="btn green" id="btnDrawWord" style="width:100%">이걸로 결정! 🤫</button>
+    <div class="err" id="drawWriteErr"></div>
+  </div>
+  <div id="drawBoardWrap" style="display:none; flex-direction:column; align-items:center; gap:10px;">
+    <canvas id="drawCanvas" width="1000" height="1000"></canvas>
+    <div class="draw-tools" id="drawTools" style="display:none"></div>
+    <div id="drawGuessWrap" style="display:none">
+      <input class="field" id="drawGuessIn" placeholder="정답이 뭘까?" maxlength="20">
+      <button class="btn green" id="btnDrawGuess">정답!</button>
+    </div>
+    <div id="drawInfo"></div>
+    <div id="drawTicker"></div>
+  </div>
+  <button class="btn danger-ghost" id="btnDrawAbort" style="display:none">게임 중단</button>
+</div>
+
 <!-- 결과 -->
 <div class="view" id="result">
   <div id="resultHost" style="display:none; flex-direction:column; align-items:center; gap:16px; width:100%;">
@@ -721,6 +777,7 @@ const GAMES_META = {
   flash: { icon: '⚡', name: '순간 포착', desc: '그림들이 2초 만에 사라진다! 몇 개였는지, 뭐가 없었는지 4지선다로 맞혀라. 빠를수록 보너스!', badge: '8문제', rule: 'TV에 잠깐 뜨는 그림을 눈에 새기고\n문제가 나오면 색깔 버튼으로 답!' },
   pairs: { icon: '🃏', name: '같은 그림 찾기', desc: '뒤집힌 카드 20장에서 짝을 찾아라! 배치는 모두 동일 — 적게 뒤집고 빨리 끝낼수록 고득점. 탈락 없음.', badge: '75초', rule: '카드 두 장을 뒤집어 짝을 맞추세요!\n먼저 다 찾으면 완주 보너스' },
   tetris: { icon: '🧱', name: '블록 배틀', desc: '전원 동시 테트리스 대전! 2줄 이상 지우면 친구 보드에 쓰레기 줄 공격. 갈수록 빨라진다 — 최후의 1인은 누구?', badge: '실시간 대전', rule: '◀▶ 이동 · ⟳ 회전 · ▼ 빨리 내리기 · 쿵! 즉시 낙하\n2줄 이상 지우면 친구에게 공격!' },
+  draw: { icon: '🎨', name: '그림 퀴즈', desc: '선생님이 지목한 친구가 몰래 답을 정하고 그림으로만 설명! 그림이 TV에 실시간으로 — 빨리 맞힐수록 고득점.', badge: '캐치마인드', rule: '출제자: 답을 정하고 그림으로 표현!\n나머지: 그림을 보고 폰에 정답 입력!' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
 const GAME_CATS = [
@@ -741,6 +798,7 @@ const GAME_CAT_OF = {
   simon: ['memory', 'sur'], chimp: ['memory'], flash: ['memory', 'quiz'], pairs: ['memory'],
   sadari: ['luck'],
   tetris: ['sur', 'score'],
+  draw: ['quiz', 'score'],
 };
 const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식', '내문제'];
 // 붙여넣은 텍스트 → 문제 배열. 한 줄 = "문제 / 정답 / 오답1 / 오답2 / 오답3" (| 구분도 허용)
@@ -881,7 +939,7 @@ function show(viewId) {
 // 게임 화면(캔버스든 DOM 뷰든)이 실제로 떠 있는가 — samePlaying 오판 방지용
 function gameViewActive() {
   return $('game').classList.contains('on')
-    || ['wordGame', 'quizGame', 'simonGame', 'pairsGame', 'tetrisGame'].some(id => $(id).classList.contains('on'));
+    || ['wordGame', 'quizGame', 'simonGame', 'pairsGame', 'tetrisGame', 'drawGame'].some(id => $(id).classList.contains('on'));
 }
 function toast(msg, ms = 2500) {
   $('toast').textContent = msg; $('toast').style.display = 'block';
@@ -1027,6 +1085,7 @@ function handle(m) {
       if (m.mode === 'simon') { window.__lastState = m; window.__myId = myId; renderSimon(m); break; }
       if (m.mode === 'pairs') { window.__lastState = m; window.__myId = myId; renderPairs(m); break; }
       if (m.mode === 'tetris') { window.__lastState = m; window.__myId = myId; renderTetris(m); break; }
+      if (m.mode === 'draw') { window.__lastState = m; window.__myId = myId; renderDraw(m); break; }
       if (m.mode === 'word' || m.mode === 'cho') { renderWord(m); break; }
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
@@ -1050,6 +1109,51 @@ function handle(m) {
     case 'pairs_flip':
       pairsFace[m.i] = m.face;
       renderPairsCard(m.i);
+      break;
+    // 그림 퀴즈: 선 조각 (출제자 제외 전원 수신)
+    case 'dseg': {
+      if (m.begin || !drawStrokes.length) drawStrokes.push({ c: m.c, w: m.w, pts: [] });
+      const s = drawStrokes[drawStrokes.length - 1];
+      const from = s.pts.length;
+      s.pts.push(...m.pts);
+      drawStrokePath(drawCanvasCtx(), s, from);
+      break;
+    }
+    case 'devt':
+      if (m.v === 'undo') drawStrokes.pop(); else drawStrokes = [];
+      drawRepaint();
+      break;
+    case 'dfull':   // 재접속·새로고침 복구
+      drawStrokes = (m.strokes || []).map(s => ({ c: s.c, w: s.w, pts: [...s.pts] }));
+      drawRepaint();
+      break;
+    case 'dword_ok':
+      $('drawWriteErr').textContent = '';
+      break;
+    case 'dword_bad':
+      $('drawWriteErr').textContent = m.reason === 'bad' ? '나쁜 말은 안 돼요!' : '한글·영어·숫자 2~12자로 정해주세요';
+      break;
+    case 'dcorrect': {
+      const meta = roster.get(m.id) || { nick: '?' };
+      drawTickerArr.unshift(`<b>🎉 ${esc(meta.nick)} 정답! (${m.order}등 +${m.points}점)</b>`);
+      $('drawTicker').innerHTML = drawTickerArr.slice(0, 4).join(' · ');
+      if (m.id === myId) {
+        drawGuessLock = true;
+        $('drawGuessIn').value = ''; $('drawGuessIn').readOnly = true;
+        $('btnDrawGuess').disabled = true; $('btnDrawGuess').textContent = `${m.order}등! 🎉`;
+        if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
+      }
+      SFX.ok();
+      break;
+    }
+    case 'dmiss': {
+      const meta = roster.get(m.id) || { nick: '?' };
+      drawTickerArr.unshift(`${esc(meta.nick)}: ${esc(m.text)}`);
+      $('drawTicker').innerHTML = drawTickerArr.slice(0, 4).join(' · ');
+      break;
+    }
+    case 'dguess_bad':
+      toast('나쁜 말은 안 돼요!');
       break;
     case 'result':
       SFX.melodyStop();
@@ -1598,6 +1702,200 @@ function renderTetHost(m) {
     tetPrevAlive[id] = alive;
   }
 }
+// ---- 그림 퀴즈 ----
+// 좌표는 0~1000 정규화 — 어떤 화면 크기든 같은 그림
+let drawStrokes = [], drawSel = { c: 0, w: 1 }, drawCur = null, drawFlushIv = null;
+let drawPrevPhase = '', drawPrevRound = 0, drawGuessLock = false, drawTickerArr = [];
+const DRAW_COLORS = ['#111111', '#e33030', '#2b6cff', '#1fae1f', '#ffb400', '#8a2ecc', '#8b5a2b', '#ffffff'];
+const DRAW_WIDTHS = [6, 14, 30];   // 정규화(1000) 기준 굵기
+function drawCanvasCtx() { return $('drawCanvas').getContext('2d'); }
+function drawRepaint() {
+  const ctx = drawCanvasCtx();
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1000, 1000);
+  for (const s of drawStrokes) drawStrokePath(ctx, s, 0);
+}
+function drawStrokePath(ctx, s, from) {
+  const pts = s.pts;
+  if (pts.length < 2) return;
+  ctx.strokeStyle = DRAW_COLORS[s.c] || '#111';
+  ctx.lineWidth = DRAW_WIDTHS[s.w] || 14;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  const st = Math.max(0, from - 2);   // 이어 그릴 땐 직전 점부터
+  ctx.moveTo(pts[st], pts[st + 1]);
+  if (pts.length === 2) ctx.lineTo(pts[0] + .5, pts[1] + .5);   // 점 하나 = 콕 찍기
+  for (let i = st + 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+  ctx.stroke();
+}
+function drawBuildTools() {
+  const box = $('drawTools');
+  box.innerHTML = '';
+  DRAW_COLORS.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = 'draw-dot' + (drawSel.c === i ? ' sel' : '');
+    d.style.background = c;
+    if (i === 7) { d.textContent = '🧽'; d.style.display = 'flex'; d.style.alignItems = 'center'; d.style.justifyContent = 'center'; d.title = '지우개'; }
+    d.onclick = () => { drawSel.c = i; drawBuildTools(); };
+    box.appendChild(d);
+  });
+  DRAW_WIDTHS.forEach((w, i) => {
+    const d = document.createElement('div');
+    d.className = 'draw-size' + (drawSel.w === i ? ' sel' : '');
+    d.innerHTML = `<i style="width:${5 + i * 6}px;height:${5 + i * 6}px"></i>`;
+    d.onclick = () => { drawSel.w = i; drawBuildTools(); };
+    box.appendChild(d);
+  });
+  const undo = document.createElement('button');
+  undo.className = 'draw-tool-btn'; undo.textContent = '↩ 되돌리기';
+  undo.onclick = () => { drawStrokes.pop(); drawRepaint(); send({ type: 'dundo' }); };
+  box.appendChild(undo);
+  const clear = document.createElement('button');
+  clear.className = 'draw-tool-btn'; clear.textContent = '🗑 전부 지우기';
+  clear.onclick = () => { drawStrokes = []; drawRepaint(); send({ type: 'dclear' }); };
+  box.appendChild(clear);
+}
+// 출제자 손가락 → 선. 점은 모아서 120ms마다 전송 (트래픽 절약)
+function drawBindPen() {
+  const cv = $('drawCanvas');
+  if (cv._penBound) return;
+  cv._penBound = true;
+  let buf = [], began = false;
+  const norm = e => {
+    const r = cv.getBoundingClientRect();
+    return [Math.round((e.clientX - r.left) / r.width * 1000), Math.round((e.clientY - r.top) / r.height * 1000)];
+  };
+  const flush = () => {
+    if (!buf.length) return;
+    send({ type: 'dstroke', begin: began ? 0 : 1, c: drawSel.c, w: drawSel.w, pts: buf.slice(0, 128) });
+    began = true; buf = [];
+  };
+  cv.addEventListener('pointerdown', e => {
+    const st = window.__lastState;
+    if (!st || st.mode !== 'draw' || st.dPhase !== 'draw' || st.drawer !== myId) return;
+    e.preventDefault(); cv.setPointerCapture(e.pointerId);
+    const [x, y] = norm(e);
+    drawStrokes.push({ c: drawSel.c, w: drawSel.w, pts: [x, y] });
+    drawStrokePath(drawCanvasCtx(), drawStrokes[drawStrokes.length - 1], 0);
+    began = false; buf = [x, y]; flush();          // begin 즉시 전송
+    drawFlushIv = setInterval(flush, 120);
+    drawCur = true;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!drawCur) return;
+    const s = drawStrokes[drawStrokes.length - 1];
+    if (!s || s.pts.length >= 2900) return;
+    const [x, y] = norm(e);
+    const n = s.pts.length;
+    if (Math.abs(s.pts[n - 2] - x) + Math.abs(s.pts[n - 1] - y) < 6) return;   // 너무 촘촘한 점 생략
+    s.pts.push(x, y); buf.push(x, y);
+    drawStrokePath(drawCanvasCtx(), s, s.pts.length - 2);
+  });
+  const up = () => { if (!drawCur) return; drawCur = null; clearInterval(drawFlushIv); flush(); };
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+}
+function drawSizeCanvas() {
+  const cv = $('drawCanvas');
+  const side = isHost ? Math.min(560, window.innerHeight - 320)
+    : Math.min(window.innerWidth - 28, window.innerHeight - 330, 430);
+  cv.style.width = side + 'px'; cv.style.height = side + 'px';
+}
+function renderDraw(m) {
+  const total = m.timeTotal || 1;
+  $('drawTimerBar').style.width = (m.dPhase === 'pick' ? 100 : Math.max(0, (m.timeLeft || 0) / total * 100)) + '%';
+  const iAmDrawer = m.drawer === myId;
+  const drawerMeta = roster.get(m.drawer) || { nick: '?' };
+
+  // 라운드가 바뀌면 캔버스·입력 초기화
+  if (m.round !== drawPrevRound) {
+    drawPrevRound = m.round;
+    drawStrokes = []; drawRepaint(); drawGuessLock = false; drawTickerArr = [];
+    $('drawTicker').innerHTML = '';
+    $('drawGuessIn').value = ''; $('drawGuessIn').readOnly = false; $('btnDrawGuess').disabled = false;
+  }
+  const key = [m.dPhase, m.round, m.correctN, m.drawer, phase].join('|');
+  if (key === renderDraw._k && m.dPhase !== 'pick') return;   // pick은 로스터 갱신 위해 매번
+  renderDraw._k = key;
+
+  setText($('drawHead'), `🎨 그림 퀴즈 — 라운드 ${Math.max(1, m.round)}`);
+  $('drawPickWrap').style.display = 'none';
+  $('drawWriteWrap').style.display = 'none';
+  $('drawBoardWrap').style.display = 'none';
+
+  if (m.dPhase === 'pick') {
+    if (isHost) {
+      setText($('drawMsg'), m.round === 0 ? '그림 그릴 사람을 골라주세요!' : '다음 출제자를 골라주세요!');
+      $('drawPickWrap').style.display = 'flex';
+      const grid = $('drawPickGrid');
+      grid.innerHTML = '';
+      for (const row of (m.players || [])) {
+        const [id, score, , drew, conn] = row;
+        if (!conn) continue;
+        const meta = roster.get(id) || { nick: '?', ci: 0 };
+        const chip = document.createElement('div');
+        chip.className = 'draw-chip' + (drew ? ' drew' : '');
+        chip.style.borderColor = COLORS[meta.ci % COLORS.length];
+        chip.textContent = `${meta.nick} · ${score}점`;
+        chip.onclick = () => send({ type: 'dpick', id });
+        grid.appendChild(chip);
+      }
+      $('btnDrawEnd').style.display = m.round > 0 ? 'inline-block' : 'none';
+    } else {
+      setText($('drawMsg'), '선생님이 출제자를 고르는 중… 🎯');
+    }
+  } else if (m.dPhase === 'write') {
+    if (iAmDrawer) {
+      setText($('drawMsg'), '아무도 못 보게 정답을 정하세요! 🤫');
+      $('drawWriteWrap').style.display = 'flex';
+    } else {
+      setText($('drawMsg'), `${drawerMeta.nick} 님이 문제를 정하는 중…`);
+    }
+  } else if (m.dPhase === 'draw') {
+    $('drawBoardWrap').style.display = 'flex';
+    drawSizeCanvas();
+    $('drawTools').style.display = iAmDrawer ? 'flex' : 'none';
+    $('drawGuessWrap').style.display = (!isHost && !iAmDrawer) ? 'flex' : 'none';
+    if (iAmDrawer) {
+      setText($('drawMsg'), '그림으로만 설명하세요! (글자 금지 🙅)');
+      drawBuildTools(); drawBindPen();
+    } else {
+      setText($('drawMsg'), `${drawerMeta.nick} 님의 그림!`);
+    }
+    $('drawInfo').innerHTML = `<span class="hint">힌트: ${m.ansLen}글자</span> · ✋ ${m.correctN}/${m.guessN}명 정답`;
+  } else if (m.dPhase === 'reveal') {
+    $('drawBoardWrap').style.display = 'flex';
+    drawSizeCanvas();
+    $('drawTools').style.display = 'none';
+    $('drawGuessWrap').style.display = 'none';
+    setText($('drawMsg'), `정답은 "${m.answer}"! — ${m.correctN}명이 맞혔어요`);
+    $('drawInfo').textContent = '';
+    if (isHost && renderDraw._rev !== m.round) { renderDraw._rev = m.round; SFX.fanfare(); }
+  }
+}
+$('btnDrawWord').onclick = () => {
+  const t = $('drawAnswerIn').value.trim();
+  if (!t) return;
+  send({ type: 'dword', text: t });
+};
+$('drawAnswerIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnDrawWord').click(); });
+$('btnDrawGuess').onclick = () => {
+  const t = $('drawGuessIn').value.trim();
+  if (!t || drawGuessLock) return;
+  send({ type: 'dguess', text: t });
+  $('drawGuessIn').value = '';
+};
+$('drawGuessIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnDrawGuess').click(); });
+$('btnDrawRandom').onclick = () => {
+  const st = window.__lastState;
+  if (!st || st.mode !== 'draw') return;
+  const cand = (st.players || []).filter(r => r[4] && !r[3]);       // 접속 중 + 아직 안 그린 사람 우선
+  const pool = cand.length ? cand : (st.players || []).filter(r => r[4]);
+  if (!pool.length) return;
+  send({ type: 'dpick', id: pool[Math.floor(Math.random() * pool.length)][0] });
+};
+$('btnDrawEnd').onclick = () => { if (confirm('게임을 끝내고 결과를 발표할까요?')) send({ type: 'dend' }); };
+$('btnDrawAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
+
 // ---- 블록 배틀 입력 (버튼 + DAS 홀드 반복) ----
 function tetCanSend() {
   const st = window.__lastState;
@@ -1682,6 +1980,21 @@ function enterGameView(keepInput) {
     tetMinis = {}; tetPrevStage = 1; tetPrevLines = 0; tetMySetup = false;
     tetPrevAlive = {}; tetPrevPend = 0;
     if (!isHost) tetBindInput();
+  } else if (gameType === 'draw') {
+    show('drawGame');
+    $('btnDrawAbort').style.display = isHost ? 'block' : 'none';
+    $('drawMsg').textContent = '준비하세요…';
+    $('drawTimerBar').style.width = '100%';
+    $('drawPickWrap').style.display = 'none';
+    $('drawWriteWrap').style.display = 'none';
+    $('drawBoardWrap').style.display = 'none';
+    $('drawTicker').innerHTML = ''; $('drawInfo').textContent = '';
+    $('drawAnswerIn').value = ''; $('drawWriteErr').textContent = '';
+    $('drawGuessIn').value = ''; $('drawGuessIn').readOnly = false;
+    $('btnDrawGuess').disabled = false; $('btnDrawGuess').textContent = '정답!';
+    drawStrokes = []; drawPrevRound = -1; drawGuessLock = false; drawTickerArr = [];
+    renderDraw._k = ''; renderDraw._rev = -1;
+    drawRepaint();
   } else if (gameType === 'word' || gameType === 'cho') {
     show('wordGame');
     $('wordPlayerUI').style.display = isHost ? 'none' : 'flex';
@@ -1813,7 +2126,7 @@ function renderGameGrid() {
   const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
                      race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
                      sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox', timing: 'timing', run: 'runner',
-                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs', tetris: 'tet' };
+                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs', tetris: 'tet', draw: 'draw' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     if (gameTabSel !== 'all' && !(GAME_CAT_OF[key] || []).includes(gameTabSel)) continue;
     const el = document.createElement('div');

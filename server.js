@@ -624,7 +624,15 @@ const TET_SHAPES = [
 const TET_KICKS = [0, -1, 1, -2, 2];   // 회전 충돌 시 좌우로 밀어보는 순서(간이 월킥)
 const TET_ATTACK = [0, 0, 1, 2, 4];    // 지운 줄 수 → 상대에게 보내는 쓰레기 줄
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris'];
+// ---------- 그림 퀴즈 (캐치마인드식 — 방장이 출제자 지목) ----------
+const DRAW_WRITE_MS = 30000;     // 출제자가 답을 정하는 시간
+const DRAW_ROUND_MS = 90000;     // 그리기 + 맞히기
+const DRAW_REVEAL_MS = 6000;     // 정답 공개
+const DRAW_MAX_ROUNDS = 15;      // 안전 캡 (보통은 방장이 결과 발표로 끝냄)
+const DRAW_MAX_STROKES = 400;    // 선 개수 상한
+const DRAW_MAX_PTS = 3000;       // 선 하나의 좌표쌍 상한 (도배 방지)
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -698,6 +706,11 @@ const server = http.createServer((req, res) => {
       pairs: r.gameType === 'pairs' && r.game
         ? { faces: r.game.faces, finishedN: r.game.finishedN,
             players: [...r.players.values()].map(p => [p.nick, p.pPairs, p.pAttempts, p.pMask, !!p.pFinAt]) }
+        : undefined,
+      draw: r.gameType === 'draw' && r.game
+        ? { phase: r.game.dPhase, round: r.game.round, drawer: r.game.drawer,
+            answer: r.game.answer, strokes: r.game.strokes.length,
+            players: [...r.players.values()].map(p => [p.nick, p.score, !!p.dGuessed]) }
         : undefined,
       tetris: r.gameType === 'tetris' && r.game
         ? { stage: r.game.stage,
@@ -791,6 +804,9 @@ function sendCurrentPhase(room, ws) {
     track: room.gameType === 'race' && room.game && room.game.track ? trackForClient(room.game.track) : undefined,
     course: room.gameType === 'run' && room.game && room.game.course ? room.game.course : undefined,
   });
+  // 그림 퀴즈: 재접속·새로고침 시 지금까지 그린 선을 통째로 복원
+  if (room.gameType === 'draw' && room.game && room.state === 'playing' && room.game.strokes.length)
+    roomSend(ws, { type: 'dfull', strokes: room.game.strokes });
   // 교사 화면 전용 라운드 페이로드 재전송 — TV를 새로고침해도 진행 중 라운드가 깨지지 않게.
   // 정답 유출 방지를 위해 반드시 호스트 소켓에만 보낸다.
   if (ws === room.hostWs && room.game && room.state === 'playing') {
@@ -1089,6 +1105,10 @@ function startGame(room, type, opt) {
     g.stage = 1;
     g.nextStageAt = 0;           // playing 진입 때 셋
     for (const p of actives) tetInitPlayer(p);
+  } else if (type === 'draw') {
+    g.roundMs = 0;               // 라운드 방식 — 전체 제한시간 없음 (방장이 결과 발표로 끝냄)
+    g.dPhase = 'pick'; g.round = 0; g.drawer = null; g.answer = '';
+    g.strokes = []; g.drawnIds = new Set(); g.correctOrder = [];
   }
 
   room.state = 'countdown';
@@ -1186,6 +1206,7 @@ function tick(room) {
   else if (room.gameType === 'flash') flashTick(room, now);
   else if (room.gameType === 'pairs') pairsTick(room, now);
   else if (room.gameType === 'tetris') tetrisTick(room, now);
+  else if (room.gameType === 'draw') drawTick(room, now);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -2710,6 +2731,44 @@ function endTetris(room, now) {
   }, p => p.alive ? `a${p.score}` : String(p.deadAt));
 }
 
+// ---------- 그림 퀴즈 ----------
+// 흐름: pick(방장이 출제자 지목) → write(출제자가 답 입력) → draw(그리기+맞히기) → reveal → pick…
+// 정답은 서버에만 저장, reveal 때만 전송 (개발자도구 컨닝 방지)
+function drawTick(room, now) {
+  const g = room.game;
+  if (g.dPhase === 'write') {
+    const drawer = room.players.get(g.drawer);
+    // 출제자가 시간 안에 답을 못 정했거나 나가버림 → 라운드 무효, 다시 지목
+    if (now >= g.writeEndAt || !drawer || !drawer.connected) {
+      g.dPhase = 'pick'; g.drawer = null; g.answer = ''; g.strokes = [];
+    }
+  } else if (g.dPhase === 'draw') {
+    const drawer = room.players.get(g.drawer);
+    const guessers = [...room.players.values()].filter(p => !p.waiting && p.id !== g.drawer && p.connected);
+    const allDone = guessers.length > 0 && guessers.every(p => p.dGuessed);
+    if (!drawer || !drawer.connected || now >= g.drawEndAt || allDone) {
+      g.dPhase = 'reveal'; g.revealEndAt = now + DRAW_REVEAL_MS;
+    }
+  } else if (g.dPhase === 'reveal' && now >= g.revealEndAt) {
+    if (g.round >= DRAW_MAX_ROUNDS) { endDraw(room); return; }
+    g.dPhase = 'pick'; g.drawer = null; g.answer = ''; g.strokes = [];
+  }
+  sendState(room, now);
+}
+function endDraw(room) {
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => (b.score || 0) - (a.score || 0));
+  finishGame(room, sorted,
+    p => `${p.score || 0}점${room.game.drawnIds.has(p.id) ? ' 🎨' : ''}`,
+    p => String(p.score || 0));
+}
+// 그리기 이벤트를 출제자 빼고 전원에게 (출제자는 자기 화면에 이미 그렸음)
+function drawRelay(room, drawerId, obj) {
+  if (room.hostWs && room.hostWs.readyState === 1) room.hostWs.send(JSON.stringify(obj));
+  for (const p of room.players.values())
+    if (p.ws && p.id !== drawerId && p.ws.readyState === 1) p.ws.send(JSON.stringify(obj));
+}
+
 // 점수순 공통 종료 (침팬지·순간 포착)
 function endScoreGame(room, unit) {
   const parts = [...room.players.values()].filter(p => !p.waiting);
@@ -2807,6 +2866,28 @@ function sendState(room, now) {
       scores: parts.map(p => [p.id, p.score, p.qAnswer >= 0 ? 1 : 0,
         g.fPhase === 'reveal' ? (p.qGain || 0) : 0,
         g.fPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]),
+    });
+    return;
+  }
+  if (type === 'draw') {
+    // 아무것도 안 움직이는 대기 시간이 길다 — 7Hz면 타이머바에 충분
+    if (g.dStateAt && now - g.dStateAt < 150) return;
+    g.dStateAt = now;
+    const parts = [...room.players.values()].filter(p => !p.waiting);
+    broadcast(room, {
+      type: 'state', mode: 'draw', st: now,
+      dPhase: g.dPhase || 'pick', round: g.round || 0, drawer: g.drawer,
+      timeLeft: g.dPhase === 'write' ? Math.max(0, g.writeEndAt - now)
+        : g.dPhase === 'draw' ? Math.max(0, g.drawEndAt - now)
+        : g.dPhase === 'reveal' ? Math.max(0, g.revealEndAt - now) : 0,
+      timeTotal: g.dPhase === 'write' ? DRAW_WRITE_MS : g.dPhase === 'draw' ? DRAW_ROUND_MS : DRAW_REVEAL_MS,
+      correctN: parts.filter(p => p.dGuessed).length,
+      guessN: Math.max(0, parts.filter(p => p.id !== g.drawer).length),
+      ansLen: g.dPhase === 'draw' ? g.answer.length : 0,       // 글자 수 힌트
+      answer: g.dPhase === 'reveal' ? g.answer : undefined,    // 정답은 공개 시점에만!
+      // [id, 점수, 이번 판 맞힘, 출제 이력, 접속]
+      players: parts.map(p => [p.id, p.score || 0, p.dGuessed ? 1 : 0,
+        g.drawnIds.has(p.id) ? 1 : 0, p.connected ? 1 : 0]),
     });
     return;
   }
@@ -3300,6 +3381,93 @@ wss.on('connection', (ws) => {
         p.tY += dy;
         p.score += dy * 2;                       // 하드드롭 보너스
         tetLock(room, p, Date.now());
+        break;
+      }
+
+      // 그림 퀴즈: 지목(방장)·답 정하기(출제자)·그리기(출제자)·정답 제출(나머지)
+      case 'dpick': {
+        if (!room || room.state !== 'playing' || room.gameType !== 'draw') return;
+        if (!isRoomHost(room, ws)) return;
+        const g = room.game;
+        if (g.dPhase !== 'pick') return;
+        const t = room.players.get(Math.floor(finite(msg.id)));
+        if (!t || t.waiting || !t.connected) return;
+        g.drawer = t.id; g.dPhase = 'write'; g.writeEndAt = Date.now() + DRAW_WRITE_MS;
+        g.answer = ''; g.strokes = []; g.round++; g.correctOrder = [];
+        g.drawnIds.add(t.id);
+        for (const p of room.players.values()) p.dGuessed = false;
+        break;
+      }
+      case 'dword': {
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'draw') return;
+        const g = room.game;
+        const p = room.players.get(ws.playerId);
+        if (!p || p.id !== g.drawer || g.dPhase !== 'write') return;
+        const norm = normalizeWord(msg.text);
+        if (!norm || norm.length < 2 || norm.length > 12 || !/^[가-힣a-zA-Z0-9]+$/.test(norm)) {
+          roomSend(ws, { type: 'dword_bad', reason: 'form' }); return;
+        }
+        if (hasBadWord(norm)) { roomSend(ws, { type: 'dword_bad', reason: 'bad' }); return; }
+        g.answer = norm; g.dPhase = 'draw'; g.drawEndAt = Date.now() + DRAW_ROUND_MS;
+        roomSend(ws, { type: 'dword_ok' });
+        break;
+      }
+      case 'dstroke': {   // begin:1이면 새 선 시작, pts:[x,y,x,y…] (0~1000 정규화 좌표)
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'draw') return;
+        const g = room.game;
+        const p = room.players.get(ws.playerId);
+        if (!p || p.id !== g.drawer || g.dPhase !== 'draw') return;
+        if (!Array.isArray(msg.pts) || msg.pts.length > 128 || msg.pts.length % 2) return;
+        const pts = msg.pts.map(v => Math.max(0, Math.min(1000, Math.round(finite(v)))));
+        const c = Math.max(0, Math.min(9, Math.floor(finite(msg.c))));
+        const w = Math.max(0, Math.min(2, Math.floor(finite(msg.w))));
+        if (msg.begin) {
+          if (g.strokes.length >= DRAW_MAX_STROKES) return;
+          g.strokes.push({ c, w, pts: [] });
+        }
+        const s = g.strokes[g.strokes.length - 1];
+        if (!s || s.pts.length + pts.length > DRAW_MAX_PTS) return;
+        s.pts.push(...pts);
+        drawRelay(room, p.id, { type: 'dseg', begin: msg.begin ? 1 : 0, c: s.c, w: s.w, pts });
+        break;
+      }
+      case 'dundo': case 'dclear': {
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'draw') return;
+        const g = room.game;
+        const p = room.players.get(ws.playerId);
+        if (!p || p.id !== g.drawer || g.dPhase !== 'draw') return;
+        if (msg.type === 'dundo') g.strokes.pop(); else g.strokes.length = 0;
+        drawRelay(room, p.id, { type: 'devt', v: msg.type === 'dundo' ? 'undo' : 'clear' });
+        break;
+      }
+      case 'dguess': {
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'draw') return;
+        const g = room.game;
+        const p = room.players.get(ws.playerId);
+        if (!p || p.waiting || p.id === g.drawer || g.dPhase !== 'draw' || p.dGuessed) return;
+        const norm = normalizeWord(msg.text);
+        if (!norm || norm.length > 20) return;
+        if (hasBadWord(norm)) { roomSend(ws, { type: 'dguess_bad' }); return; }
+        if (norm === g.answer) {
+          p.dGuessed = true;
+          g.correctOrder.push(p.id);
+          const idx = g.correctOrder.length - 1;
+          const pts = WORD_POINTS[idx] != null ? WORD_POINTS[idx] : 1;
+          p.score += pts;
+          const drawer = room.players.get(g.drawer);
+          if (drawer) drawer.score += 2;             // 출제자도 맞힌 사람 수만큼 점수 (잘 그릴 동기)
+          broadcast(room, { type: 'dcorrect', id: p.id, order: idx + 1, points: pts });
+        } else {
+          // 오답은 TV 티커에 뜨는 재미 요소 — 금칙어는 위에서 걸렀고 길이도 제한
+          broadcast(room, { type: 'dmiss', id: p.id, text: norm.slice(0, 12) });
+        }
+        break;
+      }
+      case 'dend': {   // 방장: 결과 발표
+        if (!room || room.state !== 'playing' || room.gameType !== 'draw') return;
+        if (!isRoomHost(room, ws)) return;
+        if (room.game.dPhase !== 'pick') return;   // 라운드 진행 중엔 못 끝냄 (그리던 판 보호)
+        endDraw(room);
         break;
       }
 
