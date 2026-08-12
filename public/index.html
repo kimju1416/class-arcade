@@ -388,13 +388,14 @@
     font-size: 14px; display: none; z-index: 50; text-align: center;
   }
 
-  /* 음소거 버튼 (교사 화면 전용) */
+  /* 음소거 버튼 — 교사 TV(기본 켬)와 학생 폰(기본 끔) 모두에서 온오프 가능 */
   #btnMute {
     position: fixed; bottom: 18px; right: 18px; z-index: 60; display: none;
     width: 52px; height: 52px; border-radius: 50%; border: 0; cursor: pointer;
     background: #232c4d; color: #eef1fa; font-size: 22px;
   }
   body.host #btnMute { display: block; }
+  body.joined #btnMute { display: block; width: 44px; height: 44px; font-size: 18px; opacity: .82; }
 
   /* 초성 퀴즈 */
   .cho-cat {
@@ -853,7 +854,9 @@ const COLORS = Array.from({ length: 30 }, (_, i) => `hsl(${(i * 137.5) % 360} 78
 // 파일이 아직 안 왔거나 실패하면 예전 WebAudio 합성음으로 자동 폴백한다.
 const SFX = (() => {
   let ac = null;
-  let muted = localStorage.getItem('ca_mute') === '1';
+  let muted = localStorage.getItem('ca_mute') === '1';        // 교사 TV: 기본 켬
+  let stuSnd = localStorage.getItem('ca_stusnd') === '1';     // 학생 폰: 기본 끔 (교실에서 40대가 울리면 아수라장)
+  function audible() { return isHost ? !muted : stuSnd; }
   function ctx() {
     if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
     if (ac.state === 'suspended') ac.resume();
@@ -861,22 +864,23 @@ const SFX = (() => {
   }
   // ---- 샘플 로더 ----
   const FILES = ['count', 'go', 'coin', 'ok', 'fanfare', 'boom', 'zombie', 'swat', 'grab', 'miss', 'clear', 'bigclear', 'hit', 'melody'];
-  const bufs = {}, raw = {};
-  let fetched = false, decoded = false;
-  function prefetch() {   // 네트워크는 제스처 없이도 가능 — 페이지 뜨자마자 받아둔다
-    if (fetched) return;
-    fetched = true;
-    for (const n of FILES)
+  const bufs = {}, raw = {}, fetching = {};
+  function prefetch() {
+    for (const n of FILES) {
+      if (n === 'melody' && !isHost) continue;    // BGM은 TV 전용 — 학생 폰은 418KB 아낀다
+      if (raw[n] || fetching[n]) continue;
+      fetching[n] = true;
       fetch('sfx/' + n + '.mp3').then(r => r.ok ? r.arrayBuffer() : null)
         .then(b => { if (b) { raw[n] = b; if (ac) decodeOne(n); } }).catch(() => {});
+    }
   }
   function decodeOne(n) {
     if (!raw[n] || bufs[n]) return;
     try { ctx().decodeAudioData(raw[n].slice(0), b => { bufs[n] = b; }, () => {}); } catch {}
   }
-  function decodeAll() { if (decoded) return; decoded = true; for (const n of FILES) decodeOne(n); }
+  function decodeAll() { for (const n of FILES) decodeOne(n); }
   function play(name, { vol = 1, rate = 1 } = {}) {
-    if (muted || !isHost) return true;      // 재생 대상이 아니면 폴백도 불필요
+    if (!audible()) return true;            // 재생 대상이 아니면 폴백도 불필요
     const b = bufs[name];
     if (!b) return false;                   // 아직 디코딩 전 → 신스 폴백
     try {
@@ -887,10 +891,13 @@ const SFX = (() => {
       return true;
     } catch { return false; }
   }
-  if (document.readyState === 'complete') prefetch();
-  else window.addEventListener('load', prefetch);
+  // 소리 켜둔 채 재방문한 기기만 미리 받는다 (기본 끔인 학생 폰의 트래픽 절약 — 호스트는 unlock에서 받음)
+  if (localStorage.getItem('ca_stusnd') === '1') {
+    if (document.readyState === 'complete') prefetch();
+    else window.addEventListener('load', prefetch);
+  }
   function tone(f, dur, { type = 'square', vol = .15, slide = 0, delay = 0 } = {}) {
-    if (muted || !isHost) return;
+    if (!audible()) return;
     try {
       const a = ctx(), t0 = a.currentTime + delay;
       const o = a.createOscillator(), g = a.createGain();
@@ -910,7 +917,7 @@ const SFX = (() => {
     lastAt[key] = t; return true;
   }
   function noise(dur, vol = .25) {
-    if (muted || !isHost) return;
+    if (!audible()) return;
     try {
       const a = ctx(), t0 = a.currentTime;
       const buf = a.createBuffer(1, a.sampleRate * dur, a.sampleRate);
@@ -924,8 +931,12 @@ const SFX = (() => {
     } catch {}
   }
   return {
-    // 오디오 컨텍스트는 사용자 제스처 안에서 열어야 한다 — 열리는 김에 받아둔 샘플을 디코딩
-    unlock() { if (!muted) try { ctx(); prefetch(); decodeAll(); } catch {} },
+    // 오디오 컨텍스트는 사용자 제스처 안에서 열어야 한다.
+    // 샘플 다운로드·디코딩은 이 기기에서 소리가 날 때만 (기본 끔인 학생 폰 트래픽 절약)
+    unlock() {
+      try { ctx(); } catch {}
+      if (audible()) { prefetch(); decodeAll(); }
+    },
     countBeep() { if (!play('count', { vol: .8 })) tone(660, .12, { type: 'sine', vol: .2 }); },
     go() { if (!play('go')) { tone(523, .12); tone(659, .12, { delay: .1 }); tone(784, .3, { delay: .2 }); } },
     boom() { if (gate('boom', 90) && !play('boom', { vol: .75 })) { noise(.35, .3); tone(90, .3, { type: 'sine', vol: .3, slide: -55 }); } },
@@ -947,7 +958,7 @@ const SFX = (() => {
     simon(i) { tone([262, 330, 392, 523][i] || 262, .3, { type: 'triangle', vol: .22 }); },
     // 의자 뺏기: 진짜 게임 BGM 루프 (뚝 멈추는 게 게임의 전부 — 정지는 80ms 페이드로 클릭만 방지)
     melodyStart() {
-      if (this._melSrc || this._melIv || muted || !isHost) return;
+      if (this._melSrc || this._melIv || !isHost || muted) return;   // BGM은 TV 전용 (40대 폰이 어긋난 박자로 울리면 안 됨)
       const b = bufs.melody;
       if (b) {
         try {
@@ -980,13 +991,20 @@ const SFX = (() => {
       }
     },
     get muted() { return muted; },
+    get off() { return isHost ? muted : !stuSnd; },     // "이 기기에서 꺼져 있나" — 버튼 아이콘용
     get ready() { return Object.keys(bufs).length; },   // 디코딩된 샘플 수 (검증·디버깅용)
     toggle() {
-      muted = !muted;
-      localStorage.setItem('ca_mute', muted ? '1' : '0');
-      if (muted) this.melodyStop();
-      if (!muted) this.unlock();
-      return muted;
+      if (isHost) {
+        muted = !muted;
+        localStorage.setItem('ca_mute', muted ? '1' : '0');
+        if (muted) this.melodyStop();
+        else this.unlock();
+      } else {
+        stuSnd = !stuSnd;
+        localStorage.setItem('ca_stusnd', stuSnd ? '1' : '0');
+        if (stuSnd) this.unlock();                       // 버튼 탭 = 제스처 — 여기서 로딩·디코딩 시작
+      }
+      return this.off;
     },
   };
 })();
@@ -1086,7 +1104,7 @@ function handle(m) {
     case 'room_created':
       isHost = true; roomCode = m.code; hostToken = m.hostToken;
       document.body.classList.add('host');
-      $('btnMute').textContent = SFX.muted ? '🔇' : '🔊';
+      $('btnMute').textContent = SFX.off ? '🔇' : '🔊';
       SFX.unlock();
       sessionStorage.setItem('ca_host', JSON.stringify({ code: roomCode, hostToken }));
       setupHostLobby();
@@ -1097,6 +1115,8 @@ function handle(m) {
       break;
     case 'join_ok':
       myId = m.id; myToken = m.token; roomCode = m.code; myNick = m.nick;
+      document.body.classList.add('joined');                     // 학생 폰에도 사운드 온오프 버튼 표시
+      $('btnMute').textContent = SFX.off ? '🔇' : '🔊';
       if (qs.get('fresh') !== '1')
         localStorage.setItem('ca_sess', JSON.stringify({ code: roomCode, token: myToken, nick: myNick }));
       $('plNick').textContent = m.nick;
@@ -1724,15 +1744,18 @@ function renderTetris(m) {
   nctx.clearRect(0, 0, nc.width, nc.height);
   if (next >= 0) for (const [cx, cy] of TET_C_SHAPES[next][0]) tetBlock(nctx, cx * 14 + 2, cy * 14 + 8, 14, next + 1);
   setText($('tetScore'), String(score)); setText($('tetLines'), String(lines));
-  // 줄 클리어 진동
-  if (lines > tetPrevLines) { if (navigator.vibrate) navigator.vibrate(lines - tetPrevLines >= 2 ? [40, 30, 60] : [30]); }
+  // 줄 클리어 진동 + 사운드 (폰에서 소리를 켠 학생용)
+  if (lines > tetPrevLines) {
+    SFX.clear(lines - tetPrevLines);
+    if (navigator.vibrate) navigator.vibrate(lines - tetPrevLines >= 2 ? [40, 30, 60] : [30]);
+  }
   tetPrevLines = lines;
   // 공격 경고
   const warn = $('tetWarn');
   if (!alive) { warn.textContent = '탈락! 친구들을 응원하세요'; warn.classList.remove('hot'); }
   else if (pend > 0) {
     warn.textContent = `⚠️ 공격 ${pend}줄이 온다!`; warn.classList.add('hot');
-    if (pend > tetPrevPend && navigator.vibrate) navigator.vibrate([60, 40, 60]);
+    if (pend > tetPrevPend) { SFX.hit(); if (navigator.vibrate) navigator.vibrate([60, 40, 60]); }
   } else { warn.textContent = m.atkBy ? `${m.atkBy}에게 공격!` : ''; warn.classList.remove('hot'); }
   tetPrevPend = pend;
 }
