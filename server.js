@@ -277,6 +277,23 @@ const RACE_BOOST_MULT = 1.55;
 const RACE_CAR_R = 19;
 const RACE_AFTER_FIRST_MS = 30000; // 1등 완주 후 나머지에게 주는 시간
 
+// ---------- 설원 러너 ----------
+const RUN_ROUND_MS = 80000;      // 80초 달리기
+const RUN_LANES = 3;
+const RUN_BASE_SPEED = 240;      // 유닛/초 (10유닛 = 1m 표기)
+const RUN_MAX_SPEED = 430;       // 시간이 갈수록 여기까지 빨라진다
+const RUN_RAMP_MS = 55000;
+const RUN_LANE_SPEED = 7;        // 레인 이동 속도 (레인/초)
+const RUN_JUMP_MS = 620;         // 점프 체공 시간
+const RUN_JUMP_H = 95;           // 점프 최고 높이 (유닛)
+const RUN_CLEAR_H = 42;          // 낮은 블록을 넘는 데 필요한 최소 높이
+const RUN_STUMBLE_MS = 900;      // 부딪히면 비틀거리는 시간 (감속)
+const RUN_STUMBLE_MULT = 0.35;
+const RUN_FEVER_COINS = 8;       // 코인 8개마다 피버
+const RUN_FEVER_MS = 4000;
+const RUN_FEVER_MULT = 1.6;      // 피버 속도 배율 (+무적)
+const RUN_COIN_SCORE = 15;       // 코인 1개 = 15점 (1점 = 1m)
+
 // 트랙 중심선: 제어점을 카트무-롬 스플라인으로 이어 만든 서킷
 // (차의 진행도·트랙 이탈 판정·클라이언트 트랙 그리기가 전부 이 점 목록 하나로 돌아간다)
 function crSpline(ctrl, step) {
@@ -556,7 +573,7 @@ const TIMING_READY_MS = 3500;
 const TIMING_REVEAL_MS = 6500;
 const TIMING_EXTRA_MS = 8000;    // 목표 시간 + 8초까지 기다렸다가 마감
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -578,7 +595,10 @@ const server = http.createServer((req, res) => {
       code: r.code, state: r.state, game: r.gameType, players: [...r.players.values()].map(p =>
         ({ nick: p.nick, x: Math.round(p.x), y: Math.round(p.y), alive: p.alive,
            infected: p.infected, score: p.score, connected: p.connected,
-           lap: p.crossings, fin: !!p.finishedAt, dist: Math.round(p.trackDist || 0) })),
+           lap: p.crossings, fin: !!p.finishedAt,
+           dist: Math.round((r.gameType === 'run' ? p.dist : p.trackDist) || 0),
+           coins: r.gameType === 'run' ? (p.coins || 0) : undefined,
+           lane: r.gameType === 'run' ? Math.round((p.lane || 0) * 100) / 100 : undefined })),
       coins: r.game && r.game.coins ? r.game.coins.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), v: c.v })) : undefined,
       mines: r.game && r.game.mines ? r.game.mines.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), live: Date.now() >= m.liveAt })) : undefined,
       mos: r.game && r.game.mos ? r.game.mos.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), gold: m.gold })) : undefined,
@@ -695,6 +715,7 @@ function sendCurrentPhase(room, ws) {
     type: 'phase', state: room.state, gameType: room.gameType,
     endAt: room.phaseEndAt, st: Date.now(),
     track: room.gameType === 'race' && room.game && room.game.track ? trackForClient(room.game.track) : undefined,
+    course: room.gameType === 'run' && room.game && room.game.course ? room.game.course : undefined,
   });
 }
 
@@ -733,6 +754,44 @@ function detachFromRoom(ws) {
 }
 
 // ---------- 게임 시작 ----------
+// 러너 코스 — 방마다 랜덤이지만 방 안 학생들에게는 동일 (시작할 때 통째로 전송)
+// obs: [z, lane, type(0=낮은 블록/점프 가능, 1=높은 기둥/피해야 함)] · coins: [z, lane, h(0=바닥, 1=공중)]
+function buildRunCourse() {
+  const obs = [], coins = [];
+  let z = 600;                                      // 출발 직후는 안전 구간
+  const END = 46000;
+  while (z < END) {
+    const t = Math.min(1, z / 30000);               // 코스 난이도 0→1
+    const lane = Math.floor(Math.random() * RUN_LANES);
+    const r = Math.random();
+    if (r < 0.58) {
+      const kind = Math.random();
+      if (kind < 0.4) {
+        obs.push([Math.round(z), lane, 0]);          // 낮은 블록 — 점프!
+        if (Math.random() < 0.55)                    // 블록 위 공중 코인 아치 (점프 보상)
+          for (let i = -1; i <= 1; i++) coins.push([Math.round(z + i * 42), lane, 1]);
+      } else if (kind < 0.7) {
+        obs.push([Math.round(z), lane, 1]);          // 높은 기둥 — 옆으로 피해!
+      } else if (t > 0.22) {
+        const l2 = (lane + 1 + Math.floor(Math.random() * 2)) % RUN_LANES;
+        obs.push([Math.round(z), lane, 1], [Math.round(z), l2, 0]);   // 두 레인 봉쇄
+      } else {
+        obs.push([Math.round(z), lane, 0]);
+      }
+    } else {
+      const cnt = 4 + Math.floor(Math.random() * 3); // 바닥 코인 줄
+      for (let i = 0; i < cnt; i++) coins.push([Math.round(z + i * 52), lane, 0]);
+      z += (cnt - 1) * 52;
+    }
+    // 간격은 "시간" 기준으로 일정하게 — 속도가 빨라지는 후반에는 유닛 간격을 오히려 벌린다
+    // (초반 240u/s에 ~280u = 1.1초, 후반 430u/s에 ~370u = 0.86초 꼴)
+    z += 240 + 90 * t + Math.random() * 80;
+  }
+  obs.sort((a, b) => a[0] - b[0]);
+  coins.sort((a, b) => a[0] - b[0]);
+  return { obs, coins };
+}
+
 function startGame(room, type, opt) {
   if (!GAME_KEYS.includes(type)) return;
   const actives = [...room.players.values()].filter(p => p.connected);
@@ -760,6 +819,9 @@ function startGame(room, type, opt) {
     p.vx = 0; p.vy = 0; p.dashUntil = 0; p.dashReadyAt = 0; p.dashDx = 0; p.dashDy = 0; p.bumpAt = 0;
     p.satChair = null; p.outRound = 0; p.pick = -1; p.picks = [];
     p.qAnswer = -1; p.qAnswerAt = 0; p.qGain = 0; p.tapAt = 0;
+    p.dist = 0; p.prevDist = 0; p.lane = 1; p.laneTarget = 1; p.lanePush = 0;
+    p.jumpStartAt = 0; p.jumpY = 0; p.stumbleUntil = 0; p.stumbleAt = 0; p.invUntil = 0;
+    p.feverUntil = 0; p.coins = 0; p.gauge = 0; p.obIdx = 0; p.coinIdx = 0; p.lastCoinAt = 0;
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -912,6 +974,10 @@ function startGame(room, type, opt) {
       p.x = g.arenaW / 2 + (Math.random() - 0.5) * 160;
       p.y = 90 + (i % 8) * ((g.arenaH - 180) / 7);
     });
+  } else if (type === 'run') {
+    g.roundMs = RUN_ROUND_MS;
+    g.arenaW = 900; g.arenaH = 1500;   // 러너는 원근 렌더라 아레나 좌표는 사실상 미사용
+    g.course = buildRunCourse();
   }
 
   room.state = 'countdown';
@@ -919,6 +985,7 @@ function startGame(room, type, opt) {
   broadcast(room, {
     type: 'phase', state: 'countdown', gameType: type, endAt: room.phaseEndAt, st: Date.now(),
     track: type === 'race' ? trackForClient(g.track) : undefined,
+    course: type === 'run' ? g.course : undefined,
   });
   sendRoster(room);
 
@@ -993,6 +1060,7 @@ function tick(room) {
   else if (room.gameType === 'quiz') quizTick(room, now);
   else if (room.gameType === 'ox') oxTick(room, now, dt);
   else if (room.gameType === 'timing') timingTick(room, now);
+  else if (room.gameType === 'run') runTick(room, now, dt);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -2090,6 +2158,77 @@ function endRace(room) {
     p => p.finishedAt ? String(p.finishedAt) : 'dnf' + Math.round(p.raceProgress || 0));
 }
 
+// ---------- 설원 러너 ----------
+function runTick(room, now, dt) {
+  const g = room.game;
+  const elapsed = now - g.startedAt;
+  const baseSp = RUN_BASE_SPEED + (RUN_MAX_SPEED - RUN_BASE_SPEED) * Math.min(1, elapsed / RUN_RAMP_MS);
+
+  for (const p of room.players.values()) {
+    if (!p.alive) continue;
+    // 레인 이동: 스틱을 한 번 밀 때마다 1칸 (밀고 있는 동안 반복 안 됨 — 플릭 방식)
+    const px = p.dirX;
+    if (Math.abs(px) < 0.32) p.lanePush = 0;
+    else if (px > 0.45 && p.lanePush !== 1) { p.laneTarget = Math.min(RUN_LANES - 1, p.laneTarget + 1); p.lanePush = 1; }
+    else if (px < -0.45 && p.lanePush !== -1) { p.laneTarget = Math.max(0, p.laneTarget - 1); p.lanePush = -1; }
+    const dl = p.laneTarget - p.lane, mv = RUN_LANE_SPEED * dt;
+    p.lane = Math.abs(dl) <= mv ? p.laneTarget : p.lane + Math.sign(dl) * mv;
+
+    // 점프 높이 (포물선)
+    const jt = p.jumpStartAt ? (now - p.jumpStartAt) / RUN_JUMP_MS : 2;
+    p.jumpY = jt >= 0 && jt <= 1 ? 4 * RUN_JUMP_H * jt * (1 - jt) : 0;
+
+    // 전진 (비틀거림 감속 · 피버 가속)
+    const mult = (now < p.stumbleUntil ? RUN_STUMBLE_MULT : 1) * (now < p.feverUntil ? RUN_FEVER_MULT : 1);
+    p.prevDist = p.dist;
+    p.dist += baseSp * mult * dt;
+
+    // 장애물: 이번 틱에 지나친 것만 스윕 검사 (포인터가 전진만 해서 한 번씩만 처리됨)
+    const obs = g.course.obs;
+    while (p.obIdx < obs.length && obs[p.obIdx][0] <= p.prevDist) p.obIdx++;
+    for (let i = p.obIdx; i < obs.length && obs[i][0] <= p.dist; i++) {
+      const ol = obs[i][1], ot = obs[i][2];
+      if (Math.abs(p.lane - ol) > 0.42 || now < p.invUntil) continue;
+      if (ot === 0 && p.jumpY >= RUN_CLEAR_H) continue;   // 낮은 블록은 점프로 통과
+      p.stumbleUntil = now + RUN_STUMBLE_MS;
+      p.invUntil = now + RUN_STUMBLE_MS + 700;            // 연속 충돌 방지 무적
+      p.stumbleAt = now;
+      p.gauge = 0;                                        // 피버 게이지 리셋 (안 피하면 피버가 안 터진다)
+      p.coins = Math.max(0, p.coins - 2);                 // 코인 2개 드랍 — 가만히 코인만 먹는 플레이 방지
+      break;
+    }
+
+    // 코인: 같은 스윕 방식 — 경쟁이 아니라 각자 수집 (모두가 같은 코인을 먹을 수 있다)
+    const cs = g.course.coins;
+    while (p.coinIdx < cs.length && cs[p.coinIdx][0] <= p.prevDist) p.coinIdx++;
+    for (let i = p.coinIdx; i < cs.length && cs[i][0] <= p.dist; i++) {
+      const cl = cs[i][1], ch = cs[i][2];
+      if (now < p.stumbleUntil) continue;                    // 비틀거리는 동안엔 못 줍는다
+      if (Math.abs(p.lane - cl) > 0.45) continue;
+      if (ch === 1 ? p.jumpY < 35 : p.jumpY > 55) continue;  // 공중 코인=점프 중에만, 바닥 코인=지상에서만
+      p.coins++; p.lastCoinAt = now;
+      if (++p.gauge >= RUN_FEVER_COINS) {
+        p.gauge = 0;
+        p.feverUntil = now + RUN_FEVER_MS;
+        p.invUntil = Math.max(p.invUntil, p.feverUntil);   // 피버 동안 무적 질주
+      }
+    }
+
+    p.score = Math.round(p.dist / 10) + p.coins * RUN_COIN_SCORE;
+  }
+
+  if (now >= room.phaseEndAt) { endRun(room); return; }
+  sendState(room, now);
+}
+
+function endRun(room) {
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => (b.score || 0) - (a.score || 0));
+  finishGame(room, sorted,
+    p => `${Math.round(p.dist / 10)}m + 🪙${p.coins} = ${p.score}점`,
+    p => String(p.score || 0));
+}
+
 // ---------- 공통 종료·상태 ----------
 function finishGame(room, sorted, labelOf, keyOf) {
   clearInterval(room.timer); room.timer = null;
@@ -2170,7 +2309,7 @@ function sendState(room, now) {
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
-        : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'sadari' || type === 'timing') ? p.score
+        : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'sadari' || type === 'timing' || type === 'run') ? p.score
         : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0) : 0;
       const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
       // 스모: 대시 중 / 대시 쿨타임(0.1초 단위) / 최근 충돌
@@ -2185,6 +2324,14 @@ function sendState(room, now) {
       if (type === 'sadari') row.push(p.pick >= 0 ? 1 : 0);
       if (type === 'pirate') row.push(p.picks.length >= g.knives ? 1 : 0);
       if (type === 'timing') row.push(p.tapAt > 0 ? 1 : 0);
+      // 러너: 거리·레인(×100)·점프높이·피버·비틀거림·코인·피버게이지
+      if (type === 'run') {
+        row.push(Math.round(p.dist || 0), Math.round((p.lane != null ? p.lane : 1) * 100),
+                 Math.round(p.jumpY || 0),
+                 now < (p.feverUntil || 0) ? 1 : 0,
+                 now - (p.stumbleAt || 0) < 600 ? 1 : 0,
+                 p.coins || 0, p.gauge || 0);
+      }
       // 폭탄 밟은 직후 1초간 "0원!" 연출
       if (type === 'coin') row.push(now - (p.lostAt || 0) < 1000 ? 1 : 0);
       // 파리채 위치·최근 명중 표시
@@ -2477,6 +2624,11 @@ wss.on('connection', (ws) => {
             p.dashReadyAt = now2 + SUMO_DASH_CD;
           }
         }
+        else if (room.gameType === 'run' && room.state === 'playing' && p.alive) {
+          const now2 = Date.now();
+          // 착지 후에만 다시 점프 (공중 이단 점프 없음)
+          if (!p.jumpStartAt || now2 - p.jumpStartAt >= RUN_JUMP_MS) p.jumpStartAt = now2;
+        }
         break;
       }
 
@@ -2648,3 +2800,17 @@ setInterval(() => {
 }, 60 * 1000);
 
 server.listen(PORT, () => console.log(`교실 아케이드 서버 실행 중 → http://localhost:${PORT}`));
+
+// Render 무료 서버 자기 핑 — GitHub Actions 크론이 지연·결번돼도(실측 90분 공백 있었음)
+// 깨어 있는 동안은 스스로 inbound 트래픽을 만들어 잠들지 않는다. 수업시간(07~22시 KST)에만.
+// 밤에 잠들면 아침 크론(또는 첫 방문자)이 깨우는 순간 이 루프가 되살아난다.
+// RENDER_EXTERNAL_URL은 Render가 자동 주입 — 로컬 실행에는 없어서 아무 일도 안 한다.
+const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+if (SELF_URL) {
+  const https = require('https');
+  setInterval(() => {
+    const kstH = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
+    if (kstH < 7 || kstH >= 22) return;   // 심야엔 재워서 무료 시간(월 750h 공유)을 아낀다
+    https.get(SELF_URL + '/health', res => res.resume()).on('error', () => {});
+  }, 8 * 60 * 1000);
+}
