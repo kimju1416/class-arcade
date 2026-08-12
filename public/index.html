@@ -1286,7 +1286,7 @@ const SPR = {};
  'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
  'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
  'ship', 'alien', 'alien2', 'chair', 'pirate', 'knife', 'sumo', 'sadari',
- 'runner', 'iceblock', 'icespike'].forEach(name => {
+ 'runner', 'runner2', 'iceblock', 'icespike', 'pine'].forEach(name => {
   const im = new Image();
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
@@ -2800,10 +2800,10 @@ function drawRunGame(W, H, dpr) {
   const horizon = H * 0.34, nearY = H * 0.90;
   const laneW = Math.min(W, H) * 0.30;               // 근거리 한 레인 폭(px)
   const sOf = rel => f / (f + Math.max(-60, rel));
-  const yOf = s => horizon + (nearY - horizon) * s;
-  const xOf = (laneF, s) => W / 2 + (laneF - 1) * laneW * s;
-  const hPx = (units, s) => units * s * (laneW / 110);   // 세계 높이(점프·공중코인) → px
   const now = performance.now();
+  // 트랙이 S자로 굽이치고(curve, 레인 단위) 오르내린다(hill, 유닛) — 시각 연출일 뿐 판정과 무관
+  const curveOf = z => Math.sin(z / 1900) * 1.05 + Math.sin(z / 763) * 0.38;
+  const hillOf = z => Math.sin(z / 2300) * 34 + Math.sin(z / 977) * 12;
 
   // 스냅샷 보간 — 메인 draw()와 같은 방식 (latest만 쓰면 캐릭터가 튄다)
   let latest = null;
@@ -2822,6 +2822,9 @@ function drawRunGame(W, H, dpr) {
     }
     latest = snaps[snaps.length - 1].m;
   }
+
+  // TV(교사 화면)는 시점 추적 대신 전체 필드 맵 — 선두만 보이고 나머지가 잘리는 문제 해결
+  if (latest && isHost) { drawRunHostMap(W, H, dpr, latest, lerped); return; }
 
   // 카메라: 학생=내 보간 거리, TV=선두. 차이가 크면(재접속·리셋) 즉시 점프
   if (latest) {
@@ -2843,6 +2846,11 @@ function drawRunGame(W, H, dpr) {
     else runCamZ += (target - runCamZ) * 0.3;
   }
   const camZ = runCamZ == null ? 0 : runCamZ;
+  // 투영: 카메라 기준 커브·언덕 오프셋을 z로 계산 (z 없이 부르면 화면 중앙 기준 — 내 캐릭터용)
+  const camC = curveOf(camZ), camH = hillOf(camZ);
+  const hPx = (units, s) => units * s * (laneW / 110);   // 세계 높이(점프·공중코인) → px
+  const xOf = (laneF, s, z) => W / 2 + ((laneF - 1) + (z != null ? curveOf(z) - camC : 0)) * laneW * s;
+  const yOf = (s, z) => horizon + (nearY - horizon) * s - (z != null ? hPx(hillOf(z) - camH, s) : 0);
 
   // 1. 하늘 (설산 파노라마 cover, 로드 전엔 하늘색 그라데이션)
   const skyH = horizon + 40 * dpr;
@@ -2859,27 +2867,43 @@ function drawRunGame(W, H, dpr) {
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, skyH);
   }
 
-  // 2. 땅(눈) + 트랙(얼음 사다리꼴)
-  ctx.fillStyle = '#eef4fb';
-  ctx.fillRect(0, horizon, W, H - horizon);
-  const sFar = sOf(VIEW), sNear = sOf(-60);
-  ctx.fillStyle = '#cfe2f4';
-  ctx.beginPath();
-  ctx.moveTo(xOf(-0.5, sFar), yOf(sFar));
-  ctx.lineTo(xOf(2.5, sFar), yOf(sFar));
-  ctx.lineTo(xOf(2.5, sNear), yOf(sNear));
-  ctx.lineTo(xOf(-0.5, sNear), yOf(sNear));
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#9fc0dd'; ctx.lineWidth = 3 * dpr;
-  for (const edge of [-0.5, 2.5]) {
-    ctx.beginPath();
-    ctx.moveTo(xOf(edge, sFar), yOf(sFar));
-    ctx.lineTo(xOf(edge, sNear), yOf(sNear));
-    ctx.stroke();
+  // 2. 계곡 배경 — 트랙은 절벽 위 능선처럼 보인다
+  const vg0 = ctx.createLinearGradient(0, horizon, 0, H);
+  vg0.addColorStop(0, '#d7e7f7'); vg0.addColorStop(0.55, '#e8f1fa'); vg0.addColorStop(1, '#f6fafe');
+  ctx.fillStyle = vg0; ctx.fillRect(0, horizon, W, H - horizon);
+
+  // 3. 능선 트랙 — 세그먼트로 굽이·언덕을 그린다 (OutRun 방식, 노면 밴드가 흘러온다)
+  const SEGS = 34;
+  let pv = null;
+  for (let i = SEGS; i >= 0; i--) {
+    const rel = -60 + (VIEW + 60) * Math.pow(i / SEGS, 1.7);   // 가까울수록 촘촘
+    const z = camZ + rel, s = sOf(rel);
+    const pt = { y: yOf(s, z), xl: xOf(-0.62, s, z), xl2: xOf(-0.44, s, z),
+                 xr2: xOf(2.44, s, z), xr: xOf(2.62, s, z), drop: hPx(85, s), z };
+    if (pv) {
+      // 절벽 옆면
+      ctx.fillStyle = '#a8c6e2';
+      ctx.beginPath(); ctx.moveTo(pv.xl, pv.y); ctx.lineTo(pt.xl, pt.y);
+      ctx.lineTo(pt.xl, pt.y + pt.drop); ctx.lineTo(pv.xl, pv.y + pv.drop); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(pv.xr, pv.y); ctx.lineTo(pt.xr, pt.y);
+      ctx.lineTo(pt.xr, pt.y + pt.drop); ctx.lineTo(pv.xr, pv.y + pv.drop); ctx.closePath(); ctx.fill();
+      // 노면 (140유닛 두 색 밴드)
+      const band = ((Math.floor(pt.z / 140) % 2) + 2) % 2 === 0;
+      ctx.fillStyle = band ? '#d6e8f7' : '#c8def1';
+      ctx.beginPath(); ctx.moveTo(pv.xl, pv.y); ctx.lineTo(pv.xr, pv.y);
+      ctx.lineTo(pt.xr, pt.y); ctx.lineTo(pt.xl, pt.y); ctx.closePath(); ctx.fill();
+      // 연석 (파랑·흰색 교차)
+      ctx.fillStyle = band ? '#5b8fc7' : '#f2f8ff';
+      ctx.beginPath(); ctx.moveTo(pv.xl, pv.y); ctx.lineTo(pv.xl2, pv.y);
+      ctx.lineTo(pt.xl2, pt.y); ctx.lineTo(pt.xl, pt.y); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(pv.xr2, pv.y); ctx.lineTo(pv.xr, pv.y);
+      ctx.lineTo(pt.xr, pt.y); ctx.lineTo(pt.xr2, pt.y); ctx.closePath(); ctx.fill();
+    }
+    pv = pt;
   }
 
-  // 3. 레인 경계 대시 — z를 120유닛 격자로 스냅해 달리면 자동으로 흘러온다
-  ctx.strokeStyle = 'rgba(255,255,255,.5)';
+  // 4. 레인 경계 대시 — z 격자에 박혀 있어 달리면 발밑으로 흘러온다
+  ctx.strokeStyle = 'rgba(255,255,255,.55)';
   for (let z = Math.floor(camZ / 120) * 120; z < camZ + VIEW; z += 120) {
     const r0 = z - camZ, r1 = z + 55 - camZ;
     if (r1 < -40) continue;
@@ -2887,11 +2911,15 @@ function drawRunGame(W, H, dpr) {
     ctx.lineWidth = Math.max(1, 3.5 * dpr * s1);
     for (const laneB of [0.5, 1.5]) {
       ctx.beginPath();
-      ctx.moveTo(xOf(laneB, s0), yOf(s0));
-      ctx.lineTo(xOf(laneB, s1), yOf(s1));
+      ctx.moveTo(xOf(laneB, s0, z), yOf(s0, z));
+      ctx.lineTo(xOf(laneB, s1, z + 55), yOf(s1, z + 55));
       ctx.stroke();
     }
   }
+  // 지평선 안개 (멀리 갈수록 뿌옇게)
+  const hzg = ctx.createLinearGradient(0, horizon - 6 * dpr, 0, horizon + 84 * dpr);
+  hzg.addColorStop(0, 'rgba(238,247,255,.95)'); hzg.addColorStop(1, 'rgba(238,247,255,0)');
+  ctx.fillStyle = hzg; ctx.fillRect(0, horizon - 6 * dpr, W, 90 * dpr);
 
   // 상태가 아직 없으면 배경만 (카운트다운 안내가 이 위에 뜬다)
   if (!latest) { drawOverlay(null); return; }
@@ -2908,20 +2936,31 @@ function drawRunGame(W, H, dpr) {
       if (rel >= -60 && rel <= VIEW) items.push({ rel, kind: 2, lane: cn[1], h: cn[2], z: cn[0] });
     }
   }
+  // 트랙 옆 소품(눈 소나무·얼음 결정) — z 격자에서 결정적으로 배치 (전원 같은 풍경)
+  for (let pz = Math.floor((camZ - 60) / 210) * 210; pz < camZ + VIEW; pz += 210) {
+    const h1 = (Math.imul(pz | 0, 2654435761) >>> 0);
+    if ((h1 & 7) === 7) continue;                              // 가끔 빈 자리
+    const side = (h1 & 1) ? 1 : -1;
+    const laneF = 1 + side * (2.3 + ((h1 >> 3) % 90) / 60);    // 트랙 밖 2.3~3.8레인
+    const rel = pz - camZ;
+    if (rel >= -60 && rel <= VIEW) items.push({ rel, kind: 4, laneF, z: pz, ptype: (h1 >> 8) % 3 });
+  }
   for (const pb of latest.players) {
     if (pb[4]) continue;                        // 대기자
     if (!isHost && pb[0] === myId) continue;    // 내 캐릭터는 따로 (rel=0 고정)
     const lp = lerped.get(pb[0]) || [pb[6], pb[7] / 100, pb[8]];
     const rel = lp[0] - camZ;
     if (rel < -60 || rel > VIEW) continue;
-    items.push({ rel, kind: 3, id: pb[0], laneF: lp[1], jumpY: lp[2], alive: pb[3], fever: pb[9] === 1 });
+    items.push({ rel, kind: 3, id: pb[0], laneF: lp[1], jumpY: lp[2], alive: pb[3], fever: pb[9] === 1, z: lp[0] });
   }
   items.sort((p, q) => q.rel - p.rel);
 
   for (const it of items) {
-    const s = sOf(it.rel), gy = yOf(s);
+    const s = sOf(it.rel), gy = yOf(s, it.z);
+    const fogA = Math.min(1, 0.3 + 0.8 * s);   // 멀수록 안개에 묻힌다
+    ctx.globalAlpha = fogA;
     if (it.kind === 0) {          // 낮은 얼음 블록 — 점프로 넘는다
-      const w = laneW * 0.92 * s, x = xOf(it.lane, s);
+      const w = laneW * 0.92 * s, x = xOf(it.lane, s, it.z);
       const img = SPR.iceblock;
       const bh = img ? w * (img.height / img.width) : w * 0.55;
       if (img) ctx.drawImage(img, x - w / 2, gy - bh, w, bh);
@@ -2932,7 +2971,7 @@ function drawRunGame(W, H, dpr) {
         ctx.strokeRect(x - w / 2, gy - bh, w, bh);
       }
     } else if (it.kind === 1) {   // 높은 얼음 기둥 — 옆 레인으로 피한다
-      const bh = laneW * 1.5 * s, x = xOf(it.lane, s);
+      const bh = laneW * 1.5 * s, x = xOf(it.lane, s, it.z);
       const img = SPR.icespike;
       const w = img ? bh * (img.width / img.height) : bh * 0.38;
       if (img) ctx.drawImage(img, x - w / 2, gy - bh, w, bh);
@@ -2943,16 +2982,26 @@ function drawRunGame(W, H, dpr) {
         ctx.strokeRect(x - w / 2, gy - bh, w, bh);
       }
     } else if (it.kind === 2) {   // 코인 (h=1은 공중 — 점프 중에만 먹힌다)
-      const dia = laneW * 0.34 * s, x = xOf(it.lane, s);
+      const dia = laneW * 0.34 * s, x = xOf(it.lane, s, it.z);
       const bob = Math.sin(now / 320 + it.z) * dia * 0.12;
       const cy = gy - (it.h ? hPx(62, s) : 0) - dia / 2 + bob;
       if (SPR.coin) drawSpr(SPR.coin, x, cy, dia);
       else { ctx.fillStyle = '#f5c542'; ctx.beginPath(); ctx.arc(x, cy, dia / 2, 0, 7); ctx.fill(); }
+    } else if (it.kind === 4) {   // 트랙 옆 소품 — 눈 소나무·얼음 결정
+      const x = xOf(it.laneF, s, it.z), base = gy + hPx(26, s);
+      if (it.ptype === 2 && SPR.icespike) {
+        const hh = laneW * 0.62 * s, ww = hh * (SPR.icespike.width / SPR.icespike.height);
+        ctx.globalAlpha = fogA * 0.85;
+        ctx.drawImage(SPR.icespike, x - ww / 2, base - hh, ww, hh);
+      } else if (SPR.pine) {
+        const hh = laneW * (it.ptype === 0 ? 1.25 : 0.85) * s, ww = hh * (SPR.pine.width / SPR.pine.height);
+        ctx.drawImage(SPR.pine, x - ww / 2, base - hh, ww, hh);
+      }
     } else {                       // 다른 플레이어 (고스트)
-      const w = laneW * 0.5 * s, x = xOf(it.laneF, s);
+      const w = laneW * 0.5 * s, x = xOf(it.laneF, s, it.z);
       const meta = roster.get(it.id) || { nick: '?', ci: 0 };
       const cy = gy - w / 2 - hPx(it.jumpY, s);
-      ctx.globalAlpha = !it.alive ? 0.25 : (isHost ? 1 : 0.55);
+      ctx.globalAlpha = (!it.alive ? 0.25 : 0.55) * fogA;
       ctx.fillStyle = 'rgba(40,70,110,.25)';
       ctx.beginPath(); ctx.ellipse(x, gy - 2 * dpr, w * 0.34, w * 0.11, 0, 0, 7); ctx.fill();
       const body = tintSprite('runner', COLORS[meta.ci % COLORS.length]);
@@ -2971,6 +3020,8 @@ function drawRunGame(W, H, dpr) {
     }
   }
 
+  ctx.globalAlpha = 1;
+
   // 5. 내 러너 (학생 화면 전용, rel=0 고정 — 항상 화면 아래쪽 같은 자리)
   const me = isHost ? null : latest.players.find(r => r[0] === myId);
   if (me) {
@@ -2987,10 +3038,24 @@ function drawRunGame(W, H, dpr) {
     ctx.fillStyle = 'rgba(40,70,110,.3)';
     ctx.beginPath(); ctx.ellipse(xOf(lp[1], 1), nearY - 2 * dpr, w * 0.36 * shr, w * 0.12 * shr, 0, 0, 7); ctx.fill();
     const myMeta = roster.get(myId) || { ci: 0 };
-    const body = tintSprite('runner', COLORS[myMeta.ci % COLORS.length]);
+    const airborne0 = lp[2] > 0.5;
+    // 달리기 2프레임(보폭은 달린 거리 기반) + 레인 이동 기울기 + 착지 스쿼시
+    const frame = airborne0 ? 'runner' : (Math.floor(lp[0] / 55) % 2 ? 'runner2' : 'runner');
+    const body = tintSprite(SPR[frame] ? frame : 'runner', COLORS[myMeta.ci % COLORS.length]);
+    const pl0 = drawRunGame._pl == null ? lp[1] : drawRunGame._pl;
+    const tilt = Math.max(-0.26, Math.min(0.26, (lp[1] - pl0) * 6));
+    drawRunGame._pl = lp[1];
+    if (drawRunGame._air && !airborne0) drawRunGame._landT = now;   // 착지 감지
+    drawRunGame._air = airborne0;
+    const squash = now - (drawRunGame._landT || 0) < 130 ? 0.86 : 1;
     if (fever) { ctx.save(); ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 24 * dpr; }
-    if (body) drawSpr(body, x, cy, w);
-    else { ctx.fillStyle = COLORS[myMeta.ci % COLORS.length]; ctx.beginPath(); ctx.arc(x, cy, w * 0.4, 0, 7); ctx.fill(); }
+    ctx.save();
+    ctx.translate(x, cy);
+    ctx.rotate(tilt + (airborne0 ? -0.1 : 0));
+    ctx.scale(1, squash);
+    if (body) ctx.drawImage(body, -w / 2, -w / 2, w, w);
+    else { ctx.fillStyle = COLORS[myMeta.ci % COLORS.length]; ctx.beginPath(); ctx.arc(0, 0, w * 0.4, 0, 7); ctx.fill(); }
+    ctx.restore();
     if (fever) ctx.restore();
     if (stumble) {   // 부딪힘: 빨간 링 깜빡임
       const blink = 0.45 + 0.45 * Math.sin(now / 90);
@@ -2998,10 +3063,12 @@ function drawRunGame(W, H, dpr) {
       ctx.beginPath(); ctx.arc(x, cy, w * 0.58, 0, 7); ctx.stroke();
     }
     // 코인 팝·착지 눈보라 파티클 (클라 로컬 연출 — 오락실 손맛)
-    const fx = drawRunGame._fx || (drawRunGame._fx = { coins: -1, air: false, parts: [] });
+    const fx = drawRunGame._fx || (drawRunGame._fx = { coins: -1, air: false, parts: [], pops: [] });
+    fx.pops = fx.pops || [];
     if (fx.coins >= 0 && (me[11] || 0) > fx.coins) {
       for (let i = 0; i < 7; i++)
         fx.parts.push({ x, y: cy, vx: (Math.random() - 0.5) * 5 * dpr, vy: (-2.5 - Math.random() * 2.5) * dpr, life: 1, gold: true });
+      fx.pops.push({ x, y0: cy - w * 0.55, life: 1, txt: '+' + ((me[11] || 0) - fx.coins) });
     }
     fx.coins = me[11] || 0;
     const airNow2 = lp[2] > 0.5;
@@ -3017,6 +3084,24 @@ function drawRunGame(W, H, dpr) {
       ctx.globalAlpha = pt.life;
       ctx.fillStyle = pt.gold ? '#ffd700' : '#ffffff';
       ctx.fillRect(pt.x, pt.y, (pt.gold ? 3.4 : 4.2) * dpr, (pt.gold ? 3.4 : 4.2) * dpr);
+    }
+    ctx.globalAlpha = 1;
+    // 달리는 동안 발밑 눈 튀김 (속도감)
+    if (!airborne0 && Math.random() < 0.55)
+      fx.parts.push({ x: x + (Math.random() - 0.5) * w * 0.4, y: nearY - 3 * dpr, vx: (Math.random() - 0.5) * 2.6 * dpr, vy: (-0.7 - Math.random()) * dpr, life: 0.45, gold: false });
+    // 코인 +N 팝업
+    for (let i = fx.pops.length - 1; i >= 0; i--) {
+      const pp = fx.pops[i];
+      pp.life -= 0.028;
+      if (pp.life <= 0) { fx.pops.splice(i, 1); continue; }
+      ctx.globalAlpha = Math.min(1, pp.life * 1.6);
+      ctx.textAlign = 'center';
+      ctx.font = `900 ${19 * dpr}px Pretendard, sans-serif`;
+      ctx.strokeStyle = 'rgba(90,60,0,.6)'; ctx.lineWidth = 4 * dpr;
+      const py2 = pp.y0 - (1 - pp.life) * 42 * dpr;
+      ctx.strokeText(pp.txt, pp.x, py2);
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText(pp.txt, pp.x, py2);
     }
     ctx.globalAlpha = 1;
     if (fever) {     // 피버: 금색 비네트 + 방사형 스피드라인 + FEVER 텍스트
@@ -3142,6 +3227,169 @@ function drawRunGame(W, H, dpr) {
 
   // 10. 카운트다운·안내 오버레이 (탈락 없는 게임이라 탈락 문구는 안 뜬다)
   drawOverlay(me ? { alive: !!me[3] } : null, latest);
+}
+
+// TV(교사 화면)용 전체 필드 맵 — 위에서 내려다본 트랙 창(꼴찌~선두)에 전원·장애물·코인이 한눈에
+function drawRunHostMap(W, H, dpr, latest, lerped) {
+  const now = performance.now();
+  // 하늘 파노라마 띠
+  const skyH = H * 0.24;
+  if (runbgReady) {
+    const iw = RUNBG_IMG.width, ih = RUNBG_IMG.height;
+    const sc = Math.max(W / iw, skyH / ih);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, skyH); ctx.clip();
+    ctx.drawImage(RUNBG_IMG, (W - iw * sc) / 2, (skyH - ih * sc) / 2, iw * sc, ih * sc);
+    ctx.restore();
+  } else { ctx.fillStyle = '#bfe0ff'; ctx.fillRect(0, 0, W, skyH); }
+  ctx.fillStyle = '#eef4fb'; ctx.fillRect(0, skyH, W, H - skyH);
+
+  // 창 범위: 꼴찌~선두 (+여유) — 뒤처진 학생까지 항상 화면 안에 있다
+  const ps = [];
+  let minD = Infinity, maxD = 0, topScore = -1, topId = null;
+  for (const pb of latest.players) {
+    if (pb[4]) continue;
+    const lp = lerped.get(pb[0]) || [pb[6], pb[7] / 100, pb[8]];
+    ps.push({ pb, d: lp[0], laneF: lp[1], jy: lp[2] });
+    if (lp[0] < minD) minD = lp[0];
+    if (lp[0] > maxD) maxD = lp[0];
+    if ((pb[5] || 0) > topScore) { topScore = pb[5] || 0; topId = pb[0]; }
+  }
+  if (!ps.length) { drawOverlay(null, latest); return; }
+  const panelR = W - 384 * dpr;                    // 오른쪽은 순위판 자리
+  const x0 = 44 * dpr, mapW = Math.max(300 * dpr, panelR - x0 - 20 * dpr);
+  const span = Math.max(1700, maxD - minD + 600);
+  const zL = minD - 200;
+  const zx = z => x0 + (z - zL) / span * mapW;
+
+  // 트랙 밴드 (가로 3레인)
+  const laneH = Math.min(96 * dpr, (H - skyH) * 0.19);
+  const trackH = laneH * 3, trackY = skyH + (H - skyH - trackH) / 2 - 20 * dpr;
+  const laneY = l => trackY + laneH * (l + 0.5);
+  ctx.fillStyle = '#b9d4ea';
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(x0 - 18 * dpr, trackY - 18 * dpr, mapW + 36 * dpr, trackH + 36 * dpr, 20 * dpr)
+                : ctx.rect(x0 - 18 * dpr, trackY - 18 * dpr, mapW + 36 * dpr, trackH + 36 * dpr);
+  ctx.fill();
+  ctx.fillStyle = '#d6e8f7';
+  ctx.fillRect(x0, trackY, mapW, trackH);
+  // 레인 구분선
+  ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2 * dpr;
+  ctx.setLineDash([14 * dpr, 12 * dpr]);
+  for (let l = 1; l < 3; l++) {
+    ctx.beginPath(); ctx.moveTo(x0, trackY + laneH * l); ctx.lineTo(x0 + mapW, trackY + laneH * l); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // 100m 단위 눈금
+  ctx.textAlign = 'center';
+  for (let z = Math.ceil(zL / 1000) * 1000; z < zL + span; z += 1000) {
+    const x = zx(z);
+    ctx.strokeStyle = 'rgba(90,130,180,.3)'; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(x, trackY); ctx.lineTo(x, trackY + trackH); ctx.stroke();
+    ctx.fillStyle = '#7d93b5';
+    ctx.font = `700 ${15 * dpr}px Pretendard, sans-serif`;
+    ctx.fillText((z / 10) + 'm', x, trackY - 26 * dpr);
+  }
+
+  // 장애물·코인 (창 안만)
+  if (runCourse) {
+    for (const ob of runCourse.obs) {
+      if (ob[0] < zL || ob[0] > zL + span) continue;
+      const x = zx(ob[0]), y = laneY(ob[1]);
+      const img = ob[2] ? SPR.icespike : SPR.iceblock;
+      if (img) {
+        const hh = (ob[2] ? 46 : 30) * dpr, ww = hh * (img.width / img.height);
+        ctx.drawImage(img, x - ww / 2, y - hh / 2, ww, hh);
+      } else {
+        ctx.fillStyle = ob[2] ? '#7fb2dd' : '#a5cfec';
+        ctx.fillRect(x - 10 * dpr, y - 10 * dpr, 20 * dpr, 20 * dpr);
+      }
+    }
+    ctx.globalAlpha = 0.9;
+    for (const cn of runCourse.coins) {
+      if (cn[0] < zL || cn[0] > zL + span) continue;
+      const x = zx(cn[0]), y = laneY(cn[1]);
+      if (SPR.coin) drawSpr(SPR.coin, x, y, 15 * dpr);
+      else { ctx.fillStyle = '#f5c542'; ctx.beginPath(); ctx.arc(x, y, 6 * dpr, 0, 7); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 펭귄 전원 (고정 크기 마커) — 왼쪽(뒤)부터 그려 선두가 위에 온다
+  ps.sort((a, b) => a.d - b.d);
+  for (const q of ps) {
+    const ly = laneY(Math.max(0, Math.min(2, q.laneF)));
+    const x = zx(q.d), y = ly - (q.jy > 0.5 ? 14 * dpr : 0);
+    const meta = roster.get(q.pb[0]) || { nick: '?', ci: 0 };
+    const alive = !!q.pb[3], fever = q.pb[9] === 1, stumble = q.pb[10] === 1;
+    ctx.globalAlpha = alive ? 1 : 0.3;
+    ctx.fillStyle = 'rgba(40,70,110,.25)';
+    ctx.beginPath(); ctx.ellipse(x, ly + 16 * dpr, 14 * dpr, 5 * dpr, 0, 0, 7); ctx.fill();
+    const body = tintSprite('runner', COLORS[meta.ci % COLORS.length]);
+    if (fever) { ctx.save(); ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 12 * dpr; }
+    if (body) drawSpr(body, x, y, 44 * dpr);
+    else { ctx.fillStyle = COLORS[meta.ci % COLORS.length]; ctx.beginPath(); ctx.arc(x, y, 16 * dpr, 0, 7); ctx.fill(); }
+    if (fever) ctx.restore();
+    if (stumble) {
+      const blink = 0.45 + 0.45 * Math.sin(now / 90);
+      ctx.strokeStyle = `rgba(255,59,59,${blink})`; ctx.lineWidth = 3 * dpr;
+      ctx.beginPath(); ctx.arc(x, y, 26 * dpr, 0, 7); ctx.stroke();
+    }
+    ctx.font = `700 ${16 * dpr}px Pretendard, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 4 * dpr;
+    ctx.strokeText(meta.nick, x, y - 30 * dpr);
+    ctx.fillStyle = '#213a5e';
+    ctx.fillText(meta.nick, x, y - 30 * dpr);
+    if (q.pb[0] === topId) {
+      ctx.font = `${20 * dpr}px Pretendard, sans-serif`;
+      ctx.fillText('👑', x, y - 50 * dpr);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 순위판 (오른쪽)
+  const rows = [];
+  for (const pb of latest.players) {
+    if (pb[4]) continue;
+    const meta = roster.get(pb[0]) || { nick: '?', ci: 0 };
+    rows.push({ nick: meta.nick, score: pb[5] || 0, m: Math.floor((pb[6] || 0) / 10), coins: pb[11] || 0 });
+  }
+  rows.sort((p, q) => q.score - p.score);
+  const top = rows.slice(0, 10);
+  const px0 = W - 352 * dpr;
+  const panelH = (66 + top.length * 42) * dpr;
+  ctx.fillStyle = 'rgba(10,16,40,.6)';
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(px0 - 20 * dpr, 56 * dpr, 352 * dpr, panelH, 14 * dpr)
+                : ctx.rect(px0 - 20 * dpr, 56 * dpr, 352 * dpr, panelH);
+  ctx.fill();
+  ctx.textAlign = 'left';
+  let yy = 92 * dpr;
+  ctx.fillStyle = '#93a0c4';
+  ctx.font = `700 ${19 * dpr}px Pretendard, sans-serif`;
+  ctx.fillText('실시간 순위', px0, yy); yy += 38 * dpr;
+  top.forEach((r, i) => {
+    ctx.fillStyle = i < 3 ? '#ffb03a' : '#c8d0e8';
+    ctx.font = `800 ${21 * dpr}px Pretendard, sans-serif`;
+    ctx.fillText(`${i + 1}. ${r.nick} — ${r.m}m·🪙${r.coins}`, px0, yy);
+    yy += 42 * dpr;
+  });
+
+  // HUD + 사운드 (교사 화면)
+  setText($('hudLeft'), `🏃 선두 ${Math.floor(maxD / 10)}m · 참가 ${ps.length}`);
+  if (phase === 'playing' && phaseEndAt) setText($('hudTime'), Math.ceil(Math.max(0, phaseEndAt - serverNow()) / 1000) + '초');
+  if (phase === 'playing') {
+    const coinsNow = latest.players.reduce((s2, pp) => s2 + (pp[11] || 0), 0);
+    if (sndPrev.runCoins >= 0 && coinsNow > sndPrev.runCoins) SFX.coin();
+    sndPrev.runCoins = coinsNow;
+    const stumbling = latest.players.filter(pp => pp[10] === 1).length;
+    if (stumbling > sndPrev.runStumble) SFX.miss();
+    sndPrev.runStumble = stumbling;
+    const fevering = latest.players.filter(pp => pp[9] === 1).length;
+    if (fevering > sndPrev.runFever) SFX.fanfare();
+    sndPrev.runFever = fevering;
+  }
+  drawOverlay(null, latest);
 }
 
 // ---------- 레이싱 렌더링 ----------
