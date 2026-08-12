@@ -866,9 +866,17 @@ function startGame(room, type, opt) {
     g.knives = Number.isFinite(k) ? Math.max(1, Math.min(3, k)) : 1;
   } else if (type === 'quiz') {
     g.roundMs = 0;
-    const cat = QUIZ_DATA[opt && opt.cat] ? opt.cat : '믹스';
     const cnt = QUIZ_COUNTS.includes(Number(opt && opt.count)) ? Number(opt.count) : 10;
-    const pool = cat === '믹스' ? Object.values(QUIZ_DATA).flat() : QUIZ_DATA[cat];
+    let cat = QUIZ_DATA[opt && opt.cat] ? opt.cat : '믹스';
+    let pool = null;
+    // 선생님 커스텀 문제: [[문제,정답,오답1,오답2,오답3], ...] — 검증 통과분만 사용
+    if ((opt && opt.cat) === '내문제' && Array.isArray(opt.custom)) {
+      const rows = opt.custom.slice(0, 20)
+        .map(r => Array.isArray(r) ? r.slice(0, 5).map(s => String(s).trim().slice(0, 90)) : null)
+        .filter(r => r && r.length === 5 && r.every(s => s.length > 0));
+      if (rows.length >= 3) { pool = rows; cat = '내문제'; }
+    }
+    if (!pool) pool = cat === '믹스' ? Object.values(QUIZ_DATA).flat() : QUIZ_DATA[cat];
     // 문제도 보기 순서도 판마다 섞는다
     g.questions = [...pool].sort(() => Math.random() - 0.5).slice(0, cnt).map(([q, ...cs]) => {
       const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
@@ -2217,8 +2225,9 @@ function backToLobby(room) {
 }
 
 // ---------- WebSocket ----------
-// maxPayload: 한 메시지 4KB 제한 (기본값 100MB라 대용량 도배에 무방비)
-const wss = new WebSocketServer({ server, maxPayload: 4096 });
+// maxPayload: 한 메시지 16KB 제한 (기본값 100MB라 대용량 도배에 무방비.
+// 4KB였으나 퀴즈쇼 커스텀 문제 20개가 한글 UTF-8로 4KB를 넘을 수 있어 상향 — rate limit이 도배는 막는다)
+const wss = new WebSocketServer({ server, maxPayload: 16384 });
 wss.on('error', (e) => console.error('[wss 오류]', e.message));
 server.on('error', (e) => console.error('[http 오류]', e.message));
 // 서버가 죽으면 수업 중인 모든 방이 날아간다. 예상 못 한 예외는 로그만 남기고 계속 산다.

@@ -498,7 +498,18 @@ const GAMES_META = {
   quiz: { icon: '🧠', name: '퀴즈쇼', desc: '카훗처럼 4지선다 퀴즈! 빨리 맞힐수록 점수가 크다. 카테고리와 문제 수를 골라 아이스브레이킹 하자.', badge: '객관식', rule: 'TV의 문제를 보고 폰에서\n정답 색깔 버튼을 빠르게 누르세요!' },
   ox:   { icon: '⭕', name: 'OX 서바이벌', desc: '문장을 읽고 몸으로 답해라! 맞으면 O땅, 틀리면 X땅으로 질주. 오답은 탈락, 전원 오답이면 전원 부활 — 최후의 1인 골든벨!', badge: '서바이벌', rule: '맞다고 생각하면 O구역, 틀리면 X구역!\n시간이 끝나기 전에 달려가세요' },
 };
-const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식'];
+const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식', '내문제'];
+// 붙여넣은 텍스트 → 문제 배열. 한 줄 = "문제 / 정답 / 오답1 / 오답2 / 오답3" (| 구분도 허용)
+function parseCustomQ(text) {
+  const rows = [];
+  for (const line of String(text || '').split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    let parts = (t.includes('|') ? t.split('|') : t.split('/')).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 5) rows.push(parts.slice(0, 5));
+  }
+  return rows.slice(0, 20);
+}
 
 // ---- 전역 상태 ----
 let ws = null;
@@ -1018,6 +1029,27 @@ function renderGameGrid() {
         selectedGame = 'quiz';
         renderGameGrid();
       });
+      // 내 문제: 붙여넣기 입력창 (AI로 만든 문제를 그대로 붙여넣는 용도)
+      if (quizCatSel === '내문제') {
+        const ta = document.createElement('textarea');
+        ta.placeholder = '한 줄에 한 문제씩 붙여넣기:\n문제 / 정답 / 오답1 / 오답2 / 오답3\n예) 광합성에 필요한 기체는? / 이산화탄소 / 산소 / 질소 / 수소';
+        ta.value = localStorage.getItem('ca_customq') || '';
+        ta.style.cssText = 'width:100%;height:96px;background:#141a35;border:1.5px solid #3a4680;border-radius:10px;color:#e8ecf8;font-size:13px;padding:8px 10px;font-family:inherit;resize:vertical;line-height:1.5';
+        ta.onpointerdown = ev => ev.stopPropagation();
+        ta.onclick = ev => ev.stopPropagation();
+        const cnt = document.createElement('div');
+        const refresh = () => {
+          const n = parseCustomQ(ta.value).length;
+          cnt.textContent = n >= 3 ? `✅ 유효한 문제 ${n}개` : `⚠️ 유효한 문제 ${n}개 — 3개 이상 필요해요`;
+          cnt.style.cssText = `font-size:12px;font-weight:700;color:${n >= 3 ? '#3ddc84' : '#ffb03a'}`;
+        };
+        ta.oninput = () => { localStorage.setItem('ca_customq', ta.value); refresh(); };
+        refresh();
+        const tip = document.createElement('div');
+        tip.textContent = '💡 AI에게 "형식: 문제/정답/오답1/오답2/오답3 으로 우리 반 복습문제 10개"라고 시켜서 붙여넣으면 끝!';
+        tip.style.cssText = 'font-size:12px;color:#93a0c4';
+        opt.appendChild(ta); opt.appendChild(cnt); opt.appendChild(tip);
+      }
       el.appendChild(opt);
     }
     // 통아저씨: 위험도(1인당 칼 개수) 선택
@@ -1055,10 +1087,21 @@ function renderHostLobby() {
 }
 function gameOpt(key) {
   if (key === 'pirate') return { knives: pirateKnives };
-  if (key === 'quiz') return { cat: quizCatSel, count: quizCountSel };
+  if (key === 'quiz') {
+    const o = { cat: quizCatSel, count: quizCountSel };
+    if (quizCatSel === '내문제') o.custom = parseCustomQ(localStorage.getItem('ca_customq'));
+    return o;
+  }
   return undefined;
 }
-$('btnStart').onclick = () => send({ type: 'start_game', game: selectedGame, opt: gameOpt(selectedGame) });
+$('btnStart').onclick = () => {
+  if (selectedGame === 'quiz' && quizCatSel === '내문제'
+      && parseCustomQ(localStorage.getItem('ca_customq')).length < 3) {
+    toast('내 문제가 3개 이상 필요해요. 형식: 문제 / 정답 / 오답1 / 오답2 / 오답3', 4000);
+    return;
+  }
+  send({ type: 'start_game', game: selectedGame, opt: gameOpt(selectedGame) });
+};
 $('btnAgain').onclick = () => send({ type: 'start_game', game: gameType, opt: gameOpt(gameType) });
 $('btnLobby').onclick = () => send({ type: 'back_to_lobby' });
 $('btnCloseRoom').onclick = () => { if (confirm('방을 닫으면 모든 학생이 나가집니다. 닫을까요?')) { send({ type: 'close_room' }); goHome(); } };
