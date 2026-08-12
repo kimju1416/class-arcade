@@ -496,6 +496,7 @@ const GAMES_META = {
   sadari:{ icon: '🪜', name: '사다리 복불복', desc: '8칸 중 하나를 골라라! 사다리를 타고 내려가면 +10 황금? 💣폭탄? 내려가 보기 전엔 아무도 모른다.', badge: '5라운드', rule: '내려가고 싶은 칸을 손가락으로 고르세요!\n어디로 이어질지는 아무도 몰라요' },
   pirate:{ icon: '🏴‍☠️', name: '통아저씨', desc: '해적 통을 빙글 돌려 칼을 꽂아라! 잘못 꽂으면 해적이 펑 튀어나오며 탈락. 위험 칸은 라운드마다 늘어난다.', badge: '복불복', rule: '통을 돌려서 원하는 칸에 칼을 꽂으세요!\n해적이 튀어나오면 탈락이에요' },
   quiz: { icon: '🧠', name: '퀴즈쇼', desc: '카훗처럼 4지선다 퀴즈! 빨리 맞힐수록 점수가 크다. 카테고리와 문제 수를 골라 아이스브레이킹 하자.', badge: '객관식', rule: 'TV의 문제를 보고 폰에서\n정답 색깔 버튼을 빠르게 누르세요!' },
+  ox:   { icon: '⭕', name: 'OX 서바이벌', desc: '문장을 읽고 몸으로 답해라! 맞으면 O땅, 틀리면 X땅으로 질주. 오답은 탈락, 전원 오답이면 전원 부활 — 최후의 1인 골든벨!', badge: '서바이벌', rule: '맞다고 생각하면 O구역, 틀리면 X구역!\n시간이 끝나기 전에 달려가세요' },
 };
 const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식'];
 
@@ -993,7 +994,7 @@ function renderGameGrid() {
   $('gameGrid').innerHTML = '';
   const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
                      race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
-                     sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz' };
+                     sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     const el = document.createElement('div');
     el.className = 'game-card' + (key === selectedGame ? ' sel' : '');
@@ -1277,7 +1278,7 @@ function initInput() {
     }
     const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
       || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
-      || gameType === 'sumo' || gameType === 'chair';
+      || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox';
     if (!usesStick) return;
     if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
@@ -1372,7 +1373,7 @@ function keyDir() {
 setInterval(() => {
   const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
-    || gameType === 'sumo' || gameType === 'chair';
+    || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox';
   if (isHost || !moves || (phase !== 'playing' && phase !== 'countdown')) return;
   const kd = keyDir();
   const d = kd || curDir;
@@ -1671,7 +1672,74 @@ function draw() {
   }
   if (latest.mode === 'sadari') drawSadari(latest, ox, oy, scale, dpr);
   if (latest.mode === 'pirate') drawPirate(latest, ox, oy, scale, dpr);
+  // OX 서바이벌: 왼쪽 O 구역 / 오른쪽 X 구역 + 문제 배너
+  if (latest.mode === 'ox') {
+    const W2 = arena.w * scale, H2 = arena.h * scale, half = W2 / 2;
+    const reveal = latest.oxPhase === 'reveal';
+    const dimO = reveal && latest.oxAnswer !== 0;
+    const dimX = reveal && latest.oxAnswer !== 1;
+    ctx.fillStyle = dimO ? 'rgba(12,18,30,.78)' : 'rgba(38,137,76,.30)';
+    ctx.fillRect(ox, oy, half, H2);
+    ctx.fillStyle = dimX ? 'rgba(30,14,20,.78)' : 'rgba(214,59,82,.30)';
+    ctx.fillRect(ox + half, oy, half, H2);
+    ctx.setLineDash([12 * scale, 10 * scale]);
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 3 * dpr;
+    ctx.beginPath(); ctx.moveTo(ox + half, oy); ctx.lineTo(ox + half, oy + H2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `900 ${230 * scale}px Pretendard, sans-serif`;
+    ctx.fillStyle = dimO ? 'rgba(110,150,130,.18)' : 'rgba(61,220,132,.42)';
+    ctx.fillText('O', ox + half / 2, oy + H2 * 0.56);
+    ctx.fillStyle = dimX ? 'rgba(150,110,120,.18)' : 'rgba(255,107,107,.42)';
+    ctx.fillText('X', ox + half * 1.5, oy + H2 * 0.56);
+    // 문제 배너 (긴 문장은 두 줄로)
+    if (latest.q) {
+      const bw = W2 * 0.95, bh = 105 * scale;
+      ctx.fillStyle = 'rgba(8,12,28,.86)';
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(ox + (W2 - bw) / 2, oy + 12 * scale, bw, bh, 14 * scale)
+                    : ctx.rect(ox + (W2 - bw) / 2, oy + 12 * scale, bw, bh);
+      ctx.fill();
+      ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 2 * dpr; ctx.stroke();
+      const q = latest.q;
+      ctx.fillStyle = '#fff';
+      ctx.font = `800 ${44 * scale}px Pretendard, sans-serif`;
+      if (q.length <= 15) {
+        ctx.fillText(q, ox + W2 / 2, oy + 12 * scale + bh / 2);
+      } else {
+        const cut = q.lastIndexOf(' ', Math.ceil(q.length / 2)) > 0
+          ? q.lastIndexOf(' ', Math.ceil(q.length / 2) + 2) : Math.ceil(q.length / 2);
+        ctx.fillText(q.slice(0, cut), ox + W2 / 2, oy + 12 * scale + bh * 0.32);
+        ctx.fillText(q.slice(cut).trim(), ox + W2 / 2, oy + 12 * scale + bh * 0.72);
+      }
+    }
+    if (reveal && latest.revived) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = `900 ${64 * scale}px Pretendard, sans-serif`;
+      ctx.fillText('🎉 전원 오답 — 전원 부활!', ox + W2 / 2, oy + H2 - 70 * scale);
+    }
+    ctx.textBaseline = 'alphabetic';
+  }
   ctx.restore();
+
+  // OX 학생 폰: 판이 작아 안 보이는 문제를 판 아래에 크게 한 번 더
+  if (latest.mode === 'ox' && !isHost && latest.q && H > W) {
+    const yBase = oy + arena.h * scale + 34 * dpr;
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${19 * dpr}px Pretendard, sans-serif`;
+    ctx.fillStyle = '#fff';
+    const q = latest.q;
+    if (q.length <= 14) ctx.fillText(q, W / 2, yBase);
+    else {
+      const cut = q.lastIndexOf(' ', Math.ceil(q.length / 2) + 2) > 0
+        ? q.lastIndexOf(' ', Math.ceil(q.length / 2) + 2) : Math.ceil(q.length / 2);
+      ctx.fillText(q.slice(0, cut), W / 2, yBase);
+      ctx.fillText(q.slice(cut).trim(), W / 2, yBase + 26 * dpr);
+    }
+    ctx.font = `800 ${15 * dpr}px Pretendard, sans-serif`;
+    ctx.fillStyle = '#93a0c4';
+    ctx.fillText('맞으면 ⬅️ O · 틀리면 X ➡️', W / 2, yBase + 58 * dpr);
+  }
 
   // 플레이어
   let aliveCount = 0, humanCount = 0, myScore = 0, myAlive = null, tapHud = null;
@@ -1874,6 +1942,15 @@ function draw() {
         if ((latest.victims || []).length) SFX.boom(); else SFX.fanfare();   // 전원 무사!
       }
     }
+    if (latest.mode === 'ox') {
+      if (latest.oxPhase === 'reveal' && sndPrev.oxReveal !== latest.oxIdx) {
+        sndPrev.oxReveal = latest.oxIdx;
+        if (latest.revived) SFX.fanfare(); else SFX.ok();
+      }
+      const al = latest.players.filter(pp => pp[3] === 1 && !pp[4]).length;
+      if (sndPrev.oxAlive >= 0 && al < sndPrev.oxAlive) SFX.miss();
+      sndPrev.oxAlive = al;
+    }
   }
 
   // 교사 화면: 좌우 여백이 비어 있으므로 실시간 순위를 크게 띄운다
@@ -1891,6 +1968,7 @@ function draw() {
         : `🎵 ${latest.cround || 1}라운드 · 생존 ${aliveCount}`)
     : latest.mode === 'sadari' ? `🪜 ${latest.round || 1}/${latest.totalRounds || 5}라운드` + (isHost ? '' : ` · 내 점수 ${myScore}`)
     : latest.mode === 'pirate' ? `🏴‍☠️ ${latest.round || 1}라운드 · 🗡️ ${latest.pickedCount || 0}/${latest.aliveCount || 0}명`
+    : latest.mode === 'ox' ? `⭕❌ 문제 ${(latest.oxIdx || 0) + 1}/${latest.oxTotal || 0} · 생존 ${aliveCount}`
     : '생존 ' + aliveCount;
   setText($('hudLeft'), hudText);
   if (phase === 'playing') {
@@ -1923,7 +2001,8 @@ function drawOverlay(myAlive, latest) {
     // 안내는 몇 초만 띄운다 — 계속 떠 있으면 경기장을 가린다
     // 죽으면 끝나는 게임들: 탈락 안내 (몇 초 띄우고 사라짐 — 이후 관전)
     const deathGame = latest.mode === 'bomb' || latest.mode === 'dodge' || latest.mode === 'gala'
-      || latest.mode === 'sumo' || latest.mode === 'chair' || latest.mode === 'pirate';
+      || latest.mode === 'sumo' || latest.mode === 'chair' || latest.mode === 'pirate'
+      || latest.mode === 'ox';
     if (deathGame && !myAlive.alive) {
       if (!seenDeadAt) seenDeadAt = now;
       if (now - seenDeadAt < 3200) {
@@ -1932,6 +2011,7 @@ function drawOverlay(myAlive, latest) {
           : latest.mode === 'sumo' ? '💫 장외!'
           : latest.mode === 'chair' ? '🪑 못 앉았어요!'
           : latest.mode === 'pirate' ? '☠️ 펑! 탈락!'
+          : latest.mode === 'ox' ? '❌ 틀렸어요!'
           : '💥 탈락!';
         $('cmSmall').textContent = '끝까지 관전해 보세요';
         return;

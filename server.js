@@ -522,7 +522,34 @@ const QUIZ_DATA = {
   ],
 };
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz'];
+// OX 서바이벌 (몸으로 답한다 — O/X 구역으로 이동, 틀리면 탈락)
+const OX_Q_MS = 12000;
+const OX_REVEAL_MS = 3500;
+const OX_MAX_Q = 15;
+// 형식: [문장, 정답] — 0=O(맞다), 1=X(틀리다)
+const OX_DATA = [
+  ['문어의 다리는 8개다', 0], ['펭귄은 새다', 0], ['일주일은 7일이다', 0],
+  ['대한민국의 수도는 서울이다', 0], ['무지개는 7가지 색이다', 0], ['곤충의 다리는 6개다', 0],
+  ['지구는 태양 주위를 돈다', 0], ['고래는 포유류다', 0], ['물은 0도에서 언다', 0],
+  ['세종대왕이 한글을 만들었다', 0], ['태극기에는 빨간색과 파란색이 있다', 0], ['박쥐는 포유류다', 0],
+  ['달은 지구 주위를 돈다', 0], ['개구리는 어릴 때 올챙이였다', 0], ['1년은 12달이다', 0],
+  ['심장은 피를 온몸으로 보낸다', 0], ['불이 나면 119에 신고한다', 0], ['식물은 햇빛으로 양분을 만든다', 0],
+  ['남극에는 펭귄이 산다', 0], ['축구는 한 팀이 11명이다', 0], ['이순신 장군은 거북선을 만들었다', 0],
+  ['사람의 손가락은 한 손에 5개다', 0], ['꿀벌은 꿀을 만든다', 0], ['눈사람은 더우면 녹는다', 0],
+  ['한글날은 10월 9일이다', 0], ['바닷물은 짜다', 0], ['거미의 다리는 8개다', 0],
+  ['소금은 짠맛이 난다', 0],
+  ['상어는 포유류다', 1], ['태양은 밤에 뜬다', 1], ['펭귄은 하늘을 잘 난다', 1],
+  ['얼음은 뜨겁다', 1], ['토끼는 알을 낳는다', 1], ['무궁화는 프랑스의 나라꽃이다', 1],
+  ['물고기는 물 밖에서 오래 살 수 있다', 1], ['경찰 신고 번호는 999다', 1], ['지구는 네모나다', 1],
+  ['바나나는 원래 파란색이다', 1], ['우리나라에서 눈은 여름에 자주 내린다', 1], ['고양이는 멍멍 하고 짖는다', 1],
+  ['1시간은 100분이다', 1], ['코끼리는 쥐보다 작다', 1], ['김치는 이탈리아 전통 음식이다', 1],
+  ['세종대왕은 거북선을 만들었다', 1], ['사람은 아가미로 숨을 쉰다', 1], ['소는 고기만 먹는 육식동물이다', 1],
+  ['태극기 가운데에는 별이 그려져 있다', 1], ['우리나라의 여름은 겨울보다 춥다', 1], ['독수리는 동물 중 헤엄을 제일 잘 친다', 1],
+  ['개미는 곤충이 아니다', 1], ['하루는 48시간이다', 1], ['수박은 한겨울이 제철인 과일이다', 1],
+  ['부산에는 바다가 없다', 1], ['라면은 얼음물에 끓여야 맛있다', 1],
+];
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -562,6 +589,10 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
         : undefined,
       sumo: r.gameType === 'sumo' && r.game ? { ring: Math.round(r.game.ringR) } : undefined,
+      ox: r.gameType === 'ox' && r.game && r.game.oxQs
+        ? { phase: r.game.oxPhase, idx: r.game.oxIdx, q: (r.game.oxQs[r.game.oxIdx] || [''])[0],
+            answer: (r.game.oxQs[r.game.oxIdx] || [0, 0])[1], revived: r.game.oxRevived }
+        : undefined,
       quiz: r.gameType === 'quiz' && r.game && r.game.questions
         ? { phase: r.game.qPhase, idx: r.game.qIdx, total: r.game.questions.length, cat: r.game.quizCat,
             q: r.game.questions[r.game.qIdx] ? r.game.questions[r.game.qIdx].q : '',
@@ -844,6 +875,16 @@ function startGame(room, type, opt) {
       return { q, choices: order.map(i => cs[i]), correct: order.indexOf(0) };
     });
     g.quizCat = cat; g.qIdx = 0; g.qPhase = 'idle';
+  } else if (type === 'ox') {
+    g.roundMs = 0;
+    g.arenaW = 1100; g.arenaH = 760;   // 가로로 넓게 — 왼쪽 O, 오른쪽 X
+    g.oxQs = [...OX_DATA].sort(() => Math.random() - 0.5).slice(0, OX_MAX_Q);
+    g.oxIdx = 0; g.oxPhase = 'idle'; g.oxRevived = false;
+    // 중앙선 근처에 흩어 배치 (양쪽 어디로든 뛰기 좋게)
+    actives.forEach((p, i) => {
+      p.x = g.arenaW / 2 + (Math.random() - 0.5) * 160;
+      p.y = 90 + (i % 8) * ((g.arenaH - 180) / 7);
+    });
   }
 
   room.state = 'countdown';
@@ -891,6 +932,7 @@ function tick(room) {
       if (room.gameType === 'sadari') startSadariRound(room, now);
       if (room.gameType === 'pirate') startPirateRound(room, now);
       if (room.gameType === 'quiz') startQuizQ(room, now);
+      if (room.gameType === 'ox') startOxQ(room, now);
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
     }
     sendState(room, now);
@@ -921,6 +963,7 @@ function tick(room) {
   else if (room.gameType === 'sadari') sadariTick(room, now);
   else if (room.gameType === 'pirate') pirateTick(room, now);
   else if (room.gameType === 'quiz') quizTick(room, now);
+  else if (room.gameType === 'ox') oxTick(room, now, dt);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -1750,6 +1793,53 @@ function pirateTick(room, now) {
   sendState(room, now);
 }
 
+// ---------- OX 서바이벌 ----------
+function startOxQ(room, now) {
+  const g = room.game;
+  g.oxPhase = 'show';
+  g.oxEndAt = now + OX_Q_MS;
+  g.oxRevived = false;
+}
+
+function oxTick(room, now, dt) {
+  const g = room.game;
+  movePlayers(room, dt);
+  if (g.oxPhase === 'show') {
+    if (now >= g.oxEndAt) {
+      const [, answer] = g.oxQs[g.oxIdx];
+      const alive = [...room.players.values()].filter(p => p.alive);
+      // 정답 구역: O=왼쪽 절반, X=오른쪽 절반
+      const wrong = alive.filter(p => (p.x < g.arenaW / 2 ? 0 : 1) !== answer);
+      if (wrong.length >= alive.length) {
+        g.oxRevived = true;   // 전원 오답이면 아무도 안 떨어뜨린다 (전원 부활!)
+      } else {
+        for (const p of wrong) { p.alive = false; p.deadAt = now; p.outRound = g.oxIdx + 1; }
+      }
+      g.oxPhase = 'reveal';
+      g.revealEndAt = now + OX_REVEAL_MS;
+    }
+  } else if (g.oxPhase === 'reveal') {
+    if (now >= g.revealEndAt) {
+      const left = [...room.players.values()].filter(p => p.alive);
+      if (left.length <= 1 || g.oxIdx + 1 >= g.oxQs.length) { endOx(room); return; }
+      g.oxIdx++;
+      startOxQ(room, now);
+    }
+  }
+  sendState(room, now);
+}
+
+function endOx(room) {
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    if (a.alive !== b.alive) return a.alive ? -1 : 1;
+    return (b.outRound || 0) - (a.outRound || 0);
+  });
+  finishGame(room, sorted,
+    p => p.alive ? '👑 끝까지 생존!' : `${p.outRound}번 문제에서 탈락`,
+    p => p.alive ? 'alive' : String(p.outRound || 0));
+}
+
 // ---------- 퀴즈쇼 ----------
 function startQuizQ(room, now) {
   const g = room.game;
@@ -2092,6 +2182,13 @@ function sendState(room, now) {
       msg.rungs = g.rungs; msg.map = g.map; msg.revealAt = g.revealAt;
       msg.picks = [...room.players.values()].filter(p => !p.waiting && p.pick >= 0).map(p => [p.id, p.pick]);
     }
+  }
+  if (type === 'ox') {
+    const [q, answer] = g.oxQs[g.oxIdx] || ['', 0];
+    msg.oxPhase = g.oxPhase; msg.oxIdx = g.oxIdx; msg.oxTotal = g.oxQs.length;
+    msg.q = g.oxPhase === 'idle' ? '' : q;
+    msg.pickLeft = g.oxPhase === 'show' ? Math.max(0, g.oxEndAt - now) : 0;
+    if (g.oxPhase === 'reveal') { msg.oxAnswer = answer; msg.revived = g.oxRevived ? 1 : 0; }
   }
   if (type === 'pirate') {
     msg.pPhase = g.pPhase; msg.round = g.round;
