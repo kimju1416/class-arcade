@@ -602,7 +602,29 @@ const TIMING_READY_MS = 3500;
 const TIMING_REVEAL_MS = 6500;
 const TIMING_EXTRA_MS = 8000;    // 목표 시간 + 8초까지 기다렸다가 마감
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs'];
+// ---------- 블록 배틀 (실시간 테트리스, 브랜드명 CUBE STACK) ----------
+const TET_W = 10, TET_H = 20;
+const TET_MAX_MS = 360000;       // 6분 안전 캡 (배틀로얄 — 원래는 최후 1인까지)
+const TET_BASE_GRAV = 800;       // 시작 낙하 간격(ms)
+const TET_MIN_GRAV = 80;         // 최고속 낙하 간격
+const TET_SOFT_GRAV = 45;        // 소프트드롭(내려꽂기 홀드) 낙하 간격
+const TET_LOCK_MS = 480;         // 바닥에 닿고 고정까지 유예
+const TET_STAGE_MS = 15000;      // 이 시간마다 단계↑ (금방 어려워지게)
+const TET_GRAV_DECAY = 0.76;     // 단계마다 낙하 간격 × (작을수록 급가속)
+// 7종 테트로미노 — 각 회전상태(0~3)마다 4칸 [x,y] 오프셋(4x4 박스 기준). 색: 0=I,1=O,2=T,3=S,4=Z,5=J,6=L
+const TET_SHAPES = [
+  [[[0,1],[1,1],[2,1],[3,1]],[[2,0],[2,1],[2,2],[2,3]],[[0,2],[1,2],[2,2],[3,2]],[[1,0],[1,1],[1,2],[1,3]]], // I
+  [[[1,0],[2,0],[1,1],[2,1]],[[1,0],[2,0],[1,1],[2,1]],[[1,0],[2,0],[1,1],[2,1]],[[1,0],[2,0],[1,1],[2,1]]], // O
+  [[[1,0],[0,1],[1,1],[2,1]],[[1,0],[1,1],[2,1],[1,2]],[[0,1],[1,1],[2,1],[1,2]],[[1,0],[0,1],[1,1],[1,2]]], // T
+  [[[1,0],[2,0],[0,1],[1,1]],[[1,0],[1,1],[2,1],[2,2]],[[1,1],[2,1],[0,2],[1,2]],[[0,0],[0,1],[1,1],[1,2]]], // S
+  [[[0,0],[1,0],[1,1],[2,1]],[[2,0],[1,1],[2,1],[1,2]],[[0,1],[1,1],[1,2],[2,2]],[[1,0],[0,1],[1,1],[0,2]]], // Z
+  [[[0,0],[0,1],[1,1],[2,1]],[[1,0],[2,0],[1,1],[1,2]],[[0,1],[1,1],[2,1],[2,2]],[[1,0],[1,1],[0,2],[1,2]]], // J
+  [[[2,0],[0,1],[1,1],[2,1]],[[1,0],[1,1],[1,2],[2,2]],[[0,1],[1,1],[2,1],[0,2]],[[0,0],[1,0],[1,1],[1,2]]], // L
+];
+const TET_KICKS = [0, -1, 1, -2, 2];   // 회전 충돌 시 좌우로 밀어보는 순서(간이 월킥)
+const TET_ATTACK = [0, 0, 1, 2, 4];    // 지운 줄 수 → 상대에게 보내는 쓰레기 줄
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -676,6 +698,12 @@ const server = http.createServer((req, res) => {
       pairs: r.gameType === 'pairs' && r.game
         ? { faces: r.game.faces, finishedN: r.game.finishedN,
             players: [...r.players.values()].map(p => [p.nick, p.pPairs, p.pAttempts, p.pMask, !!p.pFinAt]) }
+        : undefined,
+      tetris: r.gameType === 'tetris' && r.game
+        ? { stage: r.game.stage,
+            players: [...r.players.values()].map(p => ({ nick: p.nick, alive: p.alive, score: p.score,
+              lines: p.tLines, sent: p.tSent, pend: p.tPendingGarbage,
+              piece: p.tPiece, rot: p.tRot, x: p.tX, y: p.tY, board: p.tBoardStr })) }
         : undefined,
     }))));
     return;
@@ -1056,6 +1084,11 @@ function startGame(room, type, opt) {
     const faces = [...PAIRS_POOL].sort(() => Math.random() - 0.5).slice(0, PAIRS_TOTAL / 2);
     g.faces = [...faces, ...faces].sort(() => Math.random() - 0.5);
     g.finishedN = 0;
+  } else if (type === 'tetris') {
+    g.roundMs = TET_MAX_MS;      // 안전 캡 — 보통은 최후 1인으로 먼저 끝난다
+    g.stage = 1;
+    g.nextStageAt = 0;           // playing 진입 때 셋
+    for (const p of actives) tetInitPlayer(p);
   }
 
   room.state = 'countdown';
@@ -1109,6 +1142,10 @@ function tick(room) {
       if (room.gameType === 'simon') startSimonRound(room, now);
       if (room.gameType === 'chimp') startChimpRound(room, now);
       if (room.gameType === 'flash') startFlashQ(room, now);
+      if (room.gameType === 'tetris') {
+        room.game.nextStageAt = now + TET_STAGE_MS;
+        for (const p of room.players.values()) if (p.alive) { p.tNextFallAt = now + TET_BASE_GRAV; }
+      }
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
     }
     sendState(room, now);
@@ -1148,6 +1185,7 @@ function tick(room) {
   else if (room.gameType === 'chimp') chimpTick(room, now);
   else if (room.gameType === 'flash') flashTick(room, now);
   else if (room.gameType === 'pairs') pairsTick(room, now);
+  else if (room.gameType === 'tetris') tetrisTick(room, now);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -2531,6 +2569,147 @@ function endPairs(room) {
     p => `${p.pPairs}|${p.pFinAt || 0}|${p.pAttempts}`);
 }
 
+// ---------- 블록 배틀 (실시간 테트리스) ----------
+// 서버 권위: 보드·조각·중력·라인클리어·공격 전부 서버 계산. 클라는 버튼 입력만 보낸다.
+function tetInitPlayer(p) {
+  p.tBoard = new Uint8Array(TET_W * TET_H);   // 0=빈칸, 1~7=색(조각+1), 8=쓰레기
+  p.tBag = [];                                 // 7-bag 셔플
+  p.tPiece = -1; p.tRot = 0; p.tX = 3; p.tY = 0;
+  p.tNext = tetDraw(p);
+  tetSpawn(p);
+  p.tNextFallAt = 0; p.tLockAt = 0; p.tSoft = false;
+  p.tLines = 0; p.tSent = 0; p.tPendingGarbage = 0;
+  p.tClearFx = 0;                              // 마지막 클리어 줄 수(연출용, 호스트 전송 후 리셋)
+  p.tBoardStr = tetPackBoard(p);               // 보드는 고정 때만 바뀜 — 문자열 캐시로 매 틱 패킹 방지
+  p.score = 0;
+}
+function tetPackBoard(p) {
+  let s = '';
+  for (let i = 0; i < p.tBoard.length; i++) s += p.tBoard[i];
+  return s;
+}
+function tetDraw(p) {
+  if (!p.tBag.length) p.tBag = [0, 1, 2, 3, 4, 5, 6].sort(() => Math.random() - 0.5);
+  return p.tBag.pop();
+}
+function tetSpawn(p) {
+  p.tPiece = p.tNext; p.tNext = tetDraw(p);
+  p.tRot = 0; p.tX = 3; p.tY = -1;             // 4x4 박스가 위 1줄 걸치고 시작
+  p.tSoft = false; p.tLockAt = 0;
+}
+function tetFits(p, x, y, rot) {
+  const cells = TET_SHAPES[p.tPiece][rot];
+  for (const [cx, cy] of cells) {
+    const bx = x + cx, by = y + cy;
+    if (bx < 0 || bx >= TET_W || by >= TET_H) return false;
+    if (by >= 0 && p.tBoard[by * TET_W + bx]) return false;
+  }
+  return true;
+}
+function tetLock(room, p, now) {
+  const cells = TET_SHAPES[p.tPiece][p.tRot];
+  let topOut = false;
+  for (const [cx, cy] of cells) {
+    const by = p.tY + cy;
+    if (by < 0) { topOut = true; continue; }
+    p.tBoard[by * TET_W + (p.tX + cx)] = p.tPiece + 1;
+  }
+  // 줄 지우기
+  let cleared = 0;
+  for (let y = TET_H - 1; y >= 0; y--) {
+    let full = true;
+    for (let x = 0; x < TET_W; x++) if (!p.tBoard[y * TET_W + x]) { full = false; break; }
+    if (full) {
+      cleared++;
+      p.tBoard.copyWithin(TET_W, 0, y * TET_W);   // 위 전체를 한 줄 아래로
+      p.tBoard.fill(0, 0, TET_W);
+      y++;                                         // 같은 y 재검사 (위에서 내려온 줄)
+    }
+  }
+  if (cleared) {
+    p.tLines += cleared;
+    p.score += [0, 100, 300, 500, 800][cleared] * (1 + (room.game.stage - 1) * 0.1) | 0;
+    p.tClearFx = cleared;
+    // 공격: 2줄부터 랜덤 생존 상대에게 쓰레기 줄
+    const atk = TET_ATTACK[cleared] || 0;
+    if (atk > 0) {
+      const targets = [...room.players.values()].filter(q => q.alive && q !== p);
+      if (targets.length) {
+        const t = targets[Math.floor(Math.random() * targets.length)];
+        t.tPendingGarbage = Math.min(8, (t.tPendingGarbage || 0) + atk);
+        t.tAttackedBy = p.nick;
+      }
+      p.tSent += atk;
+    }
+  }
+  // 대기 중인 쓰레기 줄 올리기 (내 조각이 고정된 직후에)
+  if (p.tPendingGarbage > 0) {
+    const n = p.tPendingGarbage; p.tPendingGarbage = 0;
+    // 위 n줄에 블록이 있으면 밀려서 죽는다 — 올리기 전 검사
+    for (let y = 0; y < n * TET_W; y++) if (p.tBoard[y]) topOut = true;
+    p.tBoard.copyWithin(0, n * TET_W);                       // 전체를 n줄 위로
+    for (let i = 0; i < n; i++) {
+      const y = TET_H - 1 - i, hole = Math.floor(Math.random() * TET_W);
+      for (let x = 0; x < TET_W; x++) p.tBoard[y * TET_W + x] = x === hole ? 0 : 8;
+    }
+    p.tGarbAt = now;                                         // 연출용
+  }
+  p.tBoardStr = tetPackBoard(p);               // 보드가 바뀌었으니 캐시 갱신
+  if (topOut) { p.alive = false; p.deadAt = now; return; }
+  tetSpawn(p);
+  if (!tetFits(p, p.tX, p.tY, p.tRot)) { p.alive = false; p.deadAt = now; return; }
+  p.tNextFallAt = now + tetGrav(room, p);
+}
+function tetGrav(room, p) {
+  const g = Math.max(TET_MIN_GRAV, TET_BASE_GRAV * Math.pow(TET_GRAV_DECAY, room.game.stage - 1));
+  return p.tSoft ? Math.min(TET_SOFT_GRAV, g) : g;
+}
+function tetrisTick(room, now) {
+  const g = room.game;
+  // 단계 상승 — 루즈해질 틈 없이 금방 어려워진다
+  if (now >= g.nextStageAt) { g.stage++; g.nextStageAt = now + TET_STAGE_MS; }
+
+  for (const p of room.players.values()) {
+    if (!p.alive || p.waiting) continue;
+    if (p.tPiece < 0) continue;
+    // 중력
+    while (now >= p.tNextFallAt) {
+      if (tetFits(p, p.tX, p.tY + 1, p.tRot)) {
+        p.tY++; p.tNextFallAt += tetGrav(room, p); p.tLockAt = 0;
+      } else {
+        if (!p.tLockAt) p.tLockAt = now + TET_LOCK_MS;   // 바닥 유예 시작
+        p.tNextFallAt = now + tetGrav(room, p);
+        break;
+      }
+    }
+    // 고정 판정 — 유예가 끝났는데 여전히 아래가 막혀 있으면 고정
+    if (p.tLockAt && now >= p.tLockAt) {
+      if (!tetFits(p, p.tX, p.tY + 1, p.tRot)) tetLock(room, p, now);
+      else p.tLockAt = 0;                               // 유예 중 아래가 뚫렸으면 계속 낙하
+    }
+  }
+
+  const alive = [...room.players.values()].filter(p => p.alive);
+  const total = [...room.players.values()].filter(p => !p.waiting).length;
+  if ((total >= 2 && alive.length <= 1) || (total === 1 && alive.length === 0) || now >= room.phaseEndAt) {
+    endTetris(room, now); return;
+  }
+  sendState(room, now);
+}
+function endTetris(room, now) {
+  const g = room.game;
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    if (a.alive !== b.alive) return a.alive ? -1 : 1;
+    if (a.alive) return (b.score || 0) - (a.score || 0);   // 시간 종료로 복수 생존 시 점수순
+    return (b.deadAt || 0) - (a.deadAt || 0);
+  });
+  finishGame(room, sorted, p => {
+    const t = p.alive ? '생존! ' : '';
+    return `${t}${p.tLines || 0}줄 · ${p.score || 0}점${p.tSent ? ` · 공격 ${p.tSent}줄` : ''}`;
+  }, p => p.alive ? `a${p.score}` : String(p.deadAt));
+}
+
 // 점수순 공통 종료 (침팬지·순간 포착)
 function endScoreGame(room, unit) {
   const parts = [...room.players.values()].filter(p => !p.waiting);
@@ -2629,6 +2808,36 @@ function sendState(room, now) {
         g.fPhase === 'reveal' ? (p.qGain || 0) : 0,
         g.fPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]),
     });
+    return;
+  }
+  if (type === 'tetris') {
+    const parts = [...room.players.values()].filter(p => !p.waiting);
+    const base = {
+      type: 'state', mode: 'tetris', st: now, stage: g.stage,
+      timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : TET_MAX_MS,
+      aliveN: parts.filter(p => p.alive).length, totalN: parts.length,
+    };
+    // 학생: 자기 보드+조각만 매 틱 (부드러운 조작감, ~300B)
+    for (const p of room.players.values()) {
+      if (!p.ws || p.waiting || !p.tBoard) continue;
+      roomSend(p.ws, {
+        ...base,
+        me: [p.tBoardStr, p.tPiece, p.tRot, p.tX, p.tY, p.tNext,
+             p.tPendingGarbage || 0, p.score || 0, p.tLines || 0, p.alive ? 1 : 0, p.tClearFx || 0],
+        atkBy: p.tAttackedBy || undefined,
+      });
+      p.tAttackedBy = null;
+    }
+    // 교사 TV: 전원 보드 — 5Hz 스로틀 (40명×250B×20Hz는 Render 무료 티어에 과함)
+    if (room.hostWs && (!g.tHostAt || now - g.tHostAt >= 200)) {
+      g.tHostAt = now;
+      roomSend(room.hostWs, {
+        ...base,
+        boards: parts.map(p => [p.id, p.alive ? 1 : 0, p.score || 0, p.tLines || 0,
+          p.tBoardStr || '', p.tPiece, p.tRot, p.tX, p.tY, p.tClearFx || 0, p.tSent || 0]),
+      });
+      for (const p of parts) p.tClearFx = 0;   // 연출 플래그는 호스트 전송 후 소거
+    }
     return;
   }
   if (type === 'pairs') {
@@ -3047,6 +3256,53 @@ wss.on('connection', (ws) => {
       }
 
       // 사이먼: 4색 패드 입력 — 시퀀스는 서버에만 있어 서버가 대조한다
+      // 블록 배틀: 버튼 입력 4종 — 판정은 전부 서버에서
+      case 'tmove': {   // v: -1(왼쪽) / 1(오른쪽)
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'tetris') return;
+        const p = room.players.get(ws.playerId);
+        if (!p || !p.alive || p.waiting || p.tPiece < 0) return;
+        const dx = finite(msg.v) < 0 ? -1 : 1;
+        if (tetFits(p, p.tX + dx, p.tY, p.tRot)) {
+          p.tX += dx;
+          if (p.tLockAt) p.tLockAt = Date.now() + TET_LOCK_MS;   // 이동하면 고정 유예 리셋(한 번의 조작 기회)
+        }
+        break;
+      }
+      case 'trot': {
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'tetris') return;
+        const p = room.players.get(ws.playerId);
+        if (!p || !p.alive || p.waiting || p.tPiece < 0) return;
+        const nr = (p.tRot + 1) % 4;
+        for (const k of TET_KICKS) {
+          if (tetFits(p, p.tX + k, p.tY, nr)) {
+            p.tX += k; p.tRot = nr;
+            if (p.tLockAt) p.tLockAt = Date.now() + TET_LOCK_MS;
+            break;
+          }
+        }
+        break;
+      }
+      case 'tsoft': {   // v: 1(누름) / 0(뗌) — 소프트드롭 토글
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'tetris') return;
+        const p = room.players.get(ws.playerId);
+        if (!p || !p.alive || p.waiting) return;
+        const on = !!finite(msg.v);
+        if (on && !p.tSoft) p.tNextFallAt = Math.min(p.tNextFallAt, Date.now() + TET_SOFT_GRAV);
+        p.tSoft = on;
+        break;
+      }
+      case 'tdrop': {   // 하드드롭 — 즉시 바닥까지 + 고정
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'tetris') return;
+        const p = room.players.get(ws.playerId);
+        if (!p || !p.alive || p.waiting || p.tPiece < 0) return;
+        let dy = 0;
+        while (tetFits(p, p.tX, p.tY + dy + 1, p.tRot)) dy++;
+        p.tY += dy;
+        p.score += dy * 2;                       // 하드드롭 보너스
+        tetLock(room, p, Date.now());
+        break;
+      }
+
       case 'skey': {
         if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'simon') return;
         const p = room.players.get(ws.playerId);

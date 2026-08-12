@@ -458,6 +458,50 @@
     body.host .game-grid { grid-template-columns: 1fr 1fr 1fr; }
   }
   #hostRight { display: flex; flex-direction: column; gap: 14px; align-items: center; width: 100%; max-width: 720px; }
+/* ---- 블록 배틀 (CUBE STACK) — 넷마블풍 글로시 ---- */
+#tetrisGame { background: #0e1030 url('sprites/tet-bg.jpg') center/cover no-repeat; gap: 8px; padding: 10px; }
+#tetLogo { height: 52px; image-rendering: auto; filter: drop-shadow(0 4px 10px rgba(0,0,0,.6)); }
+body.host #tetLogo { height: 72px; }
+.tet-hud { display: flex; gap: 14px; align-items: center; font-weight: 800; color: #cfe0ff;
+  background: rgba(10,12,40,.72); border: 1px solid rgba(120,140,255,.35); border-radius: 12px;
+  padding: 6px 14px; font-size: 14px; text-shadow: 0 1px 2px #000; }
+.tet-hud b { color: #ffd21f; font-size: 17px; }
+.tet-hud .stg { color: #ff7ad9; }
+#tetStageUp { position: absolute; top: 18%; left: 50%; transform: translate(-50%,-50%) scale(.6); opacity: 0;
+  font-size: 42px; font-weight: 900; color: #ffd21f; text-shadow: 0 0 18px #ff7ad9, 0 3px 6px #000;
+  pointer-events: none; transition: all .25s; z-index: 5; }
+#tetStageUp.pop { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+.tet-mid { display: flex; gap: 10px; align-items: flex-start; justify-content: center; }
+#tetMyCanvas { border-radius: 10px; box-shadow: 0 0 0 3px rgba(120,140,255,.5), 0 0 26px rgba(80,80,220,.55), 0 10px 30px rgba(0,0,0,.6);
+  background: rgba(6,8,28,.92); touch-action: none; }
+.tet-side { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.tet-next-box { background: rgba(10,12,40,.8); border: 1px solid rgba(120,140,255,.4); border-radius: 10px;
+  padding: 6px; color: #9fb2e8; font-size: 11px; font-weight: 700; text-align: center; }
+#tetNextCanvas { display: block; margin-top: 4px; }
+.tet-warn { min-height: 34px; display: flex; align-items: center; justify-content: center; color: #ff8181;
+  font-weight: 800; font-size: 13px; text-shadow: 0 1px 2px #000; text-align: center; }
+.tet-warn.hot { animation: tetShake .3s infinite; }
+@keyframes tetShake { 0%,100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+.tet-controls { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+.tet-btn { flex: 1; height: 74px; border: none; border-radius: 16px; font-size: 26px; font-weight: 900; color: #fff;
+  background: linear-gradient(#5a68ff, #3947d8); box-shadow: 0 5px 0 #202a90, inset 0 2px 3px rgba(255,255,255,.45);
+  touch-action: none; user-select: none; -webkit-user-select: none; }
+.tet-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #202a90, inset 0 2px 3px rgba(255,255,255,.3); }
+.tet-btn.rot { background: linear-gradient(#b45cf0, #8a2ecc); box-shadow: 0 5px 0 #5e1e8e, inset 0 2px 3px rgba(255,255,255,.45); }
+.tet-btn.rot:active { box-shadow: 0 1px 0 #5e1e8e, inset 0 2px 3px rgba(255,255,255,.3); }
+.tet-btn.drop { background: linear-gradient(#ff9b2e, #e86f00); box-shadow: 0 5px 0 #9c4a00, inset 0 2px 3px rgba(255,255,255,.5); font-size: 20px; }
+.tet-btn.drop:active { box-shadow: 0 1px 0 #9c4a00, inset 0 2px 3px rgba(255,255,255,.3); }
+#tetHostGrid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-content: flex-start;
+  width: 100%; max-width: 1500px; }
+.tet-mini { display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: rgba(8,10,34,.78); border: 1px solid rgba(120,140,255,.3); border-radius: 12px; padding: 8px 10px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.45); }
+.tet-mini.dead { opacity: .42; filter: grayscale(.7); }
+.tet-mini.flash { box-shadow: 0 0 22px #ffd21f, 0 6px 16px rgba(0,0,0,.45); }
+.tet-mini .nm { font-size: 13px; font-weight: 800; color: #dfe8ff; max-width: 110px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px #000; }
+.tet-mini .sc { font-size: 11px; color: #ffd21f; font-weight: 700; }
+.tet-mini canvas { border-radius: 6px; background: rgba(6,8,28,.95); box-shadow: 0 0 0 2px rgba(120,140,255,.35); }
 </style>
 </head>
 <body>
@@ -589,6 +633,34 @@
   <button class="btn danger-ghost" id="btnPairsAbort" style="display:none">게임 중단</button>
 </div>
 
+<!-- 블록 배틀 (CUBE STACK — 실시간 테트리스) -->
+<div class="view" id="tetrisGame">
+  <img id="tetLogo" src="sprites/tet-logo.png" alt="CUBE STACK" onerror="this.remove()">
+  <div class="tet-hud" id="tetHud">
+    <span>단계 <b class="stg" id="tetStage">1</b></span>
+    <span>생존 <b id="tetAlive">-</b></span>
+    <span id="tetMineWrap">점수 <b id="tetScore">0</b></span>
+    <span id="tetLinesWrap">줄 <b id="tetLines">0</b></span>
+  </div>
+  <div id="tetStageUp">단계 UP!</div>
+  <div class="tet-mid" id="tetPlayerWrap">
+    <canvas id="tetMyCanvas"></canvas>
+    <div class="tet-side">
+      <div class="tet-next-box">다음<canvas id="tetNextCanvas" width="60" height="60"></canvas></div>
+      <div class="tet-warn" id="tetWarn"></div>
+    </div>
+  </div>
+  <div class="tet-controls" id="tetControls">
+    <button class="tet-btn" id="tetL">◀</button>
+    <button class="tet-btn rot" id="tetR90">⟳</button>
+    <button class="tet-btn" id="tetR">▶</button>
+    <button class="tet-btn" id="tetSoft">▼</button>
+    <button class="tet-btn drop" id="tetDrop">쿵!<br>⬇⬇</button>
+  </div>
+  <div id="tetHostGrid" style="display:none"></div>
+  <button class="btn danger-ghost" id="btnTetAbort" style="display:none">게임 중단</button>
+</div>
+
 <!-- 결과 -->
 <div class="view" id="result">
   <div id="resultHost" style="display:none; flex-direction:column; align-items:center; gap:16px; width:100%;">
@@ -642,6 +714,7 @@ const GAMES_META = {
   chimp: { icon: '🐵', name: '침팬지 테스트', desc: '숫자가 잠깐 보였다 사라진다! 위치를 외워 1부터 순서대로 탭. 라운드마다 숫자가 늘어난다 — 당신의 작업기억력은?', badge: '8라운드', rule: 'TV의 숫자 위치를 외웠다가\n1부터 순서대로 칸을 누르세요!' },
   flash: { icon: '⚡', name: '순간 포착', desc: '그림들이 2초 만에 사라진다! 몇 개였는지, 뭐가 없었는지 4지선다로 맞혀라. 빠를수록 보너스!', badge: '8문제', rule: 'TV에 잠깐 뜨는 그림을 눈에 새기고\n문제가 나오면 색깔 버튼으로 답!' },
   pairs: { icon: '🃏', name: '같은 그림 찾기', desc: '뒤집힌 카드 20장에서 짝을 찾아라! 배치는 모두 동일 — 적게 뒤집고 빨리 끝낼수록 고득점. 탈락 없음.', badge: '75초', rule: '카드 두 장을 뒤집어 짝을 맞추세요!\n먼저 다 찾으면 완주 보너스' },
+  tetris: { icon: '🧱', name: '블록 배틀', desc: '전원 동시 테트리스 대전! 2줄 이상 지우면 친구 보드에 쓰레기 줄 공격. 갈수록 빨라진다 — 최후의 1인은 누구?', badge: '실시간 대전', rule: '◀▶ 이동 · ⟳ 회전 · ▼ 빨리 내리기 · 쿵! 즉시 낙하\n2줄 이상 지우면 친구에게 공격!' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
 const GAME_CATS = [
@@ -661,6 +734,7 @@ const GAME_CAT_OF = {
   word: ['quiz'], cho: ['quiz'], quiz: ['quiz'],
   simon: ['memory', 'sur'], chimp: ['memory'], flash: ['memory', 'quiz'], pairs: ['memory'],
   sadari: ['luck'],
+  tetris: ['sur', 'score'],
 };
 const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식', '내문제'];
 // 붙여넣은 텍스트 → 문제 배열. 한 줄 = "문제 / 정답 / 오답1 / 오답2 / 오답3" (| 구분도 허용)
@@ -801,7 +875,7 @@ function show(viewId) {
 // 게임 화면(캔버스든 DOM 뷰든)이 실제로 떠 있는가 — samePlaying 오판 방지용
 function gameViewActive() {
   return $('game').classList.contains('on')
-    || ['wordGame', 'quizGame', 'simonGame', 'pairsGame'].some(id => $(id).classList.contains('on'));
+    || ['wordGame', 'quizGame', 'simonGame', 'pairsGame', 'tetrisGame'].some(id => $(id).classList.contains('on'));
 }
 function toast(msg, ms = 2500) {
   $('toast').textContent = msg; $('toast').style.display = 'block';
@@ -946,6 +1020,7 @@ function handle(m) {
       if (m.mode === 'flash') { window.__lastState = m; window.__myId = myId; renderFlash(m); break; }
       if (m.mode === 'simon') { window.__lastState = m; window.__myId = myId; renderSimon(m); break; }
       if (m.mode === 'pairs') { window.__lastState = m; window.__myId = myId; renderPairs(m); break; }
+      if (m.mode === 'tetris') { window.__lastState = m; window.__myId = myId; renderTetris(m); break; }
       if (m.mode === 'word' || m.mode === 'cho') { renderWord(m); break; }
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
@@ -1373,6 +1448,187 @@ function renderPairs(m) {
   }
 }
 
+// ---- 블록 배틀 (CUBE STACK) 렌더링 ----
+let tetMinis = {}, tetPrevStage = 1, tetPrevLines = 0, tetMySetup = false, tetInputBound = false;
+let tetPrevAlive = {}, tetPrevPend = 0;
+// 서버와 동일한 조각 정의 (낙하 조각·고스트·다음 조각을 그리는 데만 사용 — 판정은 전부 서버)
+const TET_C_W = 10, TET_C_H = 20;
+const TET_C_SHAPES = [
+  [[[0,1],[1,1],[2,1],[3,1]],[[2,0],[2,1],[2,2],[2,3]],[[0,2],[1,2],[2,2],[3,2]],[[1,0],[1,1],[1,2],[1,3]]],
+  [[[1,0],[2,0],[1,1],[2,1]],[[1,0],[2,0],[1,1],[2,1]],[[1,0],[2,0],[1,1],[2,1]],[[1,0],[2,0],[1,1],[2,1]]],
+  [[[1,0],[0,1],[1,1],[2,1]],[[1,0],[1,1],[2,1],[1,2]],[[0,1],[1,1],[2,1],[1,2]],[[1,0],[0,1],[1,1],[1,2]]],
+  [[[1,0],[2,0],[0,1],[1,1]],[[1,0],[1,1],[2,1],[2,2]],[[1,1],[2,1],[0,2],[1,2]],[[0,0],[0,1],[1,1],[1,2]]],
+  [[[0,0],[1,0],[1,1],[2,1]],[[2,0],[1,1],[2,1],[1,2]],[[0,1],[1,1],[1,2],[2,2]],[[1,0],[0,1],[1,1],[0,2]]],
+  [[[0,0],[0,1],[1,1],[2,1]],[[1,0],[2,0],[1,1],[1,2]],[[0,1],[1,1],[2,1],[2,2]],[[1,0],[1,1],[0,2],[1,2]]],
+  [[[2,0],[0,1],[1,1],[2,1]],[[1,0],[1,1],[1,2],[2,2]],[[0,1],[1,1],[2,1],[0,2]],[[0,0],[1,0],[1,1],[1,2]]],
+];
+// 넷마블풍 캔디 팔레트: 값 1~7=조각색, 8=쓰레기
+const TET_COLS = [
+  ['#53e2ff','#0fa8cc'], ['#ffe14d','#e0a400'], ['#c777ff','#8a2ecc'], ['#6dee6d','#1fae1f'],
+  ['#ff7070','#cc2222'], ['#5d8dff','#2148cc'], ['#ffb050','#e07000'], ['#9aa3b8','#5a6274'],
+];
+function tetFitsC(board, piece, x, y, rot) {
+  for (const [cx, cy] of TET_C_SHAPES[piece][rot]) {
+    const bx = x + cx, by = y + cy;
+    if (bx < 0 || bx >= TET_C_W || by >= TET_C_H) return false;
+    if (by >= 0 && board.charCodeAt(by * TET_C_W + bx) !== 48) return false;
+  }
+  return true;
+}
+// 글로시 베벨 블록 한 칸 — 이미지 없이 캔버스로 보석 느낌
+function tetBlock(ctx, px, py, s, col, ghost) {
+  const [lo, hi] = TET_COLS[col - 1] || TET_COLS[7];
+  if (ghost) {
+    ctx.strokeStyle = lo; ctx.globalAlpha = .38;
+    ctx.strokeRect(px + 1.5, py + 1.5, s - 3, s - 3);
+    ctx.globalAlpha = 1; return;
+  }
+  const g = ctx.createLinearGradient(px, py, px + s, py + s);
+  g.addColorStop(0, lo); g.addColorStop(1, hi);
+  ctx.fillStyle = g; ctx.fillRect(px, py, s, s);
+  // 위쪽 유리 하이라이트
+  ctx.fillStyle = 'rgba(255,255,255,.42)';
+  ctx.fillRect(px + s * .12, py + s * .1, s * .76, s * .3);
+  // 아래 그림자 베벨
+  ctx.fillStyle = 'rgba(0,0,0,.28)';
+  ctx.fillRect(px, py + s * .82, s, s * .18);
+  ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1;
+  ctx.strokeRect(px + .5, py + .5, s - 1, s - 1);
+}
+// 보드 하나 통째로 그리기 (학생 본인 보드·교사 미니보드 공용)
+function tetDrawBoard(cv, board, piece, rot, x, y, opts = {}) {
+  const ctx = cv.getContext('2d');
+  const s = cv.width / TET_C_W;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  // 은은한 격자
+  if (opts.grid) {
+    ctx.strokeStyle = 'rgba(120,140,255,.10)'; ctx.lineWidth = 1;
+    for (let i = 1; i < TET_C_W; i++) { ctx.beginPath(); ctx.moveTo(i * s + .5, 0); ctx.lineTo(i * s + .5, cv.height); ctx.stroke(); }
+    for (let i = 1; i < TET_C_H; i++) { ctx.beginPath(); ctx.moveTo(0, i * s + .5); ctx.lineTo(cv.width, i * s + .5); ctx.stroke(); }
+  }
+  for (let i = 0; i < board.length; i++) {
+    const v = board.charCodeAt(i) - 48;
+    if (v) tetBlock(ctx, (i % TET_C_W) * s, ((i / TET_C_W) | 0) * s, s, v);
+  }
+  if (piece >= 0 && board) {
+    // 고스트(착지 예고) — 본인 보드에서만
+    if (opts.ghost) {
+      let gy = y;
+      while (tetFitsC(board, piece, x, gy + 1, rot)) gy++;
+      for (const [cx, cy] of TET_C_SHAPES[piece][rot])
+        if (gy + cy >= 0) tetBlock(ctx, (x + cx) * s, (gy + cy) * s, s, piece + 1, true);
+    }
+    for (const [cx, cy] of TET_C_SHAPES[piece][rot])
+      if (y + cy >= 0) tetBlock(ctx, (x + cx) * s, (y + cy) * s, s, piece + 1);
+  }
+}
+function renderTetris(m) {
+  setText($('tetStage'), String(m.stage));
+  setText($('tetAlive'), `${m.aliveN}/${m.totalN}`);
+  if (m.stage > tetPrevStage) {
+    tetPrevStage = m.stage;
+    const el = $('tetStageUp'); el.textContent = `단계 ${m.stage} — 더 빨라진다!`;
+    el.classList.add('pop'); SFX.go();
+    clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('pop'), 1300);
+  }
+  if (isHost) { renderTetHost(m); return; }
+
+  const me = m.me;
+  if (!me) return;
+  const [board, piece, rot, x, y, next, pend, score, lines, alive] = me;
+  if (!tetMySetup) {
+    tetMySetup = true;
+    // 화면 높이에 맞춰 셀 크기 결정 (로고+HUD+버튼 공간 제외)
+    const cell = Math.max(12, Math.min(21, Math.floor((window.innerHeight - 320) / TET_C_H)));
+    const cv = $('tetMyCanvas'), dpr = Math.min(2, devicePixelRatio || 1);
+    cv.width = TET_C_W * cell * dpr; cv.height = TET_C_H * cell * dpr;
+    cv.style.width = TET_C_W * cell + 'px'; cv.style.height = TET_C_H * cell + 'px';
+  }
+  tetDrawBoard($('tetMyCanvas'), board, alive ? piece : -1, rot, x, y, { ghost: true, grid: true });
+  // 다음 조각
+  const nc = $('tetNextCanvas'), nctx = nc.getContext('2d');
+  nctx.clearRect(0, 0, nc.width, nc.height);
+  if (next >= 0) for (const [cx, cy] of TET_C_SHAPES[next][0]) tetBlock(nctx, cx * 14 + 2, cy * 14 + 8, 14, next + 1);
+  setText($('tetScore'), String(score)); setText($('tetLines'), String(lines));
+  // 줄 클리어 진동
+  if (lines > tetPrevLines) { if (navigator.vibrate) navigator.vibrate(lines - tetPrevLines >= 2 ? [40, 30, 60] : [30]); }
+  tetPrevLines = lines;
+  // 공격 경고
+  const warn = $('tetWarn');
+  if (!alive) { warn.textContent = '탈락! 친구들을 응원하세요'; warn.classList.remove('hot'); }
+  else if (pend > 0) {
+    warn.textContent = `⚠️ 공격 ${pend}줄이 온다!`; warn.classList.add('hot');
+    if (pend > tetPrevPend && navigator.vibrate) navigator.vibrate([60, 40, 60]);
+  } else { warn.textContent = m.atkBy ? `${m.atkBy}에게 공격!` : ''; warn.classList.remove('hot'); }
+  tetPrevPend = pend;
+}
+function renderTetHost(m) {
+  const grid = $('tetHostGrid');
+  const boards = m.boards || [];
+  // 미니보드 셀 크기: 인원수에 맞춰 (많으면 작게) — TV에서 잘 보이는 게 우선
+  const mini = boards.length <= 4 ? 15 : boards.length <= 8 ? 12 : boards.length <= 18 ? 8 : 6;
+  for (const row of boards) {
+    const [id, alive, score, lines, board, piece, rot, x, y, fx] = row;
+    let el = tetMinis[id];
+    if (!el) {
+      const meta = roster.get(id) || { nick: '?', ci: 0 };
+      el = document.createElement('div'); el.className = 'tet-mini';
+      el.innerHTML = `<span class="nm" style="color:${COLORS[meta.ci % COLORS.length]}">${esc(meta.nick)}</span>
+        <canvas width="${TET_C_W * mini}" height="${TET_C_H * mini}"></canvas><span class="sc"></span>`;
+      grid.appendChild(el); tetMinis[id] = el;
+    }
+    tetDrawBoard(el.querySelector('canvas'), board, alive ? piece : -1, rot, x, y, {});
+    el.querySelector('.sc').textContent = `${score}점 · ${lines}줄`;
+    el.classList.toggle('dead', !alive);
+    if (fx > 0) {
+      el.classList.add('flash');
+      clearTimeout(el._ft); el._ft = setTimeout(() => el.classList.remove('flash'), 450);
+      if (fx >= 4) SFX.ok(); else SFX.coin();
+    }
+    if (tetPrevAlive[id] === 1 && !alive) SFX.boom();   // 탈락 순간
+    tetPrevAlive[id] = alive;
+  }
+}
+// ---- 블록 배틀 입력 (버튼 + DAS 홀드 반복) ----
+function tetCanSend() {
+  const st = window.__lastState;
+  return st && st.mode === 'tetris' && phase === 'playing' && st.me && st.me[9] === 1;
+}
+function tetBindInput() {
+  if (tetInputBound) return;
+  tetInputBound = true;
+  function hold(btn, fire, firstMs, repMs) {
+    let iv = null, to = null;
+    const start = e => {
+      e.preventDefault(); btn.setPointerCapture && btn.setPointerCapture(e.pointerId);
+      fire();
+      to = setTimeout(() => { iv = setInterval(fire, repMs); }, firstMs);
+    };
+    const stop = () => { clearTimeout(to); clearInterval(iv); to = iv = null; };
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', stop);
+    btn.addEventListener('pointercancel', stop);
+    btn.addEventListener('lostpointercapture', stop);
+  }
+  hold($('tetL'), () => { if (tetCanSend()) send({ type: 'tmove', v: -1 }); }, 200, 90);
+  hold($('tetR'), () => { if (tetCanSend()) send({ type: 'tmove', v: 1 }); }, 200, 90);
+  hold($('tetR90'), () => { if (tetCanSend()) send({ type: 'trot' }); }, 260, 220);
+  // 소프트드롭: 누르는 동안만
+  const sb = $('tetSoft');
+  sb.addEventListener('pointerdown', e => { e.preventDefault(); if (tetCanSend()) send({ type: 'tsoft', v: 1 }); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+    sb.addEventListener(ev, () => send({ type: 'tsoft', v: 0 })));
+  // 하드드롭: 연타 오조작 방지 쿨다운
+  let dropAt = 0;
+  $('tetDrop').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const t = performance.now();
+    if (t - dropAt < 200) return;
+    dropAt = t;
+    if (tetCanSend()) { send({ type: 'tdrop' }); if (navigator.vibrate) navigator.vibrate(15); }
+  });
+}
+
 function enterGameView(keepInput) {
   if (gameType === 'quiz' || gameType === 'flash') {
     show('quizGame');
@@ -1403,6 +1659,20 @@ function enterGameView(keepInput) {
     $('pairsTimerBar').style.width = '100%';
     pairsFace = {}; lastPairsJson = ''; pairsMatchSeen = 0;
     buildPairsGrid();
+  } else if (gameType === 'tetris') {
+    show('tetrisGame');
+    $('btnTetAbort').style.display = isHost ? 'block' : 'none';
+    $('tetPlayerWrap').style.display = isHost ? 'none' : 'flex';
+    $('tetControls').style.display = isHost ? 'none' : 'flex';
+    $('tetHostGrid').style.display = isHost ? 'flex' : 'none';
+    $('tetHostGrid').innerHTML = '';
+    $('tetScore').textContent = '0'; $('tetLines').textContent = '0';
+    $('tetMineWrap').style.display = isHost ? 'none' : 'inline';   // TV에선 내 점수 표시가 무의미
+    $('tetLinesWrap').style.display = isHost ? 'none' : 'inline';
+    $('tetStage').textContent = '1'; $('tetWarn').textContent = ''; $('tetWarn').classList.remove('hot');
+    tetMinis = {}; tetPrevStage = 1; tetPrevLines = 0; tetMySetup = false;
+    tetPrevAlive = {}; tetPrevPend = 0;
+    if (!isHost) tetBindInput();
   } else if (gameType === 'word' || gameType === 'cho') {
     show('wordGame');
     $('wordPlayerUI').style.display = isHost ? 'none' : 'flex';
@@ -1534,7 +1804,7 @@ function renderGameGrid() {
   const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
                      race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
                      sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox', timing: 'timing', run: 'runner',
-                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs' };
+                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs', tetris: 'tet' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     if (gameTabSel !== 'all' && !(GAME_CAT_OF[key] || []).includes(gameTabSel)) continue;
     const el = document.createElement('div');
@@ -1642,6 +1912,7 @@ $('btnWordAbort').onclick = () => { if (confirm('게임을 중단하고 로비�
 $('btnQuizAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
 $('btnSimonAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
 $('btnPairsAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
+$('btnTetAbort').onclick = () => { if (confirm('게임을 중단하고 로비로 돌아갈까요?')) send({ type: 'back_to_lobby' }); };
 $('btnMute').onclick = () => { $('btnMute').textContent = SFX.toggle() ? '🔇' : '🔊'; };
 
 // ---- 결과 ----
