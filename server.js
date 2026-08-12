@@ -382,7 +382,147 @@ const PIRATE_PICK_MS = 11000;
 const PIRATE_REVEAL_MS = 4500;
 const PIRATE_MAX_ROUNDS = 8;
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate'];
+// 퀴즈쇼 (카훗 스타일 — 4지선다, 빨리 맞힐수록 보너스)
+const QUIZ_TIME_MS = 15000;
+const QUIZ_REVEAL_MS = 4500;
+const QUIZ_COUNTS = [5, 10, 15];
+// 형식: [문제, 정답, 오답1, 오답2, 오답3] — 보기 순서는 판마다 서버가 섞는다
+const QUIZ_DATA = {
+  '스포츠': [
+    ['축구에서 손을 쓸 수 있는 선수는?', '골키퍼', '공격수', '수비수', '미드필더'],
+    ['야구에서 한 팀이 경기에 나서는 인원은?', '9명', '5명', '11명', '7명'],
+    ['농구에서 한 팀이 코트에 서는 인원은?', '5명', '6명', '9명', '11명'],
+    ['축구 한 팀의 경기 인원은?', '11명', '9명', '10명', '12명'],
+    ['배구에서 한 팀이 코트에 서는 인원은?', '6명', '5명', '7명', '9명'],
+    ['손흥민 선수의 종목은?', '축구', '야구', '농구', '배구'],
+    ['김연아 선수의 종목은?', '피겨스케이팅', '쇼트트랙', '스피드스케이팅', '컬링'],
+    ['마라톤 풀코스의 거리는 약 몇 km?', '42km', '10km', '100km', '20km'],
+    ['올림픽 오륜기의 고리는 몇 개?', '5개', '4개', '6개', '7개'],
+    ['태권도가 시작된 나라는?', '대한민국', '일본', '중국', '태국'],
+    ['야구에서 공을 치는 도구는?', '배트', '라켓', '골프채', '스틱'],
+    ['배드민턴에서 라켓으로 치는 것은?', '셔틀콕', '공', '퍽', '원반'],
+    ['박태환 선수의 종목은?', '수영', '체조', '육상', '사격'],
+    ['골프에서 공을 넣는 곳은?', '홀', '골대', '네트', '바스켓'],
+    ['다음 중 동계올림픽 종목은?', '쇼트트랙', '축구', '야구', '수영'],
+    ['씨름에서 서로 잡는 것은?', '샅바', '벨트', '조끼', '어깨'],
+    ['100m 달리기 세계기록 보유자는?', '우사인 볼트', '마이클 조던', '리오넬 메시', '타이거 우즈'],
+    ['피구에서 공에 맞으면 어떻게 될까?', '밖으로 나간다', '점수를 얻는다', '한 번 더 던진다', '바로 이긴다'],
+    ['이어달리기에서 주고받는 것은?', '배턴', '공', '깃발', '모자'],
+    ['축구 경기 시간은 전·후반 각각 몇 분?', '45분', '30분', '60분', '20분'],
+  ],
+  '역사': [
+    ['한글을 만든 왕은?', '세종대왕', '이성계', '왕건', '광개토대왕'],
+    ['거북선을 만든 장군은?', '이순신', '강감찬', '을지문덕', '김유신'],
+    ['조선을 세운 사람은?', '이성계', '왕건', '김춘추', '장보고'],
+    ['고려를 세운 사람은?', '왕건', '이성계', '주몽', '박혁거세'],
+    ['신라의 수도였던 도시는?', '경주', '서울', '평양', '부여'],
+    ['우리 역사 최초의 나라는?', '고조선', '신라', '고구려', '조선'],
+    ['고조선을 세웠다고 전해지는 인물은?', '단군왕검', '주몽', '온조', '박혁거세'],
+    ['3·1운동이 일어난 해는?', '1919년', '1945년', '1950년', '1910년'],
+    ['우리나라가 광복을 맞은 해는?', '1945년', '1919년', '1950년', '1961년'],
+    ['유관순 열사가 참여한 운동은?', '3·1운동', '새마을운동', '동학농민운동', '물산장려운동'],
+    ['하얼빈에서 이토 히로부미를 저격한 의사는?', '안중근', '윤봉길', '이봉창', '김좌진'],
+    ['첨성대가 있는 도시는?', '경주', '서울', '전주', '공주'],
+    ['팔만대장경을 만든 시대는?', '고려', '조선', '신라', '고구려'],
+    ['한글날은 언제?', '10월 9일', '8월 15일', '3월 1일', '5월 5일'],
+    ['경복궁이 있는 도시는?', '서울', '경주', '수원', '인천'],
+    ['임진왜란 때 조선에 쳐들어온 나라는?', '일본', '중국', '러시아', '몽골'],
+    ['광개토대왕이 다스린 나라는?', '고구려', '백제', '신라', '가야'],
+    ['석굴암과 불국사가 있는 곳은?', '경주', '부여', '개성', '강릉'],
+    ['조선시대 임금이 살던 궁궐은?', '경복궁', '불국사', '첨성대', '석굴암'],
+    ['6·25전쟁이 일어난 해는?', '1950년', '1945년', '1919년', '1960년'],
+  ],
+  '연예': [
+    ['방탄소년단(BTS) 멤버는 몇 명?', '7명', '5명', '6명', '9명'],
+    ['블랙핑크 멤버는 몇 명?', '4명', '5명', '7명', '6명'],
+    ['"국민 MC"로 불리는 방송인은?', '유재석', '강호동', '신동엽', '전현무'],
+    ['씨름 선수 출신 방송인은?', '강호동', '유재석', '박명수', '이수근'],
+    ['"자이언트 펭TV"의 주인공은?', '펭수', '뽀로로', '핑크퐁', '타요'],
+    ['뽀로로는 어떤 동물?', '펭귄', '곰', '토끼', '공룡'],
+    ['"백선생"으로 불리는 요리 사업가는?', '백종원', '이연복', '최현석', '강레오'],
+    ['다음 중 트로트 가수는?', '임영웅', '뉴진스', '아이유', '블랙핑크'],
+    ['아이유의 직업은?', '가수', '운동선수', '요리사', '과학자'],
+    ['"강남스타일"을 부른 가수는?', '싸이', 'BTS', '비', '지드래곤'],
+    ['뉴진스는 어떤 팀?', '아이돌 가수', '축구팀', '개그팀', '요리팀'],
+    ['유재석이 진행하는 SBS 예능은?', '런닝맨', '1박 2일', '나 혼자 산다', '라디오스타'],
+    ['"1박 2일"은 어떤 프로그램?', '여행 예능', '요리 대결', '노래 경연', '뉴스'],
+    ['"개그콘서트"는 어떤 프로그램?', '코미디', '뉴스', '드라마', '다큐멘터리'],
+    ['핑크퐁으로 유명해진 동요는?', '아기상어', '곰 세 마리', '산토끼', '똑같아요'],
+    ['어벤져스에서 아이언맨을 연기한 배우는?', '로버트 다우니 주니어', '톰 크루즈', '브래드 피트', '윌 스미스'],
+    ['"오징어 게임"은 어느 나라 드라마?', '대한민국', '미국', '일본', '영국'],
+    ['BTS의 소속사는?', '하이브', 'SM', 'JYP', 'YG'],
+    ['카리나가 속한 그룹은?', '에스파', '뉴진스', '아이브', '트와이스'],
+    ['태연·윤아가 속한 그룹은?', '소녀시대', '원더걸스', '2NE1', '카라'],
+  ],
+  '영화': [
+    ['겨울왕국 엘사의 동생은?', '안나', '올라프', '라푼젤', '모아나'],
+    ['겨울왕국에 나오는 눈사람은?', '올라프', '스벤', '크리스토프', '한스'],
+    ['니모는 어떤 동물?', '물고기', '거북이', '문어', '상어'],
+    ['라이온킹의 심바는 어떤 동물?', '사자', '호랑이', '표범', '치타'],
+    ['미니언즈의 색깔은?', '노란색', '파란색', '초록색', '빨간색'],
+    ['슈렉의 색깔은?', '초록색', '노란색', '파란색', '보라색'],
+    ['해리포터가 다니는 마법학교는?', '호그와트', '그리핀도르', '아즈카반', '호그스미드'],
+    ['스파이더맨은 무엇에 물려 힘이 생겼나?', '거미', '벌', '뱀', '박쥐'],
+    ['토이스토리의 카우보이 인형은?', '우디', '버즈', '렉스', '햄'],
+    ['토이스토리의 우주 전사 장난감은?', '버즈', '우디', '제시', '포키'],
+    ['영화 "명량"의 주인공 장군은?', '이순신', '권율', '김시민', '강감찬'],
+    ['영화 "기생충"의 감독은?', '봉준호', '박찬욱', '최동훈', '김한민'],
+    ['"인사이드 아웃"에 나오는 것은?', '감정들', '공룡들', '자동차들', '로봇들'],
+    ['주토피아의 주디는 어떤 동물?', '토끼', '여우', '수달', '코끼리'],
+    ['알라딘 램프 속 요정은?', '지니', '팅커벨', '요다', '도비'],
+    ['백설공주와 함께 사는 난쟁이는 몇 명?', '7명', '5명', '9명', '12명'],
+    ['영화 "코코"의 배경 나라는?', '멕시코', '브라질', '스페인', '미국'],
+    ['어벤져스에서 방패를 쓰는 히어로는?', '캡틴 아메리카', '아이언맨', '토르', '헐크'],
+    ['토르의 무기는?', '망치', '방패', '활', '창'],
+    ['영화 "극한직업"에서 형사들이 차린 가게는?', '치킨집', '피자집', '분식집', '카페'],
+  ],
+  '음악': [
+    ['"도" 다음 계이름은?', '레', '미', '파', '솔'],
+    ['계이름 중 가장 처음은?', '도', '레', '미', '파'],
+    ['피아노 건반의 색은?', '흰색과 검은색', '빨강과 파랑', '노랑과 초록', '갈색과 회색'],
+    ['애국가를 작곡한 사람은?', '안익태', '윤극영', '홍난파', '김민기'],
+    ['오케스트라를 지휘하는 사람은?', '지휘자', '연주자', '작곡가', '성악가'],
+    ['바이올린은 어떤 악기?', '현악기', '관악기', '타악기', '건반악기'],
+    ['트럼펫은 어떤 악기?', '관악기', '현악기', '타악기', '건반악기'],
+    ['드럼은 어떤 악기?', '타악기', '현악기', '관악기', '건반악기'],
+    ['"운명 교향곡"의 작곡가는?', '베토벤', '모차르트', '바흐', '쇼팽'],
+    ['사물놀이에 쓰는 악기는?', '꽹과리', '피아노', '바이올린', '트럼펫'],
+    ['판소리는 어느 나라 음악?', '대한민국', '중국', '일본', '미국'],
+    ['루돌프 사슴의 코 색깔은?', '빨간색', '파란색', '노란색', '초록색'],
+    ['"아기상어" 노래에서 아기상어 다음에 나오는 가족은?', '엄마 상어', '할머니 상어', '할아버지 상어', '이모 상어'],
+    ['"학교종이 땡땡땡" 다음 가사는?', '어서 모이자', '공부 시작하자', '집에 가자', '밥을 먹자'],
+    ['"산토끼 토끼야" 다음 가사는?', '어디를 가느냐', '어디서 왔느냐', '무엇을 먹느냐', '누구를 만나느냐'],
+    ['생일에 부르는 노래는?', '생일 축하합니다', '졸업식 노래', '애국가', '아리랑'],
+    ['우리나라 대표 민요는?', '아리랑', '캐럴', '재즈', '팝송'],
+    ['장구는 어느 나라 악기?', '한국', '미국', '프랑스', '브라질'],
+    ['높은 소리를 내는 여자 성악가는?', '소프라노', '베이스', '테너', '바리톤'],
+    ['캐럴은 언제 많이 듣는 노래?', '크리스마스', '설날', '추석', '어린이날'],
+  ],
+  '상식': [
+    ['무지개는 몇 가지 색?', '7가지', '5가지', '6가지', '8가지'],
+    ['일주일은 며칠?', '7일', '5일', '6일', '10일'],
+    ['1년은 몇 달?', '12달', '10달', '11달', '13달'],
+    ['대한민국의 수도는?', '서울', '부산', '인천', '대전'],
+    ['물이 끓는 온도는?', '100도', '50도', '80도', '200도'],
+    ['신호등에서 멈춰야 하는 색은?', '빨간색', '초록색', '노란색', '파란색'],
+    ['곤충의 다리는 몇 개?', '6개', '4개', '8개', '10개'],
+    ['문어의 다리는 몇 개?', '8개', '6개', '10개', '12개'],
+    ['불이 나면 거는 전화번호는?', '119', '112', '114', '131'],
+    ['경찰에 신고하는 번호는?', '112', '119', '114', '141'],
+    ['대한민국의 돈 단위는?', '원', '달러', '엔', '위안'],
+    ['펭귄이 많이 사는 곳은?', '남극', '북극', '사막', '열대우림'],
+    ['세상에서 가장 큰 동물은?', '대왕고래', '코끼리', '기린', '백상아리'],
+    ['밤하늘에 뜨는 지구의 위성은?', '달', '해', '화성', '금성'],
+    ['종이는 무엇으로 만들까?', '나무', '돌', '철', '모래'],
+    ['꿀을 만드는 곤충은?', '꿀벌', '나비', '개미', '잠자리'],
+    ['태극기 가운데 무늬의 색은?', '빨강과 파랑', '검정과 하양', '노랑과 초록', '보라와 분홍'],
+    ['우리 몸에서 피를 온몸으로 보내는 곳은?', '심장', '위', '폐', '간'],
+    ['하루는 몇 시간?', '24시간', '12시간', '20시간', '30시간'],
+    ['대한민국의 나라꽃은?', '무궁화', '장미', '벚꽃', '튤립'],
+  ],
+};
+
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -422,6 +562,12 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
         : undefined,
       sumo: r.gameType === 'sumo' && r.game ? { ring: Math.round(r.game.ringR) } : undefined,
+      quiz: r.gameType === 'quiz' && r.game && r.game.questions
+        ? { phase: r.game.qPhase, idx: r.game.qIdx, total: r.game.questions.length, cat: r.game.quizCat,
+            q: r.game.questions[r.game.qIdx] ? r.game.questions[r.game.qIdx].q : '',
+            correct: r.game.questions[r.game.qIdx] ? r.game.questions[r.game.qIdx].correct : -1,
+            scores: [...r.players.values()].map(p => [p.nick, p.score, p.qAnswer]) }
+        : undefined,
     }))));
     return;
   }
@@ -570,6 +716,7 @@ function startGame(room, type, opt) {
     p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.startS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
     p.vx = 0; p.vy = 0; p.dashUntil = 0; p.dashReadyAt = 0; p.dashDx = 0; p.dashDy = 0; p.bumpAt = 0;
     p.satChair = null; p.outRound = 0; p.pick = -1; p.picks = [];
+    p.qAnswer = -1; p.qAnswerAt = 0; p.qGain = 0;
   }
 
   const size = Math.round(Math.min(1100, 460 + n * 35));
@@ -686,6 +833,17 @@ function startGame(room, type, opt) {
     // 교사가 고르는 위험도: 1인당 꽂는 칼 개수 (1~3자루)
     const k = Math.floor(Number(opt && opt.knives));
     g.knives = Number.isFinite(k) ? Math.max(1, Math.min(3, k)) : 1;
+  } else if (type === 'quiz') {
+    g.roundMs = 0;
+    const cat = QUIZ_DATA[opt && opt.cat] ? opt.cat : '믹스';
+    const cnt = QUIZ_COUNTS.includes(Number(opt && opt.count)) ? Number(opt.count) : 10;
+    const pool = cat === '믹스' ? Object.values(QUIZ_DATA).flat() : QUIZ_DATA[cat];
+    // 문제도 보기 순서도 판마다 섞는다
+    g.questions = [...pool].sort(() => Math.random() - 0.5).slice(0, cnt).map(([q, ...cs]) => {
+      const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+      return { q, choices: order.map(i => cs[i]), correct: order.indexOf(0) };
+    });
+    g.quizCat = cat; g.qIdx = 0; g.qPhase = 'idle';
   }
 
   room.state = 'countdown';
@@ -732,6 +890,7 @@ function tick(room) {
       if (room.gameType === 'chair') g.musicEndAt = now + CHAIR_MUSIC_MIN + Math.random() * CHAIR_MUSIC_RAND;
       if (room.gameType === 'sadari') startSadariRound(room, now);
       if (room.gameType === 'pirate') startPirateRound(room, now);
+      if (room.gameType === 'quiz') startQuizQ(room, now);
       broadcast(room, { type: 'phase', state: 'playing', gameType: room.gameType, endAt: room.phaseEndAt, st: now });
     }
     sendState(room, now);
@@ -761,6 +920,7 @@ function tick(room) {
   else if (room.gameType === 'chair') chairTick(room, now, dt);
   else if (room.gameType === 'sadari') sadariTick(room, now);
   else if (room.gameType === 'pirate') pirateTick(room, now);
+  else if (room.gameType === 'quiz') quizTick(room, now);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -1590,6 +1750,41 @@ function pirateTick(room, now) {
   sendState(room, now);
 }
 
+// ---------- 퀴즈쇼 ----------
+function startQuizQ(room, now) {
+  const g = room.game;
+  g.qPhase = 'show';
+  g.qEndAt = now + QUIZ_TIME_MS;
+  for (const p of room.players.values()) { p.qAnswer = -1; p.qAnswerAt = 0; p.qGain = 0; }
+}
+
+function quizTick(room, now) {
+  const g = room.game;
+  const actives = [...room.players.values()].filter(p => !p.waiting && p.connected);
+  if (g.qPhase === 'show') {
+    const allDone = actives.length > 0 && actives.every(p => p.qAnswer >= 0);
+    if (now >= g.qEndAt || allDone) {
+      const Q = g.questions[g.qIdx];
+      for (const p of room.players.values()) {
+        if (p.waiting || p.qAnswer !== Q.correct) continue;
+        // 카훗처럼: 기본 100점 + 남은 시간 비례 보너스 최대 100점
+        const left = Math.max(0, g.qEndAt - (p.qAnswerAt || g.qEndAt));
+        p.qGain = 100 + Math.round(100 * left / QUIZ_TIME_MS);
+        p.score += p.qGain;
+      }
+      g.qPhase = 'reveal';
+      g.revealEndAt = now + QUIZ_REVEAL_MS;
+    }
+  } else if (g.qPhase === 'reveal') {
+    if (now >= g.revealEndAt) {
+      if (g.qIdx + 1 >= g.questions.length) { endWord(room); return; }   // 점수 순위
+      g.qIdx++;
+      startQuizQ(room, now);
+    }
+  }
+  sendState(room, now);
+}
+
 function endPirate(room) {
   const g = room.game;
   const parts = [...room.players.values()].filter(p => !p.waiting);
@@ -1742,6 +1937,30 @@ function finishGame(room, sorted, labelOf, keyOf) {
 function sendState(room, now) {
   const g = room.game;
   const type = room.gameType;
+  if (type === 'quiz') {
+    const Q = g.questions[g.qIdx];
+    const parts = [...room.players.values()].filter(p => !p.waiting);
+    broadcast(room, {
+      type: 'state', mode: 'quiz', st: now,
+      qPhase: g.qPhase || 'idle', qIdx: g.qIdx, qTotal: g.questions.length, cat: g.quizCat,
+      // 카운트다운(idle) 중에는 문제를 미리 보내지 않는다
+      q: g.qPhase === 'idle' ? '' : (Q ? Q.q : ''),
+      choices: g.qPhase === 'idle' ? [] : (Q ? Q.choices : []),
+      timeLeft: g.qPhase === 'show' ? Math.max(0, g.qEndAt - now) : 0,
+      timeTotal: QUIZ_TIME_MS,
+      answered: parts.filter(p => p.qAnswer >= 0).length,
+      partCount: parts.length,
+      // 정답·선택 분포는 공개 시점에만 (미리 보내면 폰 개발자도구로 컨닝 가능)
+      correct: g.qPhase === 'reveal' && Q ? Q.correct : undefined,
+      counts: g.qPhase === 'reveal' && Q
+        ? [0, 1, 2, 3].map(i => parts.filter(p => p.qAnswer === i).length) : undefined,
+      // [id, 총점, 답했나, 이번 문제 득점(공개 때만), 내가 고른 번호(공개 때만)]
+      scores: parts.map(p => [p.id, p.score, p.qAnswer >= 0 ? 1 : 0,
+        g.qPhase === 'reveal' ? (p.qGain || 0) : 0,
+        g.qPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]),
+    });
+    return;
+  }
   if (type === 'word' || type === 'cho') {
     broadcast(room, {
       type: 'state', mode: type, st: now,
@@ -2068,6 +2287,17 @@ wss.on('connection', (ws) => {
             p.dashReadyAt = now2 + SUMO_DASH_CD;
           }
         }
+        break;
+      }
+
+      // 퀴즈쇼: 4지선다 답 제출 (한 번 누르면 확정 — 카훗과 동일)
+      case 'answer': {
+        if (!room || ws.playerId == null || room.state !== 'playing' || room.gameType !== 'quiz') return;
+        const p = room.players.get(ws.playerId);
+        const g = room.game;
+        if (!p || p.waiting || g.qPhase !== 'show' || p.qAnswer >= 0) return;
+        const v = Math.floor(finite(msg.v));
+        if (v >= 0 && v < 4) { p.qAnswer = v; p.qAnswerAt = Date.now(); }
         break;
       }
 
