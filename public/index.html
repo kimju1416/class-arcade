@@ -3194,7 +3194,8 @@ function keyDir() {
 setInterval(() => {
   const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
-    || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run';
+    || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
+    || gameType === 'cray';
   if (isHost || !moves || (phase !== 'playing' && phase !== 'countdown')) return;
   const kd = keyDir();
   const d = kd || curDir;
