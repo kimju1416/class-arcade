@@ -4920,12 +4920,17 @@ let runCamZ = null;   // 추적 카메라 z (학생=나, TV=선두를 부드럽�
 // 트랙 정의는 서버(KART_TRACK_DEF)와 반드시 동일해야 한다
 const KART_TRACK_DEF = [[25,0,0],[20,2.6,0],[15,0,0],[22,-3.2,30],[18,0,0],[15,1.8,-25],[25,-1.4,0],[20,3.4,40],[18,0,0],[15,-2.2,0],[12,0,20],[20,2.8,0],[15,0,0]];
 const KART_SEG = 200, KART_LAPS = 3;
+const KART_CURVE_K = 0.03;   // 커브 누적 계수 — 크면 도로가 곧장 화면 밖으로 밀려나 튀어 보인다
 const KART_SEGS = [];
-{ let yy = 0;
+{ const raw = []; let yy = 0;
   for (const [n, c, h] of KART_TRACK_DEF) for (let i = 0; i < n; i++) {
     yy += h ? Math.sin((i / n) * Math.PI) * h : 0;
-    KART_SEGS.push({ curve: c, wy: yy });
-  } }
+    raw.push({ curve: c, wy: yy });
+  }
+  // 한 바퀴 돌면 높이가 제자리로 오게 기울기를 뺀다 (안 그러면 결승선에서 도로가 뚝 떨어진다)
+  const drift = raw[raw.length - 1].wy;
+  raw.forEach((s, i) => KART_SEGS.push({ curve: s.curve, wy: s.wy - drift * (i / raw.length) }));
+}
 const KART_N = KART_SEGS.length, KART_TRACK = KART_N * KART_SEG;
 const KART_BOXES = [[30,-0.55],[31,0],[32,0.55],[90,-0.55],[91,0],[92,0.55],[150,-0.55],[151,0],[152,0.55],[205,-0.55],[206,0],[207,0.55]];
 // TV·미니맵용 2D 폴리라인: 매끈한 GP 서킷 모양의 표시용 루프 (진행도 → 좌표만 담당, 판정 무관)
@@ -5003,7 +5008,10 @@ function drawKartGame(W, H, dpr) {
   ctx.fillStyle = '#7fbf5e'; ctx.fillRect(0, horizon - 2, W, H - horizon + 2);
 
   // 도로 (시안과 동일한 세그먼트 투영)
-  const camY = KART_SEGS[Math.floor(camPos / KART_SEG) % KART_N].wy + 330;
+  // 카메라 높이는 세그먼트 사이를 보간한다 — 계단식으로 쓰면 초당 7번 화면이 위아래로 튄다
+  const camSegF = camPos / KART_SEG, camSegI = Math.floor(camSegF), camSegFr = camSegF - camSegI;
+  const wyA = KART_SEGS[camSegI % KART_N].wy, wyB = KART_SEGS[(camSegI + 1) % KART_N].wy;
+  const camY = wyA + (wyB - wyA) * camSegFr + 330;
   const camZ = camPos - KART_SEG * 1.2;
   const proj = (camX2, wy, wz) => {
     const dz = wz - camZ, sc = (H * 0.82) / dz;
@@ -5011,16 +5019,18 @@ function drawKartGame(W, H, dpr) {
   };
   const kpoly = (x1, y1, x2, y2, x3, y3, x4, y4) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4); ctx.closePath(); ctx.fill(); };
   const baseI = Math.floor(camPos / KART_SEG);
-  let maxy = H, cx2 = 0, dx2 = -baseSeg.curve * ((camPos % KART_SEG) / KART_SEG);
+  let maxy = H, cx2 = 0, dx2 = -baseSeg.curve * camSegFr * KART_CURVE_K;
   const spr = [];
   // 시야 내 오브젝트 준비 (pos → 세그 창 안에 들어오는 것)
   const inWindow = (pos, n) => { const d = ((pos - camPos) % KART_TRACK + KART_TRACK) % KART_TRACK; return d >= n * KART_SEG && d < (n + 1) * KART_SEG; };
   for (let n = 0; n < 80; n++) {
     const i = (baseI + n) % KART_N, s = KART_SEGS[i];
     const z1 = (baseI + n) * KART_SEG + 2, z2 = z1 + KART_SEG;
-    cx2 += dx2; dx2 += s.curve * 0.18;
+    // 아랫변은 누적값 그대로, 윗변은 +dx2 — 이래야 다음 세그먼트 아랫변과 정확히 맞물린다
+    // (예전엔 p1 앞에서 누적하고 p2에만 0.18을 곱해, 조각들이 최대 586px 어긋나 찢어져 보였다)
     const p1 = proj(camKX - cx2, s.wy, z1);
-    const p2 = proj(camKX - cx2 - dx2 * 0.18, KART_SEGS[(i + 1) % KART_N].wy, z2);
+    const p2 = proj(camKX - cx2 - dx2, KART_SEGS[(i + 1) % KART_N].wy, z2);
+    cx2 += dx2; dx2 += s.curve * KART_CURVE_K;
     if (p2.y >= maxy || p2.y >= p1.y) continue;
     const alt = Math.floor((baseI + n) / 3) % 2;
     ctx.fillStyle = alt ? 'rgba(126,190,92,.55)' : 'rgba(108,176,78,.55)'; ctx.fillRect(0, p2.y, W, p1.y - p2.y);
