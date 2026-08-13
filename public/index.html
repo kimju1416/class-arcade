@@ -5003,9 +5003,15 @@ function drawKartGame(W, H, dpr) {
   const horizon = H * 0.55;
 
   // 배경 파노라마 (커브 파랄랙스)
+  // 프레임당 누적하면 프레임이 떨어질 때 배경만 느려져 도로와 어긋난다 → 시간 기준으로 민다.
+  // 커브값도 세그먼트 사이를 보간해야 배경이 초당 7번 끊기지 않는다
   drawKartGame._bgShift = (drawKartGame._bgShift || 0);
-  const baseSeg = KART_SEGS[Math.floor(camPos / KART_SEG) % KART_N];
-  drawKartGame._bgShift += baseSeg.curve * 1.1 * dpr;
+  const segF0 = camPos / KART_SEG, segI0 = Math.floor(segF0), segFr0 = segF0 - segI0;
+  const baseSeg = KART_SEGS[segI0 % KART_N];
+  const curveNow = baseSeg.curve + (KART_SEGS[(segI0 + 1) % KART_N].curve - baseSeg.curve) * segFr0;
+  const bgDt = Math.min(0.1, (now - (drawKartGame._bgT || now)) / 1000);
+  drawKartGame._bgT = now;
+  drawKartGame._bgShift += curveNow * 66 * dpr * bgDt;   // 기존 1.1/프레임 @60fps와 같은 속도
   if (KIMG.bg && KIMG.bg.complete && KIMG.bg.naturalWidth) {
     const bh = horizon * 1.12, bw = bh / (KIMG.bg.height / KIMG.bg.width);
     let off = ((-drawKartGame._bgShift) % bw + bw) % bw - bw;
@@ -5032,16 +5038,15 @@ function drawKartGame(W, H, dpr) {
   let cx2 = 0.5 * KART_CURVE_K * baseSeg.curve * camSegFr * camSegFr;
   let dx2 = -KART_CURVE_K * baseSeg.curve * camSegFr;
   const spr = [];
-  // 시야 내 오브젝트 준비 (pos → 세그 창 안에 들어오는 것)
-  const inWindow = (pos, n) => { const d = ((pos - camPos) % KART_TRACK + KART_TRACK) % KART_TRACK; return d >= n * KART_SEG && d < (n + 1) * KART_SEG; };
   for (let n = 0; n < 80; n++) {
     const i = (baseI + n) % KART_N, s = KART_SEGS[i];
     const z1 = (baseI + n) * KART_SEG + 2, z2 = z1 + KART_SEG;
     // 아랫변은 누적값 그대로, 윗변은 +dx2 — 이래야 다음 세그먼트 아랫변과 정확히 맞물린다
     // (예전엔 p1 앞에서 누적하고 p2에만 0.18을 곱해, 조각들이 최대 586px 어긋나 찢어져 보였다)
-    const p1 = proj(camKX - cx2, s.wy, z1);
-    const nx2 = cx2 + dx2 + 0.5 * KART_CURVE_K * s.curve;   // 한 세그먼트 뒤의 오프셋
-    const p2 = proj(camKX - nx2, KART_SEGS[(i + 1) % KART_N].wy, z2);
+    const c0 = cx2, wy2 = KART_SEGS[(i + 1) % KART_N].wy;
+    const p1 = proj(camKX - c0, s.wy, z1);
+    const nx2 = c0 + dx2 + 0.5 * KART_CURVE_K * s.curve;   // 한 세그먼트 뒤의 오프셋
+    const p2 = proj(camKX - nx2, wy2, z2);
     cx2 = nx2; dx2 += KART_CURVE_K * s.curve;
     if (p2.y >= maxy || p2.y >= p1.y) continue;
     const alt = Math.floor((baseI + n) / 3) % 2;
@@ -5062,24 +5067,47 @@ function drawKartGame(W, H, dpr) {
       }
     }
     maxy = p2.y;
-    // 스프라이트 수집 (도로폭 기준 크기)
+    // 오브젝트는 세그먼트 안의 정확한 위치에 놓는다.
+    // 전부 세그먼트 끝(p2)에 몰아넣으면 다가올 때 200유닛씩 계단처럼 튄다(초당 7번)
+    const zStart = (baseI + n) * KART_SEG;
+    const zOf = pos => {
+      const d = ((pos - camPos) % KART_TRACK + KART_TRACK) % KART_TRACK;
+      const z = camPos + d;
+      return (z >= zStart && z < zStart + KART_SEG) ? z : null;
+    };
+    const projObj = (z, kx) => {
+      const t = (z - zStart) / KART_SEG;
+      const q = proj(camKX - (c0 + (nx2 - c0) * t), s.wy + (wy2 - s.wy) * t, z);
+      return { x: q.x + q.w * kx * 0.8, y: q.y, w2: q.w };
+    };
+    // 스프라이트 수집 (도로폭 기준 크기) — 나무는 세그먼트에 붙박이라 p2 그대로
     if (kartHash(i) > 0.66 && n >= 2) { const side = kartHash(i * 7) > 0.5 ? 1 : -1;
-      spr.push({ type: 'tree', x: p2.x + p2.w * side * (1.75 + kartHash(i * 13) * 1.6), y: p2.y, w2: p2.w, z: n, v: kartHash(i * 3) }); }
+      spr.push({ type: 'tree', x: p2.x + p2.w * side * (1.75 + kartHash(i * 13) * 1.6), y: p2.y, w2: p2.w, zz: zStart + KART_SEG, v: kartHash(i * 3) }); }
     if (latest.boxMask != null) KART_BOXES.forEach(([bs, bx], bi) => {
-      if (bs === i && (latest.boxMask & (1 << bi)))
-        spr.push({ type: 'box', x: p2.x + p2.w * bx * 0.8, y: p2.y, w2: p2.w, z: n, seg: i });
+      if (bs !== i || !(latest.boxMask & (1 << bi))) return;
+      const z = zOf(bs * KART_SEG); if (z == null) return;
+      const q = projObj(z, bx);
+      spr.push({ type: 'box', x: q.x, y: q.y, w2: q.w2, zz: z, seg: i });
     });
-    for (const [bp, bx100] of (latest.bananas || []))
-      if (inWindow(bp, n)) spr.push({ type: 'banana', x: p2.x + p2.w * (bx100 / 100) * 0.8, y: p2.y, w2: p2.w, z: n });
-    for (const [sp2, sx100] of (latest.shells || []))
-      if (inWindow(sp2, n)) spr.push({ type: 'shell', x: p2.x + p2.w * (sx100 / 100) * 0.8, y: p2.y, w2: p2.w, z: n });
+    for (const [bp, bx100] of (latest.bananas || [])) {
+      const z = zOf(bp); if (z == null) continue;
+      const q = projObj(z, bx100 / 100);
+      spr.push({ type: 'banana', x: q.x, y: q.y, w2: q.w2, zz: z });
+    }
+    for (const [sp2, sx100] of (latest.shells || [])) {
+      const z = zOf(sp2); if (z == null) continue;
+      const q = projObj(z, sx100 / 100);
+      spr.push({ type: 'shell', x: q.x, y: q.y, w2: q.w2, zz: z });
+    }
     for (const r of latest.players) {
       if (r[0] === myId || r[4] || !r[3]) continue;
       const l2 = lerped.get(r[0]); if (!l2) continue;
-      if (inWindow(l2.pos, n)) spr.push({ type: 'kart', x: p2.x + p2.w * l2.kx * 0.8, y: p2.y, w2: p2.w, z: n, row: r });
+      const z = zOf(l2.pos); if (z == null) continue;
+      const q = projObj(z, l2.kx);
+      spr.push({ type: 'kart', x: q.x, y: q.y, w2: q.w2, zz: z, row: r });
     }
   }
-  spr.sort((a2, b2) => b2.z - a2.z);
+  spr.sort((a2, b2) => b2.zz - a2.zz);   // 먼 것부터 — 세그먼트가 아니라 실제 깊이 기준
   for (const sp2 of spr) {
     if (sp2.type === 'tree' && KIMG.tree && KIMG.tree.complete) {
       const h2 = sp2.w2 * (1.15 + sp2.v * 0.75); if (h2 < 10 || h2 > H * 0.9) continue;
