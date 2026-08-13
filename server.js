@@ -2578,11 +2578,7 @@ function runTick(room, now, dt) {
       if (Math.abs(p.lane - cl) > 0.45) continue;
       if (ch === 1 ? p.jumpY < 35 : p.jumpY > 55) continue;  // 공중 코인=점프 중에만, 바닥 코인=지상에서만
       p.coins++; p.lastCoinAt = now;
-      if (++p.gauge >= RUN_FEVER_COINS) {
-        p.gauge = 0;
-        p.feverUntil = now + RUN_FEVER_MS;
-        p.invUntil = Math.max(p.invUntil, p.feverUntil);   // 피버 동안 무적 질주
-      }
+      p.gauge = Math.min(RUN_FEVER_COINS, (p.gauge || 0) + 1);   // 게이지만 채운다 — 부스터는 버튼으로 발동
     }
 
     p.score = Math.round(p.dist / 10) + p.coins * RUN_COIN_SCORE;
@@ -3604,6 +3600,20 @@ wss.on('connection', (ws) => {
           const now2 = Date.now();
           // 착지 후에만 다시 점프 (공중 이단 점프 없음)
           if (!p.jumpStartAt || now2 - p.jumpStartAt >= RUN_JUMP_MS) p.jumpStartAt = now2;
+        }
+        break;
+      }
+
+      // 설원 러너 부스터: 게이지(코인 8개)가 꽉 찼을 때 눌러 피버(가속+무적) 발동
+      case 'boost': {
+        if (!room || ws.playerId == null || room.gameType !== 'run' || room.state !== 'playing') return;
+        const p = room.players.get(ws.playerId);
+        if (!p || !p.alive) return;
+        const now2 = Date.now();
+        if ((p.gauge || 0) >= RUN_FEVER_COINS && now2 >= (p.feverUntil || 0)) {
+          p.gauge = 0;
+          p.feverUntil = now2 + RUN_FEVER_MS;
+          p.invUntil = Math.max(p.invUntil || 0, p.feverUntil);
         }
         break;
       }

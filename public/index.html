@@ -194,6 +194,22 @@
   }
   #btnAction:active { transform: translateY(4px); box-shadow: 0 2px 0 #c9871f, 0 5px 12px rgba(0,0,0,.35); }
   #btnAction.wait { background: #3b4670; color: #93a0c4; box-shadow: 0 6px 0 #2a3253; }
+  /* 설원 러너 부스터 버튼 (점프 버튼 위에) */
+  #btnBoost {
+    position: absolute; right: 30px; bottom: 162px; z-index: 6; display: none;
+    width: 98px; height: 98px; border-radius: 50%; border: 0; cursor: pointer;
+    background: linear-gradient(#ffd24a, #ff9b2e); color: #6a3300;
+    font-family: inherit; font-size: 16px; font-weight: 800; line-height: 1.2;
+    box-shadow: 0 6px 0 #b56a00, 0 10px 20px rgba(0,0,0,.35);
+    touch-action: none; user-select: none;
+  }
+  #btnBoost:active { transform: translateY(4px); box-shadow: 0 2px 0 #b56a00; }
+  #btnBoost.wait { background: #3b4670; color: #93a0c4; box-shadow: 0 6px 0 #2a3253; opacity: .82; }
+  #btnBoost.ready { animation: boostPulse .6s infinite; }
+  @keyframes boostPulse {
+    0%,100% { box-shadow: 0 6px 0 #b56a00, 0 0 0 rgba(255,210,74,.5); }
+    50% { box-shadow: 0 6px 0 #b56a00, 0 0 24px 4px rgba(255,210,74,.95); }
+  }
 
   #stick { position: absolute; display: none; pointer-events: none; }
   #stick .base { position: absolute; width: 120px; height: 120px; border-radius: 50%;
@@ -555,7 +571,11 @@ body.host #tetLogo { height: 72px; }
   font-weight: 800; font-size: 13px; text-shadow: 0 1px 2px #000; text-align: center; }
 .tet-warn.hot { animation: tetShake .3s infinite; }
 @keyframes tetShake { 0%,100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
-.tet-controls { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+.tet-controls { display: flex; gap: 16px; width: 100%; max-width: 460px; }
+.tet-group { display: flex; gap: 8px; }
+.tet-group.move { flex: 3; }
+.tet-group.act { flex: 2; }
+.tet-btn small { font-size: 11px; font-weight: 700; opacity: .92; }
 .tet-btn { flex: 1; height: 74px; border: none; border-radius: 16px; font-size: 26px; font-weight: 900; color: #fff;
   background: linear-gradient(#5a68ff, #3947d8); box-shadow: 0 5px 0 #202a90, inset 0 2px 3px rgba(255,255,255,.45);
   touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -715,6 +735,7 @@ body.host #tetLogo { height: 72px; }
   <div id="centerMsg"><div class="box"><div class="big" id="cmBig"></div><div class="small" id="cmSmall"></div></div></div>
   <div id="stick"><div class="base" id="stickBase"></div><div class="knob" id="stickKnob"></div></div>
   <button id="btnAction">집게<br>내리기</button>
+  <button id="btnBoost">부스터<br>⚡</button>
 </div>
 
 <!-- 낱말 빨리치기 -->
@@ -796,11 +817,15 @@ body.host #tetLogo { height: 72px; }
     </div>
   </div>
   <div class="tet-controls" id="tetControls">
-    <button class="tet-btn" id="tetL">◀</button>
-    <button class="tet-btn rot" id="tetR90">⟳</button>
-    <button class="tet-btn" id="tetR">▶</button>
-    <button class="tet-btn" id="tetSoft">▼</button>
-    <button class="tet-btn drop" id="tetDrop">쿵!<br>⬇⬇</button>
+    <div class="tet-group move">
+      <button class="tet-btn" id="tetL">◀</button>
+      <button class="tet-btn" id="tetSoft">▼</button>
+      <button class="tet-btn" id="tetR">▶</button>
+    </div>
+    <div class="tet-group act">
+      <button class="tet-btn rot" id="tetR90">⟳<br><small>돌리기</small></button>
+      <button class="tet-btn drop" id="tetDrop">⬇⬇<br><small>바로내리기</small></button>
+    </div>
   </div>
   <div id="tetHostGrid" style="display:none"></div>
   <button class="btn danger-ghost" id="btnTetAbort" style="display:none">게임 중단</button>
@@ -895,7 +920,7 @@ const GAMES_META = {
   claw: { icon: '🧸', name: '인형 뽑기', desc: '좌우로 움직이는 집게를 버튼으로 딱 멈춰 인형을 뽑자. 큰 인형일수록 고득점, 갈수록 빨라진다!', badge: '60초', rule: '집게가 인형 위에 왔을 때 버튼을 누르세요!\n큰 인형일수록 높은 점수' },
   word: { icon: '📝', name: '낱말 빨리치기', desc: 'TV의 제시어를 폰에 빨리, 정확히 입력! 5라운드 합산 점수로 승부.', badge: '5라운드', rule: '제시어를 똑같이 입력하고 제출!\n빠를수록 높은 점수' },
   race: { icon: '🏎️', name: '레이싱', desc: '왼손 핸들, 오른손 부스터! 물웅덩이는 느려지고 기름을 밟으면 빙글~ 함정을 피해 3바퀴 먼저 돌면 우승.', badge: '3랩', rule: '왼손: 핸들 · 오른손: 부스터(3번)\n💧물·🛢️기름 함정을 피하세요!' },
-  run:  { icon: '🏃', name: '설원 러너', desc: '펭귄이 되어 얼음 계곡을 질주! 좌우로 피하고 점프로 넘어라. 코인 8개를 모으면 ⚡피버 질주 — 최고 점수에 도전!', badge: '80초', rule: '왼손: 좌우 이동 · 오른손: 점프!\n🪙코인 8개를 모으면 ⚡피버 질주' },
+  run:  { icon: '🏃', name: '설원 러너', desc: '내가 고른 캐릭터로 얼음 계곡을 질주! 좌우로 피하고 점프로 넘어라. 코인 8개를 모으면 ⚡부스터 버튼으로 피버 질주 — 최고 점수에 도전!', badge: '80초', rule: '왼손: 좌우 이동 · 오른손: 점프 / 부스터\n🪙코인 8개 모으면 ⚡부스터 버튼 발동!' },
   gala: { icon: '🚀', name: '갤러그', desc: '반 전체가 함대가 되어 외계인 편대를 격추! 맞으면 그대로 끝. 웨이브가 갈수록 빨라진다.', badge: '협동 슈팅', rule: '왼손: 이동 · 오른손: 발사!\n적 탄에 맞으면 부활 없음 — 끝까지 살아남으세요' },
   dodge: { icon: '💥', name: '탄막 피하기', desc: '사방에서 쏟아지는 탄막을 피하는 극한 생존! 한 발이라도 맞으면 끝. 시간이 갈수록 거세진다.', badge: '서바이벌', rule: '조이스틱으로 탄막을 피하세요!\n한 발이라도 맞으면 탈락 — 시간이 끝날 때까지 버텨라!' },
   cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 진짜 단어를 입력!\n사전에 없는 단어·이미 나온 단어는 안 돼요' },
@@ -2420,7 +2445,10 @@ function enterGameView(keepInput) {
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
       : gameType === 'sumo' ? '대시!<br>💨'
-      : gameType === 'run' ? '점프<br>🐧' : '집게<br>내리기';
+      : gameType === 'run' ? '점프<br>⬆️' : '집게<br>내리기';
+    // 설원 러너 전용 부스터 버튼 (점프와 별개)
+    $('btnBoost').style.display = (!isHost && gameType === 'run') ? 'block' : 'none';
+    $('btnBoost').classList.add('wait'); $('btnBoost').classList.remove('ready'); $('btnBoost').__label = '';
     myPick = -1; myPickRound = 0; myPicks = []; pirRot = 0; pirDrag = null;
     // 1라운드 숫자(chimp_nums)는 playing 직전에 도착한다 — 전환 재진입 때 지우면 안 됨
     if (!keepInput) {
@@ -2910,7 +2938,7 @@ function initInput() {
 
   g.onpointerdown = e => {
     if (isHost) return;
-    if (e.target === $('btnAction')) return;   // 발사·부스터 버튼은 조이스틱으로 처리하지 않는다
+    if (e.target === $('btnAction') || e.target === $('btnBoost')) return;   // 발사·부스터 버튼은 조이스틱으로 처리하지 않는다
     e.preventDefault();
     if (gameType === 'mos') {
       // 모기 잡기: 두드린 자리로 파리채 (카운트다운 중에는 무시)
@@ -3031,6 +3059,15 @@ $('btnAction').addEventListener('pointerdown', e => {
 $('btnAction').addEventListener('pointerup', e => { if (e.pointerId === firePid) stopFire(); });
 $('btnAction').addEventListener('pointercancel', e => { if (e.pointerId === firePid) stopFire(); });
 $('btnAction').addEventListener('lostpointercapture', e => { if (e.pointerId === firePid) stopFire(); });
+// 설원 러너 부스터: 게이지 꽉 찼을 때 한 번 탭 → 피버
+$('btnBoost').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (isHost || phase !== 'playing' || gameType !== 'run') return;
+  if ($('btnBoost').classList.contains('wait')) return;   // 게이지 안 찼으면 무시
+  send({ type: 'boost' });
+  if (navigator.vibrate) navigator.vibrate(22);
+  SFX.fanfare();
+});
 function moveStick(x, y) {
   const dx = x - stickCx, dy = y - stickCy;
   const len = Math.hypot(dx, dy), max = 60;
@@ -4779,9 +4816,9 @@ function drawRunGame(W, H, dpr) {
       ctx.globalAlpha = (!it.alive ? 0.25 : 0.55) * fogA;
       ctx.fillStyle = 'rgba(40,70,110,.25)';
       ctx.beginPath(); ctx.ellipse(x, gy - 2 * dpr, w * 0.34, w * 0.11, 0, 0, 7); ctx.fill();
-      const body = tintSprite('runner', COLORS[meta.ci % COLORS.length]);
+      const body = charSprite(meta.ci) || tintSprite('runner', COLORS[meta.ci % COLORS.length]);
       if (it.fever) { ctx.save(); ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 14 * dpr; }
-      if (body) drawSpr(body, x, cy, w);
+      if (body) drawSpr(body, x, cy, w * (charSprite(meta.ci) ? 1.15 : 1));
       else { ctx.fillStyle = COLORS[meta.ci % COLORS.length]; ctx.beginPath(); ctx.arc(x, cy, w * 0.38, 0, 7); ctx.fill(); }
       if (it.fever) ctx.restore();
       // 닉네임 — 설원이 밝아 어두운 테두리로 받친다
@@ -4799,6 +4836,15 @@ function drawRunGame(W, H, dpr) {
 
   // 5. 내 러너 (학생 화면 전용, rel=0 고정 — 항상 화면 아래쪽 같은 자리)
   const me = isHost ? null : latest.players.find(r => r[0] === myId);
+  // 부스터 버튼 상태: 게이지(코인 8개) 차면 반짝이며 발동 가능, 피버 중엔 발동중 표시
+  if (me) {
+    const gauge = me[12] || 0, fevering = me[9] === 1, ready = gauge >= 8 && !fevering;
+    const bb = $('btnBoost');
+    bb.classList.toggle('wait', !ready);
+    bb.classList.toggle('ready', ready);
+    const lbl = fevering ? '🔥<br>부스터!' : ready ? '부스터<br>⚡GO!' : '부스터<br>' + gauge + '/8';
+    if (bb.__label !== lbl) { bb.__label = lbl; bb.innerHTML = lbl; }
+  }
   if (me) {
     const lp = lerped.get(myId) || [me[6], me[7] / 100, me[8]];
     const w = laneW * 0.62;
@@ -4816,7 +4862,10 @@ function drawRunGame(W, H, dpr) {
     const airborne0 = lp[2] > 0.5;
     // 달리기 2프레임(보폭은 달린 거리 기반) + 레인 이동 기울기 + 착지 스쿼시
     const frame = airborne0 ? 'runner' : (Math.floor(lp[0] / 55) % 2 ? 'runner2' : 'runner');
-    const body = tintSprite(SPR[frame] ? frame : 'runner', COLORS[myMeta.ci % COLORS.length]);
+    const myChar = charSprite(myMeta.ci);   // 고른 캐릭터가 달린다 (없으면 기본 러너)
+    const body = myChar || tintSprite(SPR[frame] ? frame : 'runner', COLORS[myMeta.ci % COLORS.length]);
+    // 캐릭터는 한 장짜리라 좌우로 살짝 흔들어 달리는 느낌을 준다 (공중에선 정지)
+    const runWobble = myChar && !airborne0 ? Math.sin(lp[0] / 20) * 0.1 : 0;
     const pl0 = drawRunGame._pl == null ? lp[1] : drawRunGame._pl;
     const tilt = Math.max(-0.26, Math.min(0.26, (lp[1] - pl0) * 6));
     drawRunGame._pl = lp[1];
@@ -4826,9 +4875,10 @@ function drawRunGame(W, H, dpr) {
     if (fever) { ctx.save(); ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 24 * dpr; }
     ctx.save();
     ctx.translate(x, cy);
-    ctx.rotate(tilt + (airborne0 ? -0.1 : 0));
+    ctx.rotate(tilt + runWobble + (airborne0 ? -0.1 : 0));
     ctx.scale(1, squash);
-    if (body) ctx.drawImage(body, -w / 2, -w / 2, w, w);
+    const bw = myChar ? w * 1.15 : w;
+    if (body) ctx.drawImage(body, -bw / 2, -bw / 2, bw, bw);
     else { ctx.fillStyle = COLORS[myMeta.ci % COLORS.length]; ctx.beginPath(); ctx.arc(0, 0, w * 0.4, 0, 7); ctx.fill(); }
     ctx.restore();
     if (fever) ctx.restore();
@@ -5105,9 +5155,9 @@ function drawRunHostMap(W, H, dpr, latest, lerped) {
     ctx.globalAlpha = alive ? 1 : 0.3;
     ctx.fillStyle = 'rgba(40,70,110,.25)';
     ctx.beginPath(); ctx.ellipse(x, ly + 16 * dpr, 14 * dpr, 5 * dpr, 0, 0, 7); ctx.fill();
-    const body = tintSprite('runner', COLORS[meta.ci % COLORS.length]);
+    const body = charSprite(meta.ci) || tintSprite('runner', COLORS[meta.ci % COLORS.length]);
     if (fever) { ctx.save(); ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 12 * dpr; }
-    if (body) drawSpr(body, x, y, 44 * dpr);
+    if (body) drawSpr(body, x, y, (charSprite(meta.ci) ? 50 : 44) * dpr);
     else { ctx.fillStyle = COLORS[meta.ci % COLORS.length]; ctx.beginPath(); ctx.arc(x, y, 16 * dpr, 0, 7); ctx.fill(); }
     if (fever) ctx.restore();
     if (stumble) {
