@@ -2923,7 +2923,8 @@ function kartTick(room, now, dt) {
   }
 
   const allDone = racers.length > 0 && racers.every(p => p.finishedAt);
-  if (now >= room.phaseEndAt || allDone || racers.length === 0) { endKart(room); }
+  if (now >= room.phaseEndAt || allDone || racers.length === 0) { endKart(room); return; }
+  sendState(room, now);
 }
 function endKart(room) {
   const g = room.game;
