@@ -3068,9 +3068,10 @@ function initInput() {
     }
     const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
       || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
-      || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run';
+      || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
+      || gameType === 'cray';
     if (!usesStick) return;
-    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
+    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
     stickPid = e.pointerId;
@@ -3424,10 +3425,15 @@ function draw() {
     if (latest.grid) crayGrid = latest.grid;   // 맵은 바뀔 때만 오므로 캐시
     const CELL = 60, COLS = 15, ROWS = 13;
     const cs = CELL * scale;
-    // 은은한 격자선 (칸 감각)
-    ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1;
-    for (let i = 1; i < COLS; i++) { ctx.beginPath(); ctx.moveTo(ox + i * cs, oy); ctx.lineTo(ox + i * cs, oy + ROWS * cs); ctx.stroke(); }
-    for (let i = 1; i < ROWS; i++) { ctx.beginPath(); ctx.moveTo(ox, oy + i * cs); ctx.lineTo(ox + COLS * cs, oy + i * cs); ctx.stroke(); }
+    // 크레이지 아케이드식 체크무늬 타일 — 두 톤 초록으로 칸(이동 레인)이 또렷이 보이게
+    for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
+      ctx.fillStyle = ((cx + cy) & 1) ? 'rgba(58,120,52,.20)' : 'rgba(190,225,150,.12)';
+      ctx.fillRect(ox + cx * cs, oy + cy * cs, cs, cs);
+    }
+    // 또렷한 격자선 (가로줄·세로줄 — 이동 방향 안내)
+    ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = Math.max(1, dpr);
+    for (let i = 0; i <= COLS; i++) { ctx.beginPath(); ctx.moveTo(ox + i * cs, oy); ctx.lineTo(ox + i * cs, oy + ROWS * cs); ctx.stroke(); }
+    for (let i = 0; i <= ROWS; i++) { ctx.beginPath(); ctx.moveTo(ox, oy + i * cs); ctx.lineTo(ox + COLS * cs, oy + i * cs); ctx.stroke(); }
     // 블록·상자
     if (crayGrid) {
       for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
@@ -3749,10 +3755,19 @@ function draw() {
     // 물풍선 대작전: 팀 링 + 물방울(갇힘) + 아이템/구출 연출
     if (latest.mode === 'cray' && alive) {
       const trapMs = pb[6] || 0, team = pb[7] || 0, fx2 = pb[11] || 0;
-      if (latest.teamMode) {   // 팀 구분 링 (홍/청)
-        ctx.strokeStyle = team === 0 ? 'rgba(255,80,80,.9)' : 'rgba(80,140,255,.9)';
-        ctx.lineWidth = 3.5 * dpr;
-        ctx.beginPath(); ctx.arc(px, py, rr + 8 * dpr, 0, 7); ctx.stroke();
+      if (latest.teamMode) {   // 팀 구분 강화: 발밑 팀 원반 + 굵은 글로우 링 (TV에서 한눈에)
+        const tc = team === 0 ? '235,55,55' : '55,110,245';
+        // 발밑 팀 컬러 원반 (스포트라이트처럼 — 캐릭터는 안 가림)
+        ctx.fillStyle = `rgba(${tc},.30)`;
+        ctx.beginPath(); ctx.ellipse(px, py + rr * .92, rr * .98, rr * .42, 0, 0, 7); ctx.fill();
+        ctx.strokeStyle = `rgba(${tc},.9)`; ctx.lineWidth = 2.5 * dpr;
+        ctx.beginPath(); ctx.ellipse(px, py + rr * .92, rr * .98, rr * .42, 0, 0, 7); ctx.stroke();
+        // 캐릭터 외곽 굵은 팀 링 + 소프트 글로우
+        ctx.save();
+        ctx.shadowColor = `rgba(${tc},.95)`; ctx.shadowBlur = 9 * dpr;
+        ctx.strokeStyle = `rgb(${tc})`; ctx.lineWidth = 5 * dpr;
+        ctx.beginPath(); ctx.arc(px, py, rr + 7 * dpr, 0, 7); ctx.stroke();
+        ctx.restore();
       }
       if (trapMs > 0) {        // 물방울에 갇힘 — 반투명 방울 + 남은 초
         const br2 = rr * 1.75 + Math.sin(performance.now() / 180) * 2 * dpr;
@@ -3788,10 +3803,28 @@ function draw() {
     if (latest.mode === 'coin') name += ` ${extra}`;
     if (latest.mode === 'cray' && extra > 0) name += ` ⚔${extra}`;   // 킬 수
     if ((latest.mode === 'bomb' || latest.mode === 'cray') && !alive) name += ' 💀';
-    ctx.fillStyle = id === myId ? '#ffb03a' : '#c8d0e8';
-    ctx.font = `${(id === myId ? 800 : 600)} ${(isHost ? 21 : 14) * dpr}px Pretendard, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(name, px, py - rr - 8 * dpr);
+    if (latest.mode === 'cray' && latest.teamMode && alive) {
+      // 팀 컬러 이름표(알약) — 🔴홍 / 🔵청 을 TV에서 즉시 구분
+      const team = pb[7] || 0;
+      const label = (team === 0 ? '🔴' : '🔵') + name;
+      const fs = (isHost ? 20 : 13) * dpr;
+      ctx.font = `800 ${fs}px Pretendard, sans-serif`;
+      const w = ctx.measureText(label).width + 14 * dpr, h = fs + 9 * dpr;
+      const bx = px - w / 2, by = py - rr - 10 * dpr - h;
+      ctx.fillStyle = team === 0 ? 'rgba(205,45,45,.94)' : 'rgba(45,95,225,.94)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(bx, by, w, h, h / 2); else ctx.rect(bx, by, w, h);
+      ctx.fill();
+      if (id === myId) { ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 2.5 * dpr; ctx.stroke(); }
+      ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, px, by + h / 2 + 1 * dpr);
+      ctx.textBaseline = 'alphabetic';
+    } else {
+      ctx.fillStyle = id === myId ? '#ffb03a' : '#c8d0e8';
+      ctx.font = `${(id === myId ? 800 : 600)} ${(isHost ? 21 : 14) * dpr}px Pretendard, sans-serif`;
+      ctx.fillText(name, px, py - rr - 8 * dpr);
+    }
     ctx.globalAlpha = 1;
   }
 
