@@ -1,0 +1,122 @@
+[
+{
+"slug": "baseball",
+"name": "야구선수"
+},
+{
+"slug": "soccer",
+"name": "축구선수"
+},
+{
+"slug": "basketball",
+"name": "농구선수"
+},
+{
+"slug": "volleyball",
+"name": "배구선수"
+},
+{
+"slug": "taekwondo",
+"name": "태권도선수"
+},
+{
+"slug": "swimmer",
+"name": "수영선수"
+},
+{
+"slug": "runner",
+"name": "육상선수"
+},
+{
+"slug": "gymnast",
+"name": "체조선수"
+},
+{
+"slug": "skier",
+"name": "스키선수"
+},
+{
+"slug": "tennis",
+"name": "테니스선수"
+},
+{
+"slug": "boxer",
+"name": "복싱선수"
+},
+{
+"slug": "cyclist",
+"name": "사이클선수"
+},
+{
+"slug": "doctor",
+"name": "의사"
+},
+{
+"slug": "nurse",
+"name": "간호사"
+},
+{
+"slug": "chef",
+"name": "요리사"
+},
+{
+"slug": "firefighter",
+"name": "소방관"
+},
+{
+"slug": "police",
+"name": "경찰관"
+},
+{
+"slug": "astronaut",
+"name": "우주인"
+},
+{
+"slug": "scientist",
+"name": "과학자"
+},
+{
+"slug": "painter",
+"name": "화가"
+},
+{
+"slug": "singer",
+"name": "가수"
+},
+{
+"slug": "farmer",
+"name": "농부"
+},
+{
+"slug": "pilot",
+"name": "파일럿"
+},
+{
+"slug": "soldier",
+"name": "군인"
+},
+{
+"slug": "judge",
+"name": "판사"
+},
+{
+"slug": "carpenter",
+"name": "목수"
+},
+{
+"slug": "fisher",
+"name": "어부"
+},
+{
+"slug": "dancer",
+"name": "발레리나"
+},
+{
+"slug": "magician",
+"name": "마술사"
+},
+{
+"slug": "teacher",
+"name": "선생님"
+}
+]

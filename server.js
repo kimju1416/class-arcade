@@ -268,7 +268,7 @@ for (const [cat, words] of Object.entries(CHO_DATA)) {
 // 레이싱
 const RACE_LAPS = 3;
 const RACE_ROUND_MS = 150000;    // 최대 2분 30초 (1등 나오면 30초 카운트다운으로 단축)
-const RACE_SPEED = 300;          // 기본 주행 속도 (유닛/초)
+const RACE_SPEED = 360;          // 기본 주행 속도 (유닛/초) — 기본 속도 업(300→360)
 const RACE_TURN = 3.4;           // 조향 속도 (rad/s)
 const RACE_OFF_MULT = 0.42;      // 트랙 밖(잔디) 감속
 const RACE_BOOSTS = 3;           // 판당 부스터 개수
@@ -401,11 +401,10 @@ const CHAIR_R = 24;
 
 // 사다리 복불복 (내려가 보기 전엔 모른다)
 const SADARI_ROUNDS = 5;
-const SADARI_LANES = 8;
+const SADARI_LANES = 16;         // 최대 칸 수 — 접속자 수만큼(렌더 한계로 16까지)
 const SADARI_PICK_MS = 11000;
 const SADARI_TRACE_MS = 3600;    // 공이 내려가는 애니메이션 시간
 const SADARI_REVEAL_MS = 6500;   // 애니메이션 + 결과 감상
-const SADARI_PRIZES = [10, 7, 5, 3, 1, 1, 0, -5];  // 매 라운드 섞어서 배치
 
 // 해적왕 통아저씨 (칼을 꽂아라 — 해적이 튀어나오면 탈락)
 const PIRATE_SLOTS = 24;         // 8열 × 3줄이 통을 한 바퀴 감싼다
@@ -594,6 +593,179 @@ const OX_DATA = [
   ['개미는 곤충이 아니다', 1], ['하루는 48시간이다', 1], ['수박은 한겨울이 제철인 과일이다', 1],
   ['부산에는 바다가 없다', 1], ['라면은 얼음물에 끓여야 맛있다', 1],
 ];
+
+// ===== 난이도(중·상) 추가 문제 =====
+// 기존 QUIZ_DATA/OX_DATA는 '하'(쉬움)로 취급한다.
+// QUIZ_MORE 행: [질문, 정답, 오답1, 오답2, 오답3, '중'|'상']  (6번째 원소는 보기 인덱스 0~3에 안 잡혀 자동 무시)
+// OX_MORE 행:   [문장, 0=참|1=거짓, '중'|'상']
+const QUIZ_MORE = {
+  '스포츠': [
+    ['축구 경기에서 한 팀이 경기장에 나서는 선수는 몇 명인가?','11명','9명','10명','12명','중'],
+    ['정식 마라톤의 경기 거리는 약 몇 km인가?','42.195km','40km','42km','44.195km','중'],
+    ['농구에서 한 팀이 코트에 나서는 선수는 몇 명인가?','5명','4명','6명','7명','중'],
+    ['배구에서 한 팀이 코트에 서는 선수는 몇 명인가?','6명','5명','7명','4명','중'],
+    ['야구에서 한 팀이 수비할 때 나서는 선수는 몇 명인가?','9명','8명','10명','11명','중'],
+    ['테니스 4대 대회 중 잔디 코트에서 열리는 대회는?','윔블던','US오픈','프랑스오픈','호주오픈','중'],
+    ['올림픽은 보통 몇 년마다 열리는가?','4년','2년','3년','5년','중'],
+    ['태권도의 종주국은 어느 나라인가?','대한민국','중국','일본','태국','중'],
+    ['근대 올림픽을 처음 제안하고 만든 인물은?','쿠베르탱','사마란치','브런디지','로게','상'],
+    ['제1회 근대 올림픽이 열린 도시는?','아테네','파리','런던','로마','상'],
+    ['한국이 처음으로 월드컵 축구 본선에 나간 해는?','1954년','1966년','1986년','1990년','상'],
+    ['손기정 선수가 마라톤 금메달을 딴 올림픽은?','1936년 베를린','1932년 LA','1948년 런던','1928년 암스테르담','상'],
+    ['골프에서 기준 타수보다 2타 적게 홀을 마치는 것은?','이글','버디','보기','알바트로스','상'],
+    ['김연아 선수가 올림픽 금메달을 딴 대회는?','2010년 밴쿠버','2014년 소치','2006년 토리노','2018년 평창','상'],
+    ['테니스에서 점수 0점을 부르는 말은?','러브','듀스','에이스','폴트','상'],
+    ['마라톤 거리 42.195km가 확정된 올림픽은?','1908년 런던','1896년 아테네','1900년 파리','1912년 스톡홀름','상'],
+  ],
+  '역사': [
+    ['훈민정음을 창제한 조선의 왕은?','세종대왕','태종','성종','정조','중'],
+    ['임진왜란 때 수군을 이끈 장군은?','이순신','김유신','강감찬','을지문덕','중'],
+    ['삼국을 통일한 나라는?','신라','고구려','백제','가야','중'],
+    ['고려를 세운 인물은?','왕건','이성계','궁예','견훤','중'],
+    ['조선을 세운 인물은?','이성계','정도전','이방원','최영','중'],
+    ['3·1 운동이 일어난 해는?','1919년','1910년','1929년','1945년','중'],
+    ['한글날은 몇 월 며칠인가?','10월 9일','10월 3일','9월 10일','8월 15일','중'],
+    ['발해를 세운 인물은?','대조영','온조','주몽','김수로','중'],
+    ['광개토대왕의 업적이 기록된 비석은?','광개토대왕릉비','진흥왕순수비','북한산비','사택지적비','상'],
+    ['현존하는 세계에서 가장 오래된 금속활자 인쇄본은?','직지심체요절','팔만대장경','무구정광대다라니경','왕오천축국전','상'],
+    ['신라의 엄격한 신분 제도를 무엇이라 하는가?','골품제','음서제','과거제','향약','상'],
+    ['병자호란 때 인조가 청 태종에게 항복한 곳은?','삼전도','남한산성','강화도','행주산성','상'],
+    ['갑오개혁이 일어난 해는?','1894년','1876년','1884년','1905년','상'],
+    ['대한민국 임시정부가 처음 세워진 도시는?','상하이','충칭','베이징','블라디보스토크','상'],
+    ['세종 때 만든 해시계의 이름은?','앙부일구','자격루','측우기','혼천의','상'],
+    ['고려 무신정권의 최고 권력 기구는?','교정도감','도병마사','식목도감','중추원','상'],
+  ],
+  '연예': [
+    ['KBS·MBC와 함께 지상파 3사로 불리는 방송사는?','SBS','EBS','JTBC','tvN','중'],
+    ['1992년 데뷔해 한국 대중음악에 큰 변화를 준 그룹은?','서태지와 아이들','듀스','H.O.T','공일오비','중'],
+    ['무한도전 등에서 활약해 국민 MC로 불린 방송인은?','유재석','강호동','박명수','이경규','중'],
+    ['1996년 데뷔해 1세대 아이돌을 대표한 그룹은?','H.O.T','젝스키스','god','신화','중'],
+    ['소녀시대와 엑소가 데뷔한 연예기획사는?','SM엔터테인먼트','JYP','YG','DSP','중'],
+    ['외화나 애니메이션에서 목소리 연기를 하는 사람은?','성우','개그맨','앵커','DJ','중'],
+    ['방송 프로그램의 제작을 총괄하는 연출자를 뜻하는 말은?','PD','MC','성우','작가','중'],
+    ['개그콘서트처럼 관객 앞에서 하는 코미디 형식은?','공개 코미디','시트콤','토크쇼','다큐멘터리','중'],
+    ['트로트라는 이름이 유래한 서양 춤곡은?','폭스트롯','왈츠','탱고','블루스','상'],
+    ['원더걸스와 2PM을 배출하고 박진영이 세운 기획사는?','JYP','SM','YG','DSP','상'],
+    ['우리나라에서 컬러 TV 방송이 시작된 시기는?','1980년대','1960년대','1970년대','1990년대','상'],
+    ['뮤지컬에서 배우가 부르는 노래를 이르는 말은?','넘버','아리아','코러스','앙코르','상'],
+    ['판소리에서 소리꾼의 소리에 맞춰 북을 치는 사람은?','고수','광대','명창','재인','상'],
+    ['연극에서 배우가 무대 위에서 혼자 속마음을 말하는 것은?','독백','방백','지문','해설','상'],
+    ['드라마 끝에 다음 내용을 궁금하게 만드는 마무리 기법은?','클리프행어','에필로그','스포일러','오프닝','상'],
+    ['우리나라 최초의 텔레비전 방송이 시작된 시기는?','1950년대','1940년대','1960년대','1970년대','상'],
+  ],
+  '영화': [
+    ['봉준호 감독이 아카데미 작품상을 받은 영화는?','기생충','살인의 추억','괴물','설국열차','중'],
+    ['영화 촬영을 시작할 때 감독이 외치는 말은?','액션','컷','레디','롤','중'],
+    ['한 장면을 끊지 않고 길게 찍는 촬영 기법은?','롱테이크','클로즈업','몽타주','플래시백','중'],
+    ['영화 개봉 전 줄거리를 짧게 보여주는 영상은?','예고편','엔딩크레딧','포스터','시놉시스','중'],
+    ['실제가 아닌 장면을 만드는 컴퓨터 그래픽의 약자는?','CG','VR','AR','AI','중'],
+    ['미국 영화예술과학아카데미가 매년 주는 상은?','아카데미상','골든글로브상','황금종려상','황금사자상','중'],
+    ['이웃집 토토로 등을 만든 일본의 애니메이션 제작사는?','스튜디오 지브리','픽사','디즈니','드림웍스','중'],
+    ['영화에 쓰인 음악을 모아 발매한 음반을 뜻하는 말은?','OST','싱글','EP','리메이크','중'],
+    ['최고상이 황금종려상이며 프랑스에서 열리는 영화제는?','칸 영화제','베를린 영화제','베네치아 영화제','토론토 영화제','상'],
+    ['베를린 국제영화제의 최고상 이름은?','황금곰상','황금사자상','황금종려상','은곰상','상'],
+    ['여러 장면을 이어 붙여 상황을 압축해 보여주는 편집 기법은?','몽타주','롱테이크','오버랩','페이드','상'],
+    ['세계에서 가장 오래된 국제영화제로 꼽히는 것은?','베네치아 영화제','칸 영화제','베를린 영화제','선댄스 영화제','상'],
+    ['세계 최초의 장편 3D 컴퓨터 애니메이션 영화는?','토이 스토리','슈렉','니모를 찾아서','인크레더블','상'],
+    ['무성영화 시대에 영화를 말로 해설하던 사람을 뜻하는 말은?','변사','성우','악사','배우','상'],
+    ['영화 속에 감독이 숨겨 둔 재미 요소나 메시지를 이르는 말은?','이스터에그','카메오','오마주','맥거핀','상'],
+    ['관객의 관심을 끌지만 줄거리와 큰 상관없는 극적 장치는?','맥거핀','클리셰','플롯홀','오마주','상'],
+  ],
+  '음악': [
+    ['대나무로 만든 우리나라의 대표적 관악기는?','대금','가야금','장구','해금','중'],
+    ['전통 가야금의 줄은 모두 몇 개인가?','12줄','6줄','8줄','25줄','중'],
+    ['서양 오케스트라에서 지휘자가 손에 드는 막대는?','지휘봉','활','보면대','메트로놈','중'],
+    ['피아노는 어떤 방법으로 소리를 내는 악기인가?','현을 망치로 두드려서','현을 문질러서','입으로 불어서','줄을 뜯어서','중'],
+    ['4분음표의 길이는 8분음표의 몇 배인가?','2배','3배','4배','절반','중'],
+    ['오케스트라에서 가장 많은 수를 차지하는 현악기는?','바이올린','첼로','비올라','콘트라베이스','중'],
+    ['사물놀이에 쓰이는 악기가 아닌 것은?','대금','꽹과리','징','북','중'],
+    ['애국가를 작곡한 사람은?','안익태','홍난파','윤극영','김동진','중'],
+    ['음악의 아버지로 불리는 바로크 시대 작곡가는?','바흐','헨델','모차르트','베토벤','상'],
+    ['오페라 마술피리와 피가로의 결혼을 작곡한 음악가는?','모차르트','베토벤','슈베르트','바흐','상'],
+    ['판소리 다섯 마당에 속하지 않는 것은?','배비장타령','춘향가','심청가','적벽가','상'],
+    ['판소리 장단 중 가장 느린 장단은?','진양조','중모리','자진모리','휘모리','상'],
+    ['오케스트라에서 조율의 기준음을 내는 악기는?','오보에','플루트','클라리넷','바이올린','상'],
+    ['두 줄을 활로 문질러 연주하는 우리나라 악기는?','해금','가야금','거문고','대금','상'],
+    ['조선시대 궁중 제사에 쓰인 음악으로 유네스코 유산인 것은?','종묘제례악','판소리','아리랑','사물놀이','상'],
+    ['거문고를 만들었다고 전해지는 고구려의 인물은?','왕산악','우륵','박연','백결선생','상'],
+  ],
+  '상식': [
+    ['태양계에서 가장 큰 행성은?','목성','토성','지구','화성','중'],
+    ['물을 나타내는 화학식은?','H2O','CO2','O2','H2O2','중'],
+    ['사람 몸에서 가장 큰 기관(器官)은?','피부','간','폐','소장','중'],
+    ['세계에서 가장 넓은 바다(대양)는?','태평양','대서양','인도양','북극해','중'],
+    ['빛의 삼원색이 아닌 것은?','노랑','빨강','초록','파랑','중'],
+    ['1년 중 낮의 길이가 가장 긴 날은?','하지','동지','춘분','추분','중'],
+    ['소금의 주성분을 이루는 화합물의 이름은?','염화나트륨','탄산칼슘','황산구리','염산','중'],
+    ['무지개는 보통 몇 가지 색으로 표현하는가?','7가지','5가지','6가지','8가지','중'],
+    ['원소기호 Na가 나타내는 원소는?','나트륨','질소','니켈','칼륨','상'],
+    ['지구에서 가장 가까운 별(항성)은?','태양','북극성','시리우스','프록시마','상'],
+    ['혈액에서 산소를 운반하는 세포는?','적혈구','백혈구','혈소판','림프구','상'],
+    ['식물에서 광합성이 일어나는 세포 소기관은?','엽록체','미토콘드리아','리보솜','핵','상'],
+    ['세계에서 가장 긴 강으로 흔히 알려진 강은?','나일강','아마존강','양쯔강','미시시피강','상'],
+    ['남한에서 가장 높은 산은?','한라산','지리산','설악산','태백산','상'],
+    ['절대온도를 나타내는 단위는?','켈빈','섭씨','화씨','칼로리','상'],
+    ['산성과 염기성의 정도를 나타내는 값은?','pH','BMI','RPM','dB','상'],
+  ],
+};
+const OX_MORE = [
+  ['지구는 태양 주위를 공전한다.', 0, '중'],
+  ['박쥐는 조류(새)에 속한다.', 1, '중'],
+  ['1기압에서 물은 100도에서 끓는다.', 0, '중'],
+  ['대한민국의 화폐 단위는 엔이다.', 1, '중'],
+  ['거미의 다리는 여섯 개다.', 1, '중'],
+  ['태양은 스스로 빛을 내는 항성이다.', 0, '중'],
+  ['이순신은 임진왜란 때 활약한 장군이다.', 0, '중'],
+  ['고래는 물고기가 아니라 포유류다.', 0, '중'],
+  ['소리는 진공 속에서도 전달된다.', 1, '중'],
+  ['삼각형 세 내각의 합은 180도다.', 0, '중'],
+  ['펭귄은 하늘을 나는 새다.', 1, '중'],
+  ['한글은 세종대왕 때 만들어졌다.', 0, '중'],
+  ['얼음은 물보다 밀도가 커서 물에 가라앉는다.', 1, '중'],
+  ['달은 지구의 위성이다.', 0, '중'],
+  ['무지개는 보통 다섯 가지 색으로 표현한다.', 1, '중'],
+  ['정삼각형의 세 각은 모두 60도다.', 0, '중'],
+  ['태극기 네 모서리에 그려진 괘는 모두 네 개다.', 0, '중'],
+  ['사람의 심장은 오른쪽 가슴에 있다.', 1, '중'],
+  ['1년은 보통 365일이다.', 0, '중'],
+  ['대한민국의 수도는 부산이다.', 1, '중'],
+  ['남극 대륙도 강수량이 매우 적어 사막으로 분류된다.', 0, '상'],
+  ['소리는 빛보다 빠르게 이동한다.', 1, '상'],
+  ['인체에서 가장 단단한 부분은 뼈다.', 1, '상'],
+  ['O형은 다른 모든 혈액형에게 적혈구를 수혈해 줄 수 있는 만능 공혈자다.', 0, '상'],
+  ['토성은 태양계에서 고리를 가진 유일한 행성이다.', 1, '상'],
+  ['다이아몬드와 연필심(흑연)은 모두 탄소로 이루어져 있다.', 0, '상'],
+  ['물은 얼면 부피가 늘어난다.', 0, '상'],
+  ['대한민국의 제헌절은 7월 17일이다.', 0, '상'],
+  ['임진왜란은 조선 세종 때 일어났다.', 1, '상'],
+  ['세계에서 인구가 가장 많은 나라는 미국이다.', 1, '상'],
+  ['태양에서 가장 가까운 행성은 금성이다.', 1, '상'],
+  ['우리나라 국보 1호는 숭례문(남대문)이다.', 0, '상'],
+  ['세계 최고봉 에베레스트는 안데스산맥에 있다.', 1, '상'],
+  ['갓 태어난 아기는 성인보다 뼈의 개수가 많다.', 0, '상'],
+  ['번개가 먼저 보이고 천둥이 나중에 들리는 것은 빛이 소리보다 빠르기 때문이다.', 0, '상'],
+  ['조선왕조실록은 유네스코 세계기록유산이다.', 0, '상'],
+  ['나침반의 N극은 대략 지구의 남쪽을 가리킨다.', 1, '상'],
+  ['지구는 서쪽에서 동쪽으로 자전한다.', 0, '상'],
+  ['리히터 규모는 태풍의 세기를 나타내는 단위다.', 1, '상'],
+  ['고구려는 한때 평양을 수도로 삼았다.', 0, '상'],
+];
+// 카테고리·난이도로 퀴즈 문제 풀을 고른다. 해당 난이도 문제가 없으면 쉬움으로 대체해 빈 풀을 막는다.
+function quizPool(cat, diff) {
+  const easy = cat === '믹스' ? Object.values(QUIZ_DATA).flat() : (QUIZ_DATA[cat] || []);
+  const more = cat === '믹스' ? Object.values(QUIZ_MORE).flat() : (QUIZ_MORE[cat] || []);
+  if (diff === '하') return easy.length ? easy : more;
+  if (diff === '중') { const r = more.filter(x => x[5] === '중'); return r.length ? r : easy; }
+  if (diff === '상') { const r = more.filter(x => x[5] === '상'); return r.length ? r : easy; }
+  return [...easy, ...more];   // 믹스: 쉬움+중+상 전부
+}
+function oxPool(diff) {
+  const easy = OX_DATA, more = OX_MORE;
+  if (diff === '하') return easy;
+  if (diff === '중') { const r = more.filter(x => x[2] === '중'); return r.length ? r : easy; }
+  if (diff === '상') { const r = more.filter(x => x[2] === '상'); return r.length ? r : easy; }
+  return [...easy, ...more];   // 믹스
+}
 
 // 10초를 잡아라 (시간 감각 — 시계가 숨으면 목표 시간에 정확히 탭)
 const TIMING_TARGETS = [5000, 7000, 8000, 10000, 12000, 15000];
@@ -919,7 +1091,7 @@ function startGame(room, type, opt) {
   for (const p of room.players.values()) {
     p.alive = false; p.waiting = true; p.deadAt = 0;
     p.infected = false; p.infectedAt = 0; p.patientZero = false;
-    p.score = 0; p.wordDone = false;
+    p.score = 0; p.wordDone = false; p.sadariCaught = 0;
     p.dirX = 0; p.dirY = 0;
     p.lostAmount = 0; p.lostAt = 0; p.dropAt = 0;
     p.swatReadyAt = 0; p.swatAt = 0; p.hitAt = 0; p.hitGold = false;
@@ -1066,13 +1238,15 @@ function startGame(room, type, opt) {
         .filter(r => r && r.length === 5 && r.every(s => s.length > 0));
       if (rows.length >= 3) { pool = rows; cat = '내문제'; }
     }
-    if (!pool) pool = cat === '믹스' ? Object.values(QUIZ_DATA).flat() : QUIZ_DATA[cat];
-    // 문제도 보기 순서도 판마다 섞는다
+    // 난이도: 하/중/상/믹스 (기본 믹스 — 쉬운·중간·어려운 문제를 골고루)
+    const diff = ['하', '중', '상', '믹스'].includes(opt && opt.diff) ? opt.diff : '믹스';
+    if (!pool) pool = quizPool(cat, diff);
+    // 문제도 보기 순서도 판마다 섞는다. 6번째 원소(난이도 태그)는 보기 인덱스(0~3)에 안 잡혀 자동 무시된다.
     g.questions = [...pool].sort(() => Math.random() - 0.5).slice(0, cnt).map(([q, ...cs]) => {
       const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
       return { q, choices: order.map(i => cs[i]), correct: order.indexOf(0) };
     });
-    g.quizCat = cat; g.qIdx = 0; g.qPhase = 'idle';
+    g.quizCat = cat; g.quizDiff = diff; g.qIdx = 0; g.qPhase = 'idle';
   } else if (type === 'timing') {
     g.roundMs = 0;
     g.arenaW = 900; g.arenaH = 980;
@@ -1083,7 +1257,11 @@ function startGame(room, type, opt) {
   } else if (type === 'ox') {
     g.roundMs = 0;
     g.arenaW = 1100; g.arenaH = 760;   // 가로로 넓게 — 왼쪽 O, 오른쪽 X
-    g.oxQs = [...OX_DATA].sort(() => Math.random() - 0.5).slice(0, OX_MAX_Q);
+    // 난이도: 하/중/상/믹스. 어려울수록 생각할 시간을 조금 줄인다.
+    const diff = ['하', '중', '상', '믹스'].includes(opt && opt.diff) ? opt.diff : '믹스';
+    g.oxDiff = diff;
+    g.oxQMs = diff === '상' ? 7000 : diff === '중' ? 8000 : diff === '믹스' ? 8500 : 10000;
+    g.oxQs = [...oxPool(diff)].sort(() => Math.random() - 0.5).slice(0, OX_MAX_Q);
     g.oxIdx = 0; g.oxPhase = 'idle'; g.oxRevived = false;
     // 중앙선 근처에 흩어 배치 (양쪽 어디로든 뛰기 좋게)
     actives.forEach((p, i) => {
@@ -1540,6 +1718,10 @@ function wordTick(room, now) {
 function normalizeWord(s) {
   return String(s == null ? '' : s).slice(0, 40).normalize('NFC').replace(/\s+/g, '').trim();
 }
+// 낱말 빨리치기(따라치기)용 — 띄어쓰기까지 똑같이 쳐야 정답. 앞뒤 공백·연속 공백만 정리.
+function normalizeExact(s) {
+  return String(s == null ? '' : s).slice(0, 60).normalize('NFC').replace(/\s+/g, ' ').trim();
+}
 function hasBadWord(s) {
   const t = String(s).toLowerCase();
   return BAD_WORDS.some(w => t.includes(w));
@@ -1597,8 +1779,9 @@ function choTick(room, now) {
   const actives = [...room.players.values()].filter(p => p.alive && p.connected);
   if (g.wordPhase === 'show') {
     const allDone = actives.length > 0 && actives.every(p => p.wordDone);
-    // 사전에 있는 정답이 다 나왔으면 더 기다릴 필요 없음
-    const exhausted = g.answers && g.claimed.length >= g.answers.size;
+    // 사전에 있는 정답이 다 나왔으면 더 기다릴 필요 없음.
+    // 단 자유 카테고리는 사전 밖 정답도 받으므로(사전 크기로 조기종료하면 안 됨) 제외.
+    const exhausted = !CHO_FREE_CATS.has(g.category) && g.answers && g.claimed.length >= g.answers.size;
     if (now >= g.roundEndAt || allDone || exhausted) {
       g.wordPhase = 'break';
       g.breakEndAt = now + WORD_BREAK_MS;
@@ -1937,13 +2120,9 @@ function endChair(room) {
 // ---------- 사다리 복불복 ----------
 // 칸 수는 인원수대로 (최소 3, 최대 8) — 4명이 하는데 8칸이면 빈 칸투성이라 눈치싸움이 안 된다
 function sadariLanes(room) {
+  // 접속자 수만큼 칸을 만든다 (1인 1칸). 렌더 한계로 최대 16칸, 최소 2칸.
   const n = [...room.players.values()].filter(p => p.alive && p.connected).length;
-  return Math.max(3, Math.min(SADARI_LANES, n));
-}
-// 상품은 전체 배열(황금 10 ~ 폭탄 -5)에서 칸 수만큼 고르게 뽑는다 — 몇 칸이든 황금과 폭탄은 반드시 있다
-function sadariPrizes(L) {
-  const src = SADARI_PRIZES;
-  return Array.from({ length: L }, (_, i) => src[Math.round(i * (src.length - 1) / (L - 1))]);
+  return Math.max(2, Math.min(SADARI_LANES, n));
 }
 
 function startSadariRound(room, now) {
@@ -1958,7 +2137,9 @@ function startSadariRound(room, now) {
       if (l - prev >= 2 && Math.random() < 0.34) { g.rungs.push([r, l]); prev = l; }
     }
   }
-  g.prizes = sadariPrizes(L).sort(() => Math.random() - 0.5);
+  // 복불복: 도착 칸 중 딱 하나만 꽝(당첨=걸림), 나머지는 전부 안전.
+  g.loserSlot = Math.floor(Math.random() * L);
+  g.prizes = Array.from({ length: L }, (_, i) => i === g.loserSlot ? 1 : 0);  // 1=꽝(걸림), 0=안전
   // 각 출발 칸이 어느 도착 칸으로 가는지 미리 계산
   g.map = [];
   for (let s = 0; s < L; s++) {
@@ -1988,20 +2169,30 @@ function sadariTick(room, now) {
       g.revealAt = now; g.revealEndAt = now + SADARI_REVEAL_MS;
     }
   } else if (g.sPhase === 'reveal') {
-    // 공이 바닥에 닿는 순간 점수 반영 (효과음 타이밍과 맞춤)
+    // 공이 바닥에 닿는 순간 결과 반영 (효과음 타이밍과 맞춤) — 꽝 칸에 도착한 사람이 '걸림'
     if (!g.applied && now >= g.revealAt + SADARI_TRACE_MS) {
       g.applied = true;
+      g.caughtIds = [];
       for (const p of room.players.values()) {
         if (p.waiting || p.pick < 0) continue;
-        p.score += g.prizes[g.map[p.pick]];
+        if (g.map[p.pick] === g.loserSlot) { p.sadariCaught = (p.sadariCaught || 0) + 1; g.caughtIds.push(p.id); }
       }
     }
     if (now >= g.revealEndAt) {
-      if (g.round >= SADARI_ROUNDS) { endWord(room); return; }   // 점수 순위
+      if (g.round >= SADARI_ROUNDS) { endSadari(room); return; }   // 꼴찌(많이 걸린 사람) 기록
       startSadariRound(room, now);
     }
   }
   sendState(room, now);
+}
+
+// 게임 종료: 점수가 아니라 '걸린 횟수'로 순위 — 적게 걸릴수록 상위, 제일 많이 걸린 사람이 꼴찌.
+function endSadari(room) {
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => (a.sadariCaught || 0) - (b.sadariCaught || 0));
+  finishGame(room, sorted,
+    p => (p.sadariCaught || 0) === 0 ? '한 번도 안 걸림 😎' : `${p.sadariCaught}번 걸림 💣`,
+    p => String(p.sadariCaught || 0));
 }
 
 // ---------- 해적왕 통아저씨 ----------
@@ -2063,7 +2254,7 @@ function pirateTick(room, now) {
 function startOxQ(room, now) {
   const g = room.game;
   g.oxPhase = 'show';
-  g.oxEndAt = now + OX_Q_MS;
+  g.oxEndAt = now + (g.oxQMs || OX_Q_MS);   // 난이도별로 짧아진 제한시간
   g.oxRevived = false;
 }
 
@@ -2993,8 +3184,10 @@ function sendState(room, now) {
       claimed: type === 'cho' && g.claimed ? g.claimed.map(c => [c.w, c.id]) : undefined,
       answerCount: type === 'cho' && g.answers ? g.answers.size : 0,
       freeMode: type === 'cho' ? CHO_FREE_CATS.has(g.category) : undefined,
-      // 아무도 못 맞힌 라운드에 정답을 보여주기 위한 예시 (쉬는 시간에만)
-      sample: type === 'cho' && g.wordPhase === 'break' && g.answers ? [...g.answers].slice(0, 3) : undefined,
+      // 라운드가 끝나면(쉬는 시간) 사전 정답을 최대한 많이 공개 — 시간 지나면 정답 다 알려주기.
+      // (자유 카테고리는 사전 밖 정답도 인정되므로 이건 "정답 예시"로 표시된다)
+      sample: type === 'cho' && g.wordPhase === 'break' && g.answers ? [...g.answers].slice(0, 40) : undefined,
+      sampleFree: type === 'cho' && g.wordPhase === 'break' ? CHO_FREE_CATS.has(g.category) : undefined,
       wordPhase: g.wordPhase || 'idle',
       timeLeft: g.wordPhase === 'show' ? Math.max(0, g.roundEndAt - now) : 0,
       roundTotal: type === 'cho' ? CHO_ROUND_MS : WORD_TIME_MS,
@@ -3023,7 +3216,8 @@ function sendState(room, now) {
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
-        : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'sadari' || type === 'timing' || type === 'run') ? p.score
+        : type === 'sadari' ? (p.sadariCaught || 0)   // 점수 대신 걸린 횟수
+        : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'timing' || type === 'run') ? p.score
         : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0) : 0;
       const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
       // 스모: 대시 중 / 대시 쿨타임(0.1초 단위) / 최근 충돌
@@ -3114,14 +3308,17 @@ function sendState(room, now) {
   }
   if (type === 'sadari') {
     msg.sPhase = g.sPhase; msg.round = g.round; msg.totalRounds = SADARI_ROUNDS;
-    msg.lanes = g.lanes || SADARI_LANES; msg.prizes = g.prizes;
+    msg.lanes = g.lanes || SADARI_LANES;
     msg.pickLeft = g.sPhase === 'pick' ? Math.max(0, g.pickEndAt - now) : 0;
-    // 선택 중엔 칸별 인원수만 (눈치싸움). 가로줄·경로는 공개 순간에만 — 미리 보내면 추적해서 치팅 가능
+    // 선택 중엔 칸별 인원수만 (눈치싸움). 어느 칸이 꽝인지·가로줄·경로는 공개 순간에만 —
+    // 미리 보내면 개발자도구로 꽝 칸을 피하는 치팅이 가능하다.
     const counts = new Array(g.lanes || SADARI_LANES).fill(0);
     for (const p of room.players.values()) if (p.alive && p.pick >= 0) counts[p.pick]++;
     msg.counts = counts;
     if (g.sPhase === 'reveal') {
       msg.rungs = g.rungs; msg.map = g.map; msg.revealAt = g.revealAt;
+      msg.prizes = g.prizes; msg.loserSlot = g.loserSlot;
+      msg.caught = g.caughtIds || [];   // 걸린 사람 id 목록 (크게 강조용)
       msg.picks = [...room.players.values()].filter(p => !p.waiting && p.pick >= 0).map(p => [p.id, p.pick]);
     }
   }
@@ -3323,6 +3520,16 @@ wss.on('connection', (ws) => {
         roomSend(ws, { type: 'join_ok', id: p.id, token: p.token, code: r.code, nick: p.nick, ci: p.ci, state: r.state, gameType: r.gameType });
         sendRoster(r);
         sendCurrentPhase(r, ws);
+        break;
+      }
+
+      // 캐릭터 선택 — 학생이 입장 후(게임 전) 고른 캐릭터. ci를 캐릭터 번호로 씀.
+      case 'set_char': {
+        if (!room || ws.playerId == null) return;
+        const p = room.players.get(ws.playerId);
+        if (!p) return;
+        p.ci = Math.max(0, Math.min(29, Math.floor(finite(msg.ci))));
+        sendRoster(room);
         break;
       }
 
@@ -3626,7 +3833,8 @@ wss.on('connection', (ws) => {
         if (!p || !p.alive || p.wordDone || g.wordPhase !== 'show') return;
 
         if (room.gameType === 'word') {
-          if (normalizeWord(msg.text) === normalizeWord(g.word)) {
+          // 따라치기: 띄어쓰기까지 정확히 맞아야 정답 (공백 무시하면 아무렇게나 쳐도 통과됨)
+          if (normalizeExact(msg.text) === normalizeExact(g.word)) {
             p.wordDone = true;
             g.correctOrder.push(p.id);
             const idx = g.correctOrder.length - 1;
@@ -3639,14 +3847,19 @@ wss.on('connection', (ws) => {
         } else if (room.gameType === 'cho') {
           const norm = normalizeWord(msg.text);
           if (!norm) return;
-          const free = CHO_FREE_CATS.has(g.category); // 자유 카테고리: 사전에 있는 단어면 무엇이든 정답
+          // 자유 카테고리(음식·동물·사물장소): 초성과 글자수만 맞으면 사전에 없어도 정답 인정.
+          //   → 진짜 정답인데 사전에 없어서 오답 처리되던 문제 해결.
+          //   한 라운드에 1번만 맞힐 수 있어(wordDone) 점수 도배는 애초에 불가능하다.
+          // 제목 카테고리(영화·노래): 실제 제목이어야 하므로 사전 대조 유지.
+          const free = CHO_FREE_CATS.has(g.category);
           if (hasBadWord(norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'bad' });
+          } else if (norm.length < 2) {
+            roomSend(ws, { type: 'word_bad', reason: 'short' });   // 한 글자 답 방지
           } else if (choseongOf(norm) !== g.pattern) {
             roomSend(ws, { type: 'word_bad', reason: 'cho' });
-          } else if (!(g.answers && g.answers.has(norm))) {
-            // 어느 카테고리든 사전(목록)에 있는 단어만 정답 — 초성만 맞는 아무 말 도배 방지
-            roomSend(ws, { type: 'word_bad', reason: free ? 'dict' : 'list' });
+          } else if (!free && !(g.answers && g.answers.has(norm))) {
+            roomSend(ws, { type: 'word_bad', reason: 'list' });
           } else if (g.claimed.some(c => c.w === norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'dup' });
           } else {

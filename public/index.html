@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
 <title>교실 아케이드</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
@@ -16,6 +16,26 @@
     touch-action: manipulation; overflow: hidden;
   }
   .view { display: none; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 24px; gap: 16px; overflow-y: auto; }
+  /* 캐릭터 선택 */
+  #charSelect { justify-content: flex-start; padding-top: 3vh; }
+  #charGrid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 10px; width: 100%; max-width: 480px;
+  }
+  .char-cell {
+    background: #1a2140; border: 2px solid #2c3763; border-radius: 16px;
+    padding: 8px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    cursor: pointer; transition: transform .08s, border-color .12s;
+  }
+  .char-cell:active { transform: scale(.94); }
+  .char-cell.sel { border-color: #ffb03a; background: #2a2445; box-shadow: 0 0 0 2px rgba(255,176,58,.4); }
+  .char-cell img { width: 100%; max-width: 72px; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; }
+  .char-cell span { font-size: 12px; font-weight: 700; color: #c8d0e8; text-align: center; }
+  #plAvatar { width: 108px; height: 108px; object-fit: contain; image-rendering: pixelated;
+    background: #1a2140; border-radius: 20px; padding: 6px; border: 2px solid #2c3763; }
+  .chip-face { width: 26px; height: 26px; object-fit: contain; image-rendering: pixelated; vertical-align: middle; flex-shrink: 0; }
+  .rank-face { width: 34px; height: 34px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0; }
+  body.host .rank-face { width: 46px; height: 46px; }
   .view.on { display: flex; }
 
   h1.logo {
@@ -189,6 +209,9 @@
     background: linear-gradient(rgba(8,11,26,.42), rgba(8,11,26,.62)),
                 url('sprites/board.jpg') center/cover no-repeat;
   }
+  /* 아이폰 사파리: 키보드가 올라오면 입력창이 가려지지 않게 위쪽 정렬 + 여백 축소 */
+  body.kbopen #wordGame { justify-content: flex-start; padding-top: 8px; gap: 8px; }
+  body.kbopen #wordGame #wordBig { font-size: 40px !important; }
   body.host #wordList { max-height: calc(100vh - 470px); overflow-y: auto; }
   #btnWordAbort, #btnQuizAbort {
     position: fixed; top: 14px; right: 14px; z-index: 8; width: auto;
@@ -389,9 +412,6 @@
     font-size: 26px; font-weight: 800; text-align: center; line-height: 1.6;
     text-shadow: 0 0 30px rgba(255,176,58,.4);
   }
-  .rank-row:nth-child(1) { background: linear-gradient(90deg, #2a2445, #1a2140); border-left: 4px solid #ffd700; }
-  .rank-row:nth-child(2) { border-left: 4px solid #c6ccd8; }
-  .rank-row:nth-child(3) { border-left: 4px solid #cd7f32; }
   .rank-list { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 6px; }
   .rank-row { display: flex; align-items: center; gap: 12px; background: #1a2140; border-radius: 12px; padding: 10px 16px; font-size: 16px; }
   .rank-row .r { font-weight: 800; width: 40px; color: #ffb03a; flex-shrink: 0; }
@@ -666,10 +686,20 @@ body.host #tetLogo { height: 72px; }
 </div>
 
 <!-- 학생 로비 -->
+<!-- 캐릭터 선택 (입장 후, 게임 전) -->
+<div class="view" id="charSelect">
+  <div class="sub" id="csRoom" style="font-weight:700"></div>
+  <h1 class="logo" style="font-size:26px">캐릭터를 골라요! 🎮</h1>
+  <p class="sub">마음에 드는 캐릭터를 하나 선택하면 게임에서 그 모습으로 나와요.</p>
+  <div id="charGrid"></div>
+</div>
+
 <div class="view" id="playerLobby">
   <div class="sub" id="plRoom" style="font-weight:700"></div>
+  <img id="plAvatar" alt="" style="display:none">
   <h1 class="logo" id="plNick">닉네임</h1>
   <p class="sub" id="plMsg">입장 완료! 선생님이 시작하면<br>자동으로 게임이 열립니다. TV를 보세요 👀</p>
+  <button class="btn" id="btnChangeChar" style="max-width:280px">🎮 캐릭터 바꾸기</button>
   <button class="btn danger-ghost" id="btnLeave">방 나가기</button>
 </div>
 
@@ -871,7 +901,7 @@ const GAMES_META = {
   cho:  { icon: '🔤', name: '초성 퀴즈', desc: 'ㅇㅇㅅㅋㄹ → 아이스크림! 초성에 맞는 단어를 찾아라. 남이 먼저 쓴 단어는 안 됨 — 다른 단어를 노려라!', badge: '5라운드', rule: '초성에 맞는 진짜 단어를 입력!\n사전에 없는 단어·이미 나온 단어는 안 돼요' },
   sumo: { icon: '🥊', name: '스모 밀치기', desc: '조이스틱으로 밀고 대시로 날려버려라! 링 밖으로 떨어지면 장외. 링은 점점 좁아진다 — 최후의 1인!', badge: '최후 1인', rule: '왼손: 이동 · 오른손: 대시(돌진)!\n친구를 링 밖으로 밀어내세요' },
   chair:{ icon: '🪑', name: '의자 뺏기', desc: '음악이 흐르는 동안 빙글빙글~ 뚝! 멈추면 의자로 돌진! 못 앉으면 탈락. 의자는 라운드마다 줄어든다.', badge: '서바이벌', rule: '🎵 음악이 나오는 동안 돌아다니다가\n음악이 멈추면 의자에 먼저 앉으세요!' },
-  sadari:{ icon: '🪜', name: '사다리 복불복', desc: '인원수만큼 놓인 칸 중 하나를 골라라! 사다리를 타고 내려가면 +10 황금? 💣폭탄? 내려가 보기 전엔 아무도 모른다.', badge: '5라운드', rule: '내려가고 싶은 칸을 손가락으로 고르세요!\n어디로 이어질지는 아무도 몰라요' },
+  sadari:{ icon: '🪜', name: '사다리 복불복', desc: '접속자 수만큼 놓인 칸 중 하나를 골라라! 사다리를 타고 내려가 딱 한 칸의 💣꽝에 걸리면 당첨. 점수는 없고, 걸린 사람만 기록된다!', badge: '5라운드', rule: '내려가고 싶은 칸을 손가락으로 고르세요!\n딱 한 명(꽝 칸)만 걸려요 — 걸리지 마세요!' },
   pirate:{ icon: '🏴‍☠️', name: '통아저씨', desc: '해적 통을 빙글 돌려 칼을 꽂아라! 잘못 꽂으면 해적이 펑 튀어나오며 탈락. 위험 칸은 라운드마다 늘어난다.', badge: '복불복', rule: '통을 돌려서 원하는 칸에 칼을 꽂으세요!\n해적이 튀어나오면 탈락이에요' },
   quiz: { icon: '🧠', name: '퀴즈쇼', desc: '카훗처럼 4지선다 퀴즈! 빨리 맞힐수록 점수가 크다. 카테고리와 문제 수를 골라 아이스브레이킹 하자.', badge: '객관식', rule: 'TV의 문제를 보고 폰에서\n정답 색깔 버튼을 빠르게 누르세요!' },
   ox:   { icon: '⭕', name: 'OX 서바이벌', desc: '문장을 읽고 몸으로 답해라! 맞으면 O땅, 틀리면 X땅으로 질주. 오답은 탈락, 전원 오답이면 전원 부활 — 최후의 1인 골든벨!', badge: '서바이벌', rule: '맞다고 생각하면 O구역, 틀리면 X구역!\n시간이 끝나기 전에 달려가세요' },
@@ -922,6 +952,7 @@ function parseCustomQ(text) {
 let ws = null;
 let isHost = false;
 let myId = null, myToken = null, myNick = '', roomCode = '';
+let myCi = 0;   // 내가 고른 캐릭터 번호(ci)
 let hostToken = null;
 let timeOffset = 0, offsetSamples = [];
 let roster = new Map();
@@ -944,6 +975,8 @@ let pirateKnives = Math.max(1, Math.min(3, +(localStorage.getItem('ca_knives') |
 let gameTabSel = localStorage.getItem('ca_gtab') || 'all';        // 로비 게임 분류 탭
 let quizCatSel = localStorage.getItem('ca_qcat') || '믹스';       // 퀴즈쇼: 카테고리
 let quizCountSel = +(localStorage.getItem('ca_qcnt') || 10);      // 퀴즈쇼: 문제 수
+let quizDiffSel = localStorage.getItem('ca_qdiff') || '믹스';     // 퀴즈쇼: 난이도(하/중/상/믹스)
+let oxDiffSel = localStorage.getItem('ca_oxdiff') || '믹스';      // OX: 난이도(하/중/상/믹스)
 let myQAnswer = -1, myQIdx = -1, lastQuizJson = '';               // 퀴즈쇼: 내 답·문제 추적
 let myTap = false, myTapRound = -1;                               // 10초를 잡아라: 내가 탭했나
 let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
@@ -1152,6 +1185,43 @@ function show(viewId) {
   if (viewId === 'game') $('game').classList.add('on');
   else $(viewId).classList.add('on');
 }
+
+// ---- 캐릭터 선택 (item 15) ----
+function renderCharSelect() {
+  const grid = $('charGrid');
+  if (!CHAR_LIST.length) { grid.innerHTML = '<p class="sub" style="grid-column:1/-1">캐릭터 불러오는 중…</p>'; return; }
+  grid.innerHTML = '';
+  CHAR_LIST.forEach((c, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'char-cell' + (i === myCi ? ' sel' : '');
+    cell.innerHTML = `<img src="sprites/chars/${c.slug}.png" alt="${esc(c.name)}"><span>${esc(c.name)}</span>`;
+    cell.onclick = () => pickChar(i, false);
+    grid.appendChild(cell);
+  });
+}
+function openCharSelect() {
+  // 캐릭터 목록이 아직 없으면(이미지 미배포 등) 선택을 건너뛰고 로비로
+  if (!CHAR_LIST.length) { show('playerLobby'); updateMyAvatar(); return; }
+  renderCharSelect();
+  show('charSelect');
+}
+function pickChar(ci, silent) {
+  myCi = Math.max(0, Math.min(29, ci | 0));
+  localStorage.setItem('ca_char', String(myCi));
+  send({ type: 'set_char', ci: myCi });
+  updateMyAvatar();
+  if (!silent) { show('playerLobby'); }
+}
+function applySavedChar() {
+  const saved = localStorage.getItem('ca_char');
+  if (saved != null && saved !== '') { myCi = Math.max(0, Math.min(29, +saved || 0)); send({ type: 'set_char', ci: myCi }); }
+  updateMyAvatar();
+}
+function updateMyAvatar() {
+  const src = charSrc(myCi);
+  const el = $('plAvatar');
+  if (src) { el.src = src; el.style.display = ''; } else { el.style.display = 'none'; }
+}
 // 게임 화면(캔버스든 DOM 뷰든)이 실제로 떠 있는가 — samePlaying 오판 방지용
 function gameViewActive() {
   return $('game').classList.contains('on')
@@ -1277,7 +1347,7 @@ function handle(m) {
       toast(isHost ? '서버 업데이트 중… 방을 자동으로 되살립니다 🔄' : '서버 업데이트 중… 곧 다시 연결돼요 🔄', 8000);
       break;
     case 'join_ok':
-      myId = m.id; myToken = m.token; roomCode = m.code; myNick = m.nick;
+      myId = m.id; myToken = m.token; roomCode = m.code; myNick = m.nick; myCi = m.ci || 0;
       rejoinTries = 0;                                           // 재입장 성공 — 재시도 카운터 리셋
       document.body.classList.add('joined');                     // 학생 폰에도 사운드 온오프 버튼 표시
       $('btnMute').textContent = SFX.off ? '🔇' : '🔊';
@@ -1286,9 +1356,15 @@ function handle(m) {
       $('plNick').textContent = m.nick;
       $('plNick').style.color = COLORS[m.ci % COLORS.length];
       $('plRoom').textContent = '방 ' + m.code;
+      $('csRoom').textContent = '방 ' + m.code;
       gameType = m.gameType || 'bomb';
-      if (m.state === 'countdown' || m.state === 'playing') enterGameView();
-      else show('playerLobby');
+      if (m.state === 'countdown' || m.state === 'playing') { applySavedChar(); enterGameView(); }
+      else {
+        // 저장된 캐릭터가 있으면 자동 적용하고 로비로, 없으면(첫 입장) 캐릭터 선택 화면
+        const saved = localStorage.getItem('ca_char');
+        if (saved != null && saved !== '') { applySavedChar(); show('playerLobby'); }
+        else openCharSelect();
+      }
       break;
     case 'roster':
       roster = new Map(m.players.map(p => [p.id, p]));
@@ -1439,8 +1515,9 @@ function handle(m) {
     case 'word_bad': {
       const msgs = {
         cho: '초성이 달라요! 다시 보세요',
-        list: '앗, 목록에 없는 단어예요. 다른 단어로!',
+        list: '앗, 목록에 없는 제목이에요. 다른 답으로!',
         dict: '사전에 없는 단어예요. 진짜 단어를 써 보세요!',
+        short: '한 글자는 안 돼요! 두 글자 이상',
         dup: '이미 나온 단어! 다른 단어를 찾으세요',
         wrong: '땡! 다시 입력해 보세요',
       };
@@ -1963,14 +2040,43 @@ function renderTetris(m) {
   } else { warn.textContent = m.atkBy ? `${m.atkBy}에게 공격!` : ''; warn.classList.remove('hot'); }
   tetPrevPend = pend;
 }
+// 인원수(n)에 맞춰 미니보드 셀 크기와 열 수를 계산한다.
+// 모든 (열 수) 후보를 훑어 세로로 넘치지 않으면서 보드를 가장 크게 만드는 조합을 고른다.
+// → 사람이 적으면 큰 보드, 많으면 작은 보드로 TV를 꽉 채운다.
+function tetFit(n, compact) {
+  if (n <= 0) return { mini: 16, cols: 1 };
+  const gw = Math.min(1500, window.innerWidth - 24);
+  const availH = Math.max(240, window.innerHeight - (compact ? 96 : 150));
+  const gap = compact ? 7 : 14;
+  const padX = compact ? 12 : 20;    // .tet-mini 좌우 패딩
+  const labelH = compact ? 26 : 42;  // 이름+점수 줄 높이
+  let best = { mini: 6, cols: 1 };
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cellW = (gw - gap * (cols - 1)) / cols;
+    const cellH = (availH - gap * (rows - 1)) / rows;
+    const mini = Math.floor(Math.min((cellW - padX) / TET_C_W, (cellH - labelH) / TET_C_H));
+    if (mini > best.mini) best = { mini, cols };
+  }
+  best.mini = Math.max(6, Math.min(40, best.mini));
+  return best;
+}
 function renderTetHost(m) {
   const grid = $('tetHostGrid');
   const boards = m.boards || [];
-  // 미니보드 셀 크기: 인원수에 맞춰 (많으면 작게) — TV 화면을 가득 채우는 게 우선
-  const mini = boards.length <= 4 ? 20 : boards.length <= 8 ? 15 : boards.length <= 12 ? 11 : boards.length <= 18 ? 8 : 6;
+  const n = boards.length;
   // 27명 이상은 여백·로고를 줄여 스크롤 없이 전원 중계
-  grid.classList.toggle('compact', boards.length > 26);
-  $('tetrisGame').classList.toggle('compactview', boards.length > 26);
+  const compact = n > 26;
+  grid.classList.toggle('compact', compact);
+  $('tetrisGame').classList.toggle('compactview', compact);
+  // 미니보드 셀 크기를 인원수에 맞춰 화면을 꽉 채우게 계산 —
+  // 사람이 적으면 보드를 크게(적을수록 큼), 많으면 작게. 세로 넘침 없이 전원 한눈에.
+  const { mini, cols } = tetFit(n, compact);
+  // 실제 열 수를 고정해 세로 넘침을 막는다 (flex 자동 줄바꿈은 열 수가 들쭉날쭉)
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = `repeat(${cols}, max-content)`;
+  grid.style.justifyContent = 'center';
+  grid.style.alignContent = 'center';
   for (const row of boards) {
     const [id, alive, score, lines, board, piece, rot, x, y, fx] = row;
     let el = tetMinis[id];
@@ -1979,9 +2085,12 @@ function renderTetHost(m) {
       el = document.createElement('div'); el.className = 'tet-mini';
       el.innerHTML = `<span class="nm" style="color:${COLORS[meta.ci % COLORS.length]}">${esc(meta.nick)}</span>
         <canvas width="${TET_C_W * mini}" height="${TET_C_H * mini}"></canvas><span class="sc"></span>`;
-      grid.appendChild(el); tetMinis[id] = el;
+      grid.appendChild(el); tetMinis[id] = el; el._mini = mini;
     }
-    tetDrawBoard(el.querySelector('canvas'), board, alive ? piece : -1, rot, x, y, {});
+    // 인원수가 바뀌어 셀 크기가 달라지면 캔버스도 다시 크기 조정 (안 하면 옛 크기로 남음)
+    const cvB = el.querySelector('canvas');
+    if (el._mini !== mini) { cvB.width = TET_C_W * mini; cvB.height = TET_C_H * mini; el._mini = mini; }
+    tetDrawBoard(cvB, board, alive ? piece : -1, rot, x, y, {});
     el.querySelector('.sc').textContent = `${score}점 · ${lines}줄`;
     el.classList.toggle('dead', !alive);
     if (fx > 0) {
@@ -2429,16 +2538,18 @@ function renderGameGrid() {
     el.onclick = () => { selectedGame = key; renderGameGrid(); };
     // 퀴즈쇼: 카테고리·문제 수 선택
     if (key === 'quiz') {
-      const chip = (label, on) => `<button data-v="${label}" style="padding:4px 10px;border-radius:99px;border:1.5px solid ${on ? '#ffb03a' : '#3a4680'};background:${on ? '#ffb03a' : 'transparent'};color:${on ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${label}</button>`;
+      const chip = (label, on, kind, val) => `<button data-kind="${kind}" data-v="${val == null ? label : val}" style="padding:4px 10px;border-radius:99px;border:1.5px solid ${on ? '#ffb03a' : '#3a4680'};background:${on ? '#ffb03a' : 'transparent'};color:${on ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${label}</button>`;
       const opt = document.createElement('div');
       opt.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:8px';
       opt.innerHTML =
-        `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="color:#93a0c4;font-size:13px">주제</span>${QUIZ_CATS.map(c => chip(c, c === quizCatSel)).join('')}</div>` +
-        `<div style="display:flex;gap:5px;align-items:center"><span style="color:#93a0c4;font-size:13px">문제</span>${[5, 10, 15].map(n => chip(n + '개', n === quizCountSel)).join('')}</div>`;
+        `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="color:#93a0c4;font-size:13px">주제</span>${QUIZ_CATS.map(c => chip(c, c === quizCatSel, 'cat', c)).join('')}</div>` +
+        `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="color:#93a0c4;font-size:13px">난이도</span>${['믹스', '하', '중', '상'].map(d => chip(d, d === quizDiffSel, 'diff', d)).join('')}</div>` +
+        `<div style="display:flex;gap:5px;align-items:center"><span style="color:#93a0c4;font-size:13px">문제</span>${[5, 10, 15].map(n => chip(n + '개', n === quizCountSel, 'cnt', n)).join('')}</div>`;
       opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
         ev.stopPropagation();
-        const v = b2.dataset.v;
-        if (v.endsWith('개')) { quizCountSel = parseInt(v); localStorage.setItem('ca_qcnt', String(quizCountSel)); }
+        const kind = b2.dataset.kind, v = b2.dataset.v;
+        if (kind === 'cnt') { quizCountSel = parseInt(v); localStorage.setItem('ca_qcnt', String(quizCountSel)); }
+        else if (kind === 'diff') { quizDiffSel = v; localStorage.setItem('ca_qdiff', v); }
         else { quizCatSel = v; localStorage.setItem('ca_qcat', v); }
         selectedGame = 'quiz';
         renderGameGrid();
@@ -2481,6 +2592,21 @@ function renderGameGrid() {
       });
       el.appendChild(opt);
     }
+    // OX 서바이벌: 난이도 선택 (어려울수록 제한시간도 짧아짐)
+    if (key === 'ox') {
+      const opt = document.createElement('div');
+      opt.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px';
+      opt.innerHTML = '<span style="color:#93a0c4;font-size:13px">난이도</span>' +
+        ['믹스', '하', '중', '상'].map(d => `<button data-d="${d}" style="padding:4px 12px;border-radius:99px;border:1.5px solid ${d === oxDiffSel ? '#ffb03a' : '#3a4680'};background:${d === oxDiffSel ? '#ffb03a' : 'transparent'};color:${d === oxDiffSel ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${d}</button>`).join('');
+      opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
+        ev.stopPropagation();
+        oxDiffSel = b2.dataset.d;
+        localStorage.setItem('ca_oxdiff', oxDiffSel);
+        selectedGame = 'ox';
+        renderGameGrid();
+      });
+      el.appendChild(opt);
+    }
     $('gameGrid').appendChild(el);
   }
   $('btnStart').textContent = `${GAMES_META[selectedGame].icon} ${GAMES_META[selectedGame].name} 시작`;
@@ -2493,7 +2619,9 @@ function renderHostLobby() {
   list.forEach(p => {
     const el = document.createElement('div');
     el.className = 'chip' + (p.connected ? '' : ' off');
-    el.innerHTML = `<span class="dot" style="background:${COLORS[p.ci % COLORS.length]}"></span>${esc(p.nick)}`;
+    const src = charSrc(p.ci);
+    const face = src ? `<img class="chip-face" src="${src}" alt="">` : `<span class="dot" style="background:${COLORS[p.ci % COLORS.length]}"></span>`;
+    el.innerHTML = `${face}${esc(p.nick)}`;
     el.onclick = async () => { if (await uiConfirm(`${p.nick} 님을 내보낼까요?`, '내보낸 학생은 다시 QR로 들어올 수 있어요.', { ok: '내보내기', danger: true, icon: '👋' })) send({ type: 'kick', playerId: p.id }); };
     $('chips').appendChild(el);
   });
@@ -2501,8 +2629,9 @@ function renderHostLobby() {
 }
 function gameOpt(key) {
   if (key === 'pirate') return { knives: pirateKnives };
+  if (key === 'ox') return { diff: oxDiffSel };
   if (key === 'quiz') {
-    const o = { cat: quizCatSel, count: quizCountSel };
+    const o = { cat: quizCatSel, count: quizCountSel, diff: quizDiffSel };
     if (quizCatSel === '내문제') o.custom = parseCustomQ(localStorage.getItem('ca_customq'));
     return o;
   }
@@ -2519,6 +2648,7 @@ $('btnStart').onclick = () => {
 $('btnAgain').onclick = () => send({ type: 'start_game', game: gameType, opt: gameOpt(gameType) });
 $('btnLobby').onclick = () => send({ type: 'back_to_lobby' });
 $('btnCloseRoom').onclick = async () => { if (await uiConfirm('방을 닫을까요?', '모든 학생이 나가지고 오늘의 챔피언 점수도 사라져요.', { ok: '방 닫기', danger: true, icon: '🚪' })) { send({ type: 'close_room' }); goHome(); } };
+$('btnChangeChar').onclick = () => openCharSelect();
 $('btnLeave').onclick = async () => { if (await uiConfirm('방에서 나갈까요?', '다시 들어오려면 QR을 찍거나 코드를 입력해야 해요.', { ok: '나가기', danger: true, icon: '👋' })) { send({ type: 'leave' }); goHome(); } };
 $('btnLeave2').onclick = async () => { if (await uiConfirm('방에서 나갈까요?', '다시 들어오려면 QR을 찍거나 코드를 입력해야 해요.', { ok: '나가기', danger: true, icon: '👋' })) { send({ type: 'leave' }); goHome(); } };
 $('btnAbort').onclick = async () => { if (await confirmAbort()) send({ type: 'back_to_lobby' }); };
@@ -2563,13 +2693,18 @@ function showResult(ranking, champArr) {
     $('resultPlayer').style.display = 'none';
     const top = ranking.filter(r => r.rank === 1);
     $('podium').innerHTML = top.length ? `우승: ${top.map(r => esc(r.nick)).join(', ')}` : '게임 종료!';
-    $('rankList').innerHTML = ranking.map(r => `
+    $('rankList').innerHTML = ranking.map(r => {
+      const src = charSrc(r.ci);
+      const face = src ? `<img class="rank-face" src="${src}" alt="">`
+        : `<span class="dot" style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${COLORS[r.ci % COLORS.length]}"></span>`;
+      return `
       <div class="rank-row">
         <span class="r">${r.rank}위</span>
-        <span class="dot" style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${COLORS[r.ci % COLORS.length]}"></span>
+        ${face}
         <span>${esc(r.nick)}</span>
         <span class="t">${esc(r.label)}</span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     // 오늘의 챔피언 — 두 게임째부터 의미가 생기니 그때부터 보여준다
     const anyMulti = champ.some(c => c[5] >= 2);
     $('champResult').style.display = champ.length && anyMulti ? 'block' : 'none';
@@ -2589,6 +2724,14 @@ function showResult(ranking, champArr) {
 // ---- 낱말 빨리치기 렌더링 ----
 $('btnWordSubmit').onclick = submitWord;
 $('wordInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitWord(); });
+// 아이폰 사파리 키보드 대응: 입력창이 키보드에 가려지지 않도록 위로 스크롤 + 위쪽 정렬 클래스
+(function () {
+  const wi = $('wordInput');
+  const bringUp = () => setTimeout(() => { try { wi.scrollIntoView({ block: 'center' }); } catch (e) {} }, 250);
+  wi.addEventListener('focus', () => { document.body.classList.add('kbopen'); bringUp(); });
+  wi.addEventListener('blur', () => document.body.classList.remove('kbopen'));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (document.activeElement === wi) bringUp(); });
+})();
 function submitWord() {
   if ($('wordInput').readOnly) return;   // 이미 맞힌 라운드
   const t = $('wordInput').value;
@@ -2633,11 +2776,13 @@ function renderWord(m) {
   if (m.mode === 'cho') {
     $('choCat').style.display = m.category ? 'block' : 'none';
     $('choCat').textContent = !m.category ? ''
-      : m.freeMode ? `[${m.category}] 사전에 있는 단어만 정답!` + (m.answerCount > 1 ? ` (정답 ${m.answerCount}개)` : '')
+      : m.freeMode ? `[${m.category}] 초성에 맞는 단어면 정답!`
       : `[${m.category} 제목]` + (m.answerCount > 1 ? ` 정답 ${m.answerCount}개` : '');
     if (phase === 'countdown') $('wordBig').textContent = '준비하세요…';
     else if (m.wordPhase === 'show') $('wordBig').textContent = m.word ? [...m.word].join(' ') : '…';
-    else if (m.sample && !(m.claimed || []).length) $('wordBig').textContent = '정답 예: ' + m.sample.join(', ');
+    // 라운드 끝(쉬는 시간): 시간이 지나면 정답을 다 공개한다
+    else if (m.wordPhase === 'break' && m.sample && m.sample.length)
+      $('wordBig').textContent = (m.sampleFree ? '정답 예시: ' : '정답: ') + m.sample.join(', ');
     else $('wordBig').textContent = m.round >= m.totalRounds ? '결과 계산 중…' : '다음 라운드 준비…';
     $('choClaimed').innerHTML = (m.claimed || []).map(([w, id]) => {
       const meta = roster.get(id) || { nick: '?' };
@@ -2683,6 +2828,21 @@ const SPR = {};
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
 });
+// 캐릭터 아바타(최대 30종) — manifest.json의 순서가 곧 ci 번호. 이미지가 아직 없으면 색 블롭으로 폴백.
+const CHAR_IMG = [];       // ci -> Image
+let CHAR_LIST = [];        // [{slug,name}] — 선택 화면·매니페스트
+fetch('sprites/chars/manifest.json').then(r => r.ok ? r.json() : []).then(list => {
+  CHAR_LIST = Array.isArray(list) ? list : [];
+  CHAR_LIST.forEach((c, i) => {
+    const im = new Image();
+    im.src = 'sprites/chars/' + c.slug + '.png';
+    im.onload = () => { CHAR_IMG[i] = im; };
+  });
+  // 선택 화면이 이미 떠 있으면(목록 늦게 도착) 다시 그린다
+  if ($('charSelect') && $('charSelect').classList.contains('on')) renderCharSelect();
+}).catch(() => {});
+function charSprite(ci) { return CHAR_IMG[(ci || 0)] || null; }   // 캔버스용: 로드된 캐릭터 Image 또는 null
+function charSrc(ci) { const c = CHAR_LIST[(ci || 0)]; return c ? 'sprites/chars/' + c.slug + '.png' : ''; }  // <img> 용
 const FLOOR_IMG = new Image();
 let floorReady = false;
 FLOOR_IMG.src = 'sprites/floor.jpg';
@@ -3363,10 +3523,13 @@ function draw() {
     }
     // 살짝 통통 튀는 움직임 (걸을 때만)
     const bob = alive ? Math.sin(performance.now() / 170 + id * 1.7) * rr * .06 : 0;
-    const body = latest.mode === 'gala' ? tintSprite('ship', COLORS[meta.ci % COLORS.length])
+    // 선택한 캐릭터가 있으면 그걸로 (좀비/갤러그 함선은 예외). 캐릭터는 얼굴이 이미 있어 눈을 안 그린다.
+    const charImg = (latest.mode !== 'gala' && !infected) ? charSprite(meta.ci) : null;
+    const body = charImg ? charImg
+      : latest.mode === 'gala' ? tintSprite('ship', COLORS[meta.ci % COLORS.length])
       : infected ? SPR.zombie : tintedPlayer(COLORS[meta.ci % COLORS.length], meta.ci);
     if (body) {
-      drawSpr(body, px, py + bob, rr * 2.35);
+      drawSpr(body, px, py + bob, rr * (charImg ? 2.5 : 2.35));
       // 갤러그 함선: 엔진 불꽃 깜빡임 (눈은 안 그린다)
       if (latest.mode === 'gala' && alive) {
         const fl = (0.6 + Math.random() * 0.4) * rr;
@@ -3377,7 +3540,7 @@ function draw() {
         ctx.lineTo(px + rr * .3, py + rr * 1.05);
         ctx.closePath(); ctx.fill();
       }
-      if (alive && latest.mode !== 'gala') {  // 눈은 코드로 그려 표정을 살린다
+      if (alive && latest.mode !== 'gala' && !charImg) {  // 눈은 코드로 그려 표정을 살린다 (캐릭터는 얼굴 있음)
         const ey = py + bob - rr * .18;
         ctx.fillStyle = '#fff';
         ctx.beginPath(); ctx.arc(px - r * .32, ey, r * .24, 0, 7); ctx.fill();
@@ -3467,10 +3630,17 @@ function draw() {
       if (sndPrev.chairAlive >= 0 && al < sndPrev.chairAlive) SFX.miss();
       sndPrev.chairAlive = al;
     }
-    if (latest.mode === 'sadari' && latest.sPhase === 'reveal') {
-      const total = latest.players.reduce((s, pp) => s + (pp[5] || 0), 0);
-      if (sndPrev.sadariTotal != null && total !== sndPrev.sadariTotal) SFX.coin();
-      sndPrev.sadariTotal = total;
+    if (latest.mode === 'sadari' && latest.sPhase === 'reveal' && latest.revealAt) {
+      const rt = (serverNow() - latest.revealAt) / SAD.trace;
+      // 공이 내려가는 동안 또각또각 효과음 (8단계)
+      const tick = Math.floor(Math.max(0, Math.min(0.999, rt)) * 8);
+      const tickKey = latest.round + '-' + tick;
+      if (rt < 1 && sndPrev.sadTick !== tickKey) { sndPrev.sadTick = tickKey; (SFX.count || SFX.ok)(); }
+      // 착지 순간 결과음 (라운드당 한 번): 걸린 사람 있으면 폭탄, 없으면 팡파레
+      if (rt >= 1 && sndPrev.sadLand !== latest.round) {
+        sndPrev.sadLand = latest.round;
+        if ((latest.caught || []).length) SFX.boom(); else SFX.fanfare();
+      }
     }
     if (latest.mode === 'pirate' && latest.pPhase === 'reveal' && latest.revealAt) {
       if (serverNow() - latest.revealAt >= 1600 && sndPrev.pirPop !== latest.round) {
@@ -3531,7 +3701,7 @@ function draw() {
     : latest.mode === 'chair' ? (latest.cphase === 'grab'
         ? `🪑 앉아라!! ${Math.ceil((latest.grabLeft || 0) / 1000)}초`
         : `🎵 ${latest.cround || 1}라운드 · 생존 ${aliveCount}`)
-    : latest.mode === 'sadari' ? `🪜 ${latest.round || 1}/${latest.totalRounds || 5}라운드` + (isHost ? '' : ` · 내 점수 ${myScore}`)
+    : latest.mode === 'sadari' ? `🪜 ${latest.round || 1}/${latest.totalRounds || 5}라운드` + (isHost ? '' : ` · 내가 걸린 횟수 ${myScore}`)
     : latest.mode === 'pirate' ? `🏴‍☠️ ${latest.round || 1}라운드 · 🗡️ ${latest.pickedCount || 0}/${latest.aliveCount || 0}명`
     : latest.mode === 'ox' ? `⭕❌ 문제 ${(latest.oxIdx || 0) + 1}/${latest.oxTotal || 0} · 생존 ${aliveCount}`
     : latest.mode === 'timing' ? `⏱️ ${(latest.round || 0) + 1}/${latest.totalRounds || 4}라운드` + (isHost ? '' : ` · 내 점수 ${myScore}`)
@@ -3807,15 +3977,21 @@ function drawSadari(latest, ox, oy, scale, dpr) {
     }
   }
 
-  // 아래: 상품 (황금·꽝·폭탄)
+  // 아래: 도착 칸 결과 — 선택 중엔 전부 '?'(아무도 모름), 공개 때만 😀(안전)/💣(꽝=걸림)
+  const revealing = latest.sPhase === 'reveal';
   const prz = latest.prizes || [];
   for (let i = 0; i < SAD.L; i++) {
     const x = X(i), y = oy + SAD.prizeY * scale;
-    const v = prz[i];
-    const txt = v > 0 ? '+' + v : v === 0 ? '꽝' : '💣' + v;
-    ctx.fillStyle = v >= 7 ? '#ffd700' : v > 0 ? '#8ecae6' : v === 0 ? '#93a0c4' : '#ff6b6b';
-    ctx.font = `800 ${(v >= 7 ? 36 : 30) * scale}px Pretendard, sans-serif`;
-    ctx.fillText(txt, x, y);
+    if (!revealing) {
+      ctx.fillStyle = 'rgba(150,160,220,.7)';
+      ctx.font = `800 ${34 * scale}px Pretendard, sans-serif`;
+      ctx.fillText('?', x, y);
+    } else {
+      const loser = prz[i] === 1 || i === latest.loserSlot;
+      ctx.fillStyle = loser ? '#ff6b6b' : '#3ddc84';
+      ctx.font = `800 ${(loser ? 42 : 32) * scale}px Pretendard, sans-serif`;
+      ctx.fillText(loser ? '💣' : '😀', x, y);
+    }
   }
 
   // 공개: 공이 사다리를 타고 내려간다
@@ -3834,15 +4010,38 @@ function drawSadari(latest, ox, oy, scale, dpr) {
       ctx.fillStyle = '#241a05'; ctx.font = `800 ${18 * scale}px Pretendard, sans-serif`;
       ctx.fillText(String(startCnt[s]), bx, by);
     }
-    // 도착: 결과 강조
-    if (t >= 1 && latest.map) {
-      for (let s = 0; s < SAD.L; s++) {
-        if (!startCnt[s]) continue;
-        const dst = latest.map[s];
-        const x = X(dst), y = oy + SAD.prizeY * scale;
-        ctx.strokeStyle = `rgba(255,215,0,${0.5 + 0.4 * Math.sin(performance.now() / 140)})`;
-        ctx.lineWidth = 4 * dpr;
-        ctx.beginPath(); ctx.arc(x, y, 42 * scale, 0, 7); ctx.stroke();
+    // 도착: 꽝 칸을 빨갛게 크게 강조 (걸린 칸)
+    if (t >= 1) {
+      const ls = latest.loserSlot;
+      if (ls != null) {
+        const x = X(ls), y = oy + SAD.prizeY * scale;
+        const pulse = 0.5 + 0.45 * Math.sin(performance.now() / 130);
+        ctx.strokeStyle = `rgba(255,80,80,${pulse})`;
+        ctx.lineWidth = 6 * dpr;
+        ctx.beginPath(); ctx.arc(x, y, 52 * scale, 0, 7); ctx.stroke();
+      }
+    }
+  }
+
+  // 걸린 사람 대문짝만하게 강조 (공이 다 내려온 뒤)
+  if (revealing && latest.caught && latest.caught.length) {
+    const rt = Math.max(0, Math.min(1, (serverNow() - latest.revealAt) / SAD.trace));
+    if (rt >= 1) {
+      const names = latest.caught.map(id => (roster.get(id) || { nick: '?' }).nick).join(', ');
+      const cx = ox + arena.w * scale / 2, cy = oy + (SAD.prizeY + 70) * scale;
+      ctx.textAlign = 'center';
+      const pop = 1 + 0.06 * Math.sin(performance.now() / 120);
+      ctx.save();
+      ctx.translate(cx, cy); ctx.scale(pop, pop);
+      ctx.fillStyle = 'rgba(255,60,60,.92)';
+      ctx.font = `900 ${52 * scale}px Pretendard, sans-serif`;
+      ctx.fillText('💣 ' + names + ' 걸림!', 0, 0);
+      ctx.restore();
+      if (!isHost) {
+        const caughtMe = latest.caught.includes(myId);
+        ctx.fillStyle = caughtMe ? '#ff6b6b' : '#3ddc84';
+        ctx.font = `800 ${34 * scale}px Pretendard, sans-serif`;
+        ctx.fillText(caughtMe ? '앗! 내가 걸렸어요 😭' : '휴~ 나는 안 걸렸다 😎', cx, oy + (SAD.prizeY + 130) * scale);
       }
     }
   }
@@ -4200,10 +4399,16 @@ function drawTiming(latest, ox, oy, scale, dpr) {
       ctx.beginPath(); ctx.arc(x, y, 14 * scale, 0, 7); ctx.fill();
       ctx.fillStyle = i === 0 ? '#ffd700' : '#c8d0e8';
       ctx.font = `800 ${23 * scale}px Pretendard, sans-serif`;
-      ctx.fillText((i === 0 ? '👑 ' : '') + meta.nick, x, y - 34 * scale);
+      // 순위(등수) + 이름 — 한 판 끝날 때 누가 몇 등인지 한눈에
+      ctx.fillText((i === 0 ? '👑 ' : (i + 1) + '위 ') + meta.nick, x, y - 34 * scale);
+      // 실제로 누른 시각(몇 초에 눌렀는지) + 오차
+      const pressed = tSec + diff / 1000;
+      ctx.fillStyle = '#ffd257';
+      ctx.font = `800 ${21 * scale}px Pretendard, sans-serif`;
+      ctx.fillText(pressed.toFixed(2) + '초', x, y + 38 * scale);
       ctx.fillStyle = '#93a0c4';
-      ctx.font = `700 ${20 * scale}px Pretendard, sans-serif`;
-      ctx.fillText((diff >= 0 ? '+' : '') + (diff / 1000).toFixed(2) + '초', x, y + 40 * scale);
+      ctx.font = `700 ${16 * scale}px Pretendard, sans-serif`;
+      ctx.fillText('(' + (diff >= 0 ? '+' : '') + (diff / 1000).toFixed(2) + ')', x, y + 60 * scale);
     });
     // 못 누른 사람
     const missed = latest.results.filter(r2 => r2[1] == null)
@@ -4230,6 +4435,18 @@ function drawTiming(latest, ox, oy, scale, dpr) {
   }
 }
 
+// 실시간 순위를 오른쪽 밴드 세로 높이에 맞게 "최대한 많이" 그리기 위한 계산.
+// 인원이 많으면 행 높이·글자 크기를 줄여 전원(또는 들어가는 만큼)을 보여준다.
+function fitBoard(n, yStart, H, dpr) {
+  const bottom = H - 18 * dpr;
+  const avail = Math.max(0, bottom - yStart);
+  const maxRow = 46 * dpr, minRow = 24 * dpr;
+  let rowH = maxRow;
+  if (n > 0 && n * rowH > avail) rowH = Math.max(minRow, avail / n);
+  const show = Math.max(1, Math.min(n, Math.floor(avail / rowH)));
+  const font = Math.max(14, Math.min(26, Math.round((rowH / dpr) * 0.55)));
+  return { rowH, show, font };
+}
 function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
   const right = ox + arena.w * scale;
   const bandW = W - right;
@@ -4246,14 +4463,15 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
     ctx.fillStyle = '#93a0c4';
     ctx.font = `700 ${20 * dpr}px Pretendard, sans-serif`;
     ctx.fillText('실시간 순위', x0, y); y += 40 * dpr;
-    rows2.slice(0, 8).forEach((r, i) => {
+    const fb2 = fitBoard(rows2.length, y, H, dpr);
+    rows2.slice(0, fb2.show).forEach((r, i) => {
       ctx.fillStyle = i < 3 ? '#ffb03a' : '#c8d0e8';
-      ctx.font = `800 ${26 * dpr}px Pretendard, sans-serif`;
+      ctx.font = `800 ${fb2.font * dpr}px Pretendard, sans-serif`;
       ctx.fillText(`${i + 1}. ${r.nick}`, x0, y);
       ctx.textAlign = 'right';
       ctx.fillText(r.score + '점', W - 24 * dpr, y);
       ctx.textAlign = 'left';
-      y += 46 * dpr;
+      y += fb2.rowH;
     });
     return;
   }
@@ -4274,14 +4492,15 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
     ctx.fillStyle = '#93a0c4';
     ctx.font = `700 ${20 * dpr}px Pretendard, sans-serif`;
     ctx.fillText('실시간 순위', x0, y); y += 40 * dpr;
-    rows.slice(0, 8).forEach((r, i) => {
+    const fbR = fitBoard(rows.length, y, H, dpr);
+    rows.slice(0, fbR.show).forEach((r, i) => {
       ctx.fillStyle = i < 3 ? '#ffb03a' : '#c8d0e8';
-      ctx.font = `800 ${26 * dpr}px Pretendard, sans-serif`;
+      ctx.font = `800 ${fbR.font * dpr}px Pretendard, sans-serif`;
       ctx.fillText(`${r.extra}. ${r.nick}`, x0, y);
       ctx.textAlign = 'right';
       ctx.fillText(r.fin ? '🏁' : `${r.lap}랩`, W - 24 * dpr, y);
       ctx.textAlign = 'left';
-      y += 46 * dpr;
+      y += fbR.rowH;
     });
     return;
   }
@@ -4294,14 +4513,15 @@ function drawHostBoard(latest, ox, oy, scale, dpr, W, H) {
     ctx.fillStyle = '#93a0c4';
     ctx.font = `700 ${20 * dpr}px Pretendard, sans-serif`;
     ctx.fillText('실시간 순위', x0, y); y += 40 * dpr;
-    rows.slice(0, 8).forEach((r, i) => {
+    const fbS = fitBoard(rows.length, y, H, dpr);
+    rows.slice(0, fbS.show).forEach((r, i) => {
       ctx.fillStyle = i < 3 ? '#ffb03a' : '#c8d0e8';
-      ctx.font = `800 ${26 * dpr}px Pretendard, sans-serif`;
+      ctx.font = `800 ${fbS.font * dpr}px Pretendard, sans-serif`;
       ctx.fillText(`${i + 1}. ${r.nick}`, x0, y);
       ctx.textAlign = 'right';
       ctx.fillText(r.extra + unit, W - 24 * dpr, y);
       ctx.textAlign = 'left';
-      y += 46 * dpr;
+      y += fbS.rowH;
     });
   } else {
     // 폭탄·술래잡기는 "몇 명 남았나"가 핵심
@@ -4739,25 +4959,27 @@ function drawRunGame(W, H, dpr) {
       rows.push({ nick: meta.nick, score: pb[5] || 0, m: Math.floor((pb[6] || 0) / 10), coins: pb[11] || 0 });
     }
     rows.sort((p, q) => q.score - p.score);
-    const top = rows.slice(0, 8);
-    if (top.length && W >= 620 * dpr) {   // 좁은 화면에선 생략 (겹침 방지)
+    if (rows.length && W >= 620 * dpr) {   // 좁은 화면에선 생략 (겹침 방지)
       const x0 = W - 340 * dpr;
-      const panelH = (66 + top.length * 44) * dpr;
+      const topY = 56 * dpr, headY = 92 * dpr, rowY0 = headY + 40 * dpr;
+      const fb = fitBoard(rows.length, rowY0, H, dpr);   // 인원수만큼 최대한 많이
+      const top = rows.slice(0, fb.show);
+      const panelH = (rowY0 - topY) + top.length * fb.rowH + 16 * dpr;
       ctx.fillStyle = 'rgba(10,16,40,.6)';
       ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x0 - 20 * dpr, 56 * dpr, 348 * dpr, panelH, 14 * dpr)
-                    : ctx.rect(x0 - 20 * dpr, 56 * dpr, 348 * dpr, panelH);
+      ctx.roundRect ? ctx.roundRect(x0 - 20 * dpr, topY, 348 * dpr, panelH, 14 * dpr)
+                    : ctx.rect(x0 - 20 * dpr, topY, 348 * dpr, panelH);
       ctx.fill();
       ctx.textAlign = 'left';
-      let y = 92 * dpr;
+      let y = headY;
       ctx.fillStyle = '#93a0c4';
       ctx.font = `700 ${19 * dpr}px Pretendard, sans-serif`;
       ctx.fillText('실시간 순위', x0, y); y += 40 * dpr;
       top.forEach((r, i) => {
         ctx.fillStyle = i < 3 ? '#ffb03a' : '#c8d0e8';
-        ctx.font = `800 ${23 * dpr}px Pretendard, sans-serif`;
+        ctx.font = `800 ${fb.font * dpr}px Pretendard, sans-serif`;
         ctx.fillText(`${i + 1}. ${r.nick} — ${r.m}m·🪙${r.coins}`, x0, y);
-        y += 44 * dpr;
+        y += fb.rowH;
       });
     }
 
@@ -5118,7 +5340,8 @@ function drawRaceCars(bMsg, t, posA, ox, oy, scale, dpr, newest) {
     ctx.fillStyle = id === myId ? '#ffb03a' : '#fff';
     ctx.font = `${id === myId ? 800 : 600} ${13 * dpr}px Pretendard, sans-serif`;
     ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 3 * dpr;
-    const label = (finRank ? '🏁 ' : rankLive <= 3 ? ['🥇', '🥈', '🥉'][rankLive - 1] + ' ' : '') + meta.nick;
+    // 완주=🏁, 1~3위=메달, 그 외에는 현재 등수를 숫자로 — 전원 순위가 메인화면에 보이도록
+    const label = (finRank ? '🏁 ' : (rankLive >= 1 && rankLive <= 3) ? ['🥇', '🥈', '🥉'][rankLive - 1] + ' ' : (rankLive ? rankLive + '위 ' : '')) + meta.nick;
     ctx.strokeText(label, px, py - carLen * .62);
     ctx.fillText(label, px, py - carLen * .62);
   }
@@ -5253,6 +5476,20 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
       const t = dropPct / 100;
       const depth = t === 0 ? 0 : (t <= .5 ? t * 2 : (1 - t) * 2);
       const tipY = topY + reach * depth;
+      // 내 기계 강조: 학생 본인의 집게 레인을 세로 하이라이트 기둥으로 표시 (내 집게가 어느 것인지 한눈에)
+      const isMine = id === myId && !isHost;
+      if (isMine) {
+        ctx.save();
+        ctx.globalAlpha = 0.14 + 0.05 * Math.sin(performance.now() / 300);  // 은은하게 반짝
+        ctx.fillStyle = color;
+        ctx.fillRect(x - 28 * scale, topY - 4 * scale, 56 * scale, reach + 8 * scale);
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 3 * dpr;
+        ctx.setLineDash([6 * dpr, 5 * dpr]);
+        ctx.strokeRect(x - 28 * scale, topY - 4 * scale, 56 * scale, reach + 8 * scale);
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
       // 줄
       ctx.strokeStyle = 'rgba(200,208,232,.5)'; ctx.lineWidth = 2 * dpr;
       ctx.beginPath(); ctx.moveTo(x, topY); ctx.lineTo(x, tipY); ctx.stroke();
@@ -5275,11 +5512,17 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
         ctx.moveTo(x + cw * open, tipY); ctx.lineTo(x + cw * open * .6, tipY + ch);
         ctx.stroke();
       }
-      // 이름
-      ctx.fillStyle = id === myId ? '#ffb03a' : '#c8d0e8';
-      ctx.font = `${id === myId ? 800 : 500} ${12 * dpr}px Pretendard, sans-serif`;
+      // 내 집게 끝에 반짝이는 링 + "내 집게 ⬇️" 라벨
+      if (isMine) {
+        const rr = (16 + 4 * Math.sin(performance.now() / 200)) * scale;
+        ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 3.5 * dpr;
+        ctx.beginPath(); ctx.arc(x, tipY + 6 * scale, rr, 0, 7); ctx.stroke();
+      }
+      // 이름 (본인은 "내 집게"로 크게)
+      ctx.fillStyle = isMine ? '#ffb03a' : id === myId ? '#ffb03a' : '#c8d0e8';
+      ctx.font = `${id === myId ? 800 : 500} ${(isMine ? 16 : 12) * dpr}px Pretendard, sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText(meta.nick, x, topY - 12 * scale);
+      ctx.fillText(isMine ? '⬇️ 내 집게' : meta.nick, x, topY - 12 * scale);
       if (got) {
         ctx.fillStyle = '#3ddc84';
         ctx.font = `800 ${24 * dpr}px Pretendard, sans-serif`;
