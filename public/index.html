@@ -428,6 +428,24 @@
     font-size: 26px; font-weight: 800; text-align: center; line-height: 1.6;
     text-shadow: 0 0 30px rgba(255,176,58,.4);
   }
+  /* 우승자 캐릭터 (포디움) + 등장 팝 애니메이션 */
+  #podiumFace {
+    width: 132px; height: 132px; object-fit: contain; image-rendering: pixelated;
+    filter: drop-shadow(0 0 26px rgba(255,210,74,.6));
+  }
+  body.host #podiumFace { width: 190px; height: 190px; }
+  #resultHost.pop #podiumFace, #resultHost.pop #trophyImg { animation: podiumPop .55s cubic-bezier(.2,1.5,.4,1) both; }
+  #resultHost.pop #trophyImg { animation-delay: .08s; }
+  @keyframes podiumPop { 0% { transform: scale(.4) rotate(-12deg); opacity: 0; } 70% { transform: scale(1.12) rotate(4deg); } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+  /* 색종이 */
+  .confetti { position: fixed; top: -20px; width: 10px; height: 14px; border-radius: 2px; z-index: 40; pointer-events: none; will-change: transform; }
+  @keyframes confettiFall { to { transform: translateY(112vh) rotate(720deg); opacity: .9; } }
+  /* 챔피언/테트리스 캐릭터 아바타 */
+  .champ-face { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0; }
+  .tet-face { width: 18px; height: 18px; object-fit: contain; image-rendering: pixelated; vertical-align: middle; margin-right: 3px; }
+  #tetHostGrid.compact .tet-face { display: none; }
+  #myResultFace { width: 96px; height: 96px; object-fit: contain; image-rendering: pixelated;
+    background: #1a2140; border-radius: 18px; padding: 5px; border: 2px solid #2c3763; }
   .rank-list { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 6px; }
   .rank-row { display: flex; align-items: center; gap: 12px; background: #1a2140; border-radius: 12px; padding: 10px 16px; font-size: 16px; }
   .rank-row .r { font-weight: 800; width: 40px; color: #ffb03a; flex-shrink: 0; }
@@ -866,6 +884,7 @@ body.host #tetLogo { height: 72px; }
 <div class="view" id="result">
   <div id="resultHost" style="display:none; flex-direction:column; align-items:center; gap:16px; width:100%;">
     <img id="trophyImg" src="sprites/trophy.png" alt="" onerror="this.remove()">
+    <img id="podiumFace" alt="" style="display:none">
     <div class="podium" id="podium"></div>
     <div class="result-cols">
       <div class="rank-list" id="rankList"></div>
@@ -880,6 +899,7 @@ body.host #tetLogo { height: 72px; }
     </div>
   </div>
   <div id="resultPlayer" style="display:none; flex-direction:column; align-items:center; gap:10px;">
+    <img id="myResultFace" alt="" style="display:none">
     <div class="sub">내 순위</div>
     <div class="my-rank" id="myRank">-</div>
     <div class="sub" id="myRankSub" style="font-size:17px;color:#c8d0e8"></div>
@@ -978,6 +998,7 @@ let ws = null;
 let isHost = false;
 let myId = null, myToken = null, myNick = '', roomCode = '';
 let myCi = 0;   // 내가 고른 캐릭터 번호(ci)
+let rosterPrevConn = 0;   // 교사 화면: 직전 접속 학생 수 (입장 효과음 판정용)
 let hostToken = null;
 let timeOffset = 0, offsetSamples = [];
 let roster = new Map();
@@ -1235,7 +1256,7 @@ function pickChar(ci, silent) {
   localStorage.setItem('ca_char', String(myCi));
   send({ type: 'set_char', ci: myCi });
   updateMyAvatar();
-  if (!silent) { show('playerLobby'); }
+  if (!silent) { SFX.ok(); show('playerLobby'); }
 }
 function applySavedChar() {
   const saved = localStorage.getItem('ca_char');
@@ -1391,13 +1412,20 @@ function handle(m) {
         else openCharSelect();
       }
       break;
-    case 'roster':
+    case 'roster': {
       roster = new Map(m.players.map(p => [p.id, p]));
       phase = m.state;
       if (m.champ) { champ = m.champ; saveHostSession(); }   // 누적 갱신 시 교사 화면에 백업 (재배포 복원용)
+      // 교사 화면: 로비에서 학생이 새로 들어오면 "딩" (참가자 수가 늘 때만)
+      if (isHost && phase === 'lobby') {
+        const conn = m.players.filter(p => p.connected).length;
+        if (conn > (rosterPrevConn || 0)) SFX.coin();
+        rosterPrevConn = conn;
+      } else rosterPrevConn = 0;
       renderChampLobby();
       if (isHost && phase === 'lobby') renderHostLobby();
       break;
+    }
     case 'phase': {
       const prev = phase, prevGame = gameType;
       phase = m.state; phaseEndAt = m.endAt || 0;
@@ -2109,7 +2137,9 @@ function renderTetHost(m) {
     if (!el) {
       const meta = roster.get(id) || { nick: '?', ci: 0 };
       el = document.createElement('div'); el.className = 'tet-mini';
-      el.innerHTML = `<span class="nm" style="color:${COLORS[meta.ci % COLORS.length]}">${esc(meta.nick)}</span>
+      const tsrc = charSrc(meta.ci);
+      const tface = tsrc ? `<img class="tet-face" src="${tsrc}" alt="">` : '';
+      el.innerHTML = `<span class="nm" style="color:${COLORS[meta.ci % COLORS.length]}">${tface}${esc(meta.nick)}</span>
         <canvas width="${TET_C_W * mini}" height="${TET_C_H * mini}"></canvas><span class="sc"></span>`;
       grid.appendChild(el); tetMinis[id] = el; el._mini = mini;
     }
@@ -2564,7 +2594,7 @@ function renderGameGrid() {
     el.innerHTML = `<div class="gc-head"><img class="gc-ico" src="sprites/${CARD_SPR[key]}.png" alt=""
         onerror="this.outerHTML='<span style=font-size:30px>${meta.icon}</span>'">
       <b>${meta.name}</b><span class="badge" style="margin-left:auto">${meta.badge}</span></div><p>${meta.desc}</p>`;
-    el.onclick = () => { selectedGame = key; renderGameGrid(); };
+    el.onclick = () => { selectedGame = key; SFX.ok(); renderGameGrid(); };
     // 퀴즈쇼: 카테고리·문제 수 선택
     if (key === 'quiz') {
       const chip = (label, on, kind, val) => `<button data-kind="${kind}" data-v="${val == null ? label : val}" style="padding:4px 10px;border-radius:99px;border:1.5px solid ${on ? '#ffb03a' : '#3a4680'};background:${on ? '#ffb03a' : 'transparent'};color:${on ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${label}</button>`;
@@ -2695,9 +2725,12 @@ function champRowsHTML(arr, limit) {
   return arr.slice(0, limit).map((c, i) => {
     const [id, nick, ci, pts, wins] = c;
     if (pts !== prevPts) { rank = i + 1; prevPts = pts; }
+    const src = charSrc(ci);
+    const face = src ? `<img class="champ-face" src="${src}" alt="">`
+      : `<span class="cd" style="background:${COLORS[ci % COLORS.length]}"></span>`;
     return `<div class="champ-row${rank === 1 ? ' top1' : ''}">
       <span class="cr">${rank === 1 ? '👑' : rank + '위'}</span>
-      <span class="cd" style="background:${COLORS[ci % COLORS.length]}"></span>
+      ${face}
       <span class="cn">${esc(nick)}</span>
       ${wins ? `<span class="cw">🥇×${wins}</span>` : ''}
       <span class="cp">${pts}점</span>
@@ -2713,6 +2746,20 @@ function renderChampLobby() {
 $('btnChampReset').onclick = async () => {
   if (await uiConfirm('챔피언 점수판을 초기화할까요?', '다음 반 수업을 시작하기 전에 쓰세요.', { ok: '초기화', danger: true, icon: '🏆' })) send({ type: 'champ_reset' });
 };
+// 우승 축하 색종이 (교사 화면) — CSS 애니메이션만, 라이브러리 없음
+function confettiBurst() {
+  const colors = ['#ffd24a', '#ff6b6b', '#3ddc84', '#5a8bff', '#b45cf0', '#ff9b2e', '#3ddce0'];
+  for (let i = 0; i < 24; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = Math.random() * 100 + 'vw';
+    c.style.background = colors[i % colors.length];
+    const dur = 1.7 + Math.random() * 1.5;
+    c.style.animation = `confettiFall ${dur}s linear ${Math.random() * 0.5}s forwards`;
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), (dur + 1) * 1000);
+  }
+}
 function showResult(ranking, champArr) {
   show('result');
   if (isHost) SFX.fanfare();   // 결과 팡파레는 TV만 (전 폰이 동시에 울리면 소음)
@@ -2721,7 +2768,13 @@ function showResult(ranking, champArr) {
     $('resultHost').style.display = 'flex';
     $('resultPlayer').style.display = 'none';
     const top = ranking.filter(r => r.rank === 1);
-    $('podium').innerHTML = top.length ? `우승: ${top.map(r => esc(r.nick)).join(', ')}` : '게임 종료!';
+    // 우승자 캐릭터를 크게 (여러 명 공동우승이면 첫 번째)
+    const wf = $('podiumFace'), wsrc = top.length ? charSrc(top[0].ci) : '';
+    if (wsrc) { wf.src = wsrc; wf.style.display = ''; } else wf.style.display = 'none';
+    $('podium').innerHTML = top.length ? `🏆 우승: ${top.map(r => esc(r.nick)).join(', ')}` : '게임 종료!';
+    // 등장 팝 애니메이션 + 색종이
+    const rh = $('resultHost'); rh.classList.remove('pop'); void rh.offsetWidth; rh.classList.add('pop');
+    if (top.length) confettiBurst();
     $('rankList').innerHTML = ranking.map(r => {
       const src = charSrc(r.ci);
       const face = src ? `<img class="rank-face" src="${src}" alt="">`
@@ -2742,6 +2795,10 @@ function showResult(ranking, champArr) {
     $('resultHost').style.display = 'none';
     $('resultPlayer').style.display = 'flex';
     const me = ranking.find(r => r.id === myId);
+    // 내 캐릭터 표시 + 1등이면 내 폰에도 팡파레 (우승자만 — 40대가 동시에 울리진 않게)
+    const mf = $('myResultFace'), msrc = charSrc(myCi);
+    if (msrc) { mf.src = msrc; mf.style.display = ''; } else mf.style.display = 'none';
+    if (me && me.rank === 1) SFX.fanfare();
     $('myRank').textContent = me ? me.rank + '위' : '-';
     $('myRankSub').textContent = me ? `${ranking.length}명 중 · ${me.label}` : '';
     // 내 누적 포인트·순위
@@ -3493,7 +3550,8 @@ function draw() {
       if (boosting > sndPrev.boosts) SFX.swat();
       sndPrev.boosts = boosting;
       const fin = latest.players.filter(pp => pp[10] > 0).length;
-      if (fin > sndPrev.raceFin) SFX.ok();
+      if (sndPrev.raceFin < 1 && fin >= 1) SFX.fanfare();   // 1등 결승선 통과는 팡파레
+      else if (fin > sndPrev.raceFin) SFX.ok();             // 그 뒤 완주자는 가벼운 소리
       sndPrev.raceFin = fin;
       const spins = latest.players.filter(pp => pp[11] === 1).length;
       if (spins > (sndPrev.spins || 0)) SFX.miss();
@@ -3855,7 +3913,7 @@ function drawChimpTiles(latest, ox, oy, scale, dpr) {
     if (chimpPending >= 0) chimpConfirmed[chimpPending] = myProg;
     chimpSeenIdx = myProg;
   }
-  if (myFail && chimpFailCell < 0 && chimpPending >= 0) chimpFailCell = chimpPending;
+  if (myFail && chimpFailCell < 0 && chimpPending >= 0) { chimpFailCell = chimpPending; SFX.miss(); }   // 틀린 순간 한 번
 
   const R = 62 * scale;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
