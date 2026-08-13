@@ -3,7 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
-<title>교실 아케이드</title>
+<title>Class Arcade — 우리 반 실시간 미니게임</title>
+<meta name="description" content="폰으로 QR 찍고 다 같이! 교실용 실시간 파티게임 25종을 TV에 띄우고 바로 시작하세요.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Class Arcade">
+<meta property="og:title" content="Class Arcade — 우리 반 실시간 미니게임">
+<meta property="og:description" content="폰으로 QR 찍고 다 같이! 교실용 실시간 파티게임 25종을 TV에 띄우고 바로 시작하세요.">
+<meta property="og:image" content="https://game.kimju.kr/sprites/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://game.kimju.kr/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Class Arcade — 우리 반 실시간 미니게임">
+<meta name="twitter:description" content="폰으로 QR 찍고 다 같이! 교실용 실시간 파티게임 25종.">
+<meta name="twitter:image" content="https://game.kimju.kr/sprites/og.jpg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>
@@ -137,21 +150,39 @@
   .gtab.on { background: #ffb03a; border-color: #ffb03a; color: #241a05; }
   .gtab .n { opacity: .75; font-weight: 600; margin-left: 4px; font-size: 11px; }
 
-  /* 게임 선택 카드 */
-  .game-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; width: 100%; max-width: 720px; }
+  /* 게임 선택 — 썸네일 카드 */
+  .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; width: 100%; max-width: 720px; }
   .game-card {
-    background: #1a2140; border: 2px solid #2c3763; border-radius: 16px;
-    padding: 14px 16px; cursor: pointer; text-align: left; transition: transform .08s;
+    background: #1a2140; border: 2px solid #2c3763; border-radius: 14px;
+    overflow: hidden; cursor: pointer; text-align: left; transition: transform .08s;
   }
   .game-card:active { transform: scale(.98); }
   .game-card.sel {
-    border-color: #3ddc84; background: #1d2b46;
-    box-shadow: 0 0 0 3px rgba(61,220,132,.18), 0 8px 22px rgba(0,0,0,.35);
+    border-color: #ffb03a;
+    box-shadow: 0 0 0 3px rgba(255,176,58,.22), 0 8px 22px rgba(0,0,0,.4);
     transform: translateY(-2px);
   }
-  .game-card b { font-size: 17px; }
-  .game-card .badge { color: #93a0c4; font-size: 12px; font-weight: 600; }
-  .game-card p { color: #93a0c4; font-size: 13px; margin-top: 5px; line-height: 1.45; }
+  .gc-thumb { position: relative; aspect-ratio: 16 / 10; background: #20284a; }
+  .gc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gc-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  .gc-thumb .badge {
+    position: absolute; top: 6px; right: 6px; background: rgba(13,19,39,.82); color: #fff;
+    font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; backdrop-filter: blur(2px);
+  }
+  .gc-name { padding: 8px 10px 9px; font-weight: 800; font-size: 14px; color: #e8ecf8; }
+  /* 하단 선택 바 (옵션 + 시작) */
+  .sel-bar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: #101733; border: 1.5px solid #ffb03a; border-radius: 14px;
+    padding: 10px 14px; width: 100%; max-width: 720px;
+    position: sticky; bottom: 8px; z-index: 5; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  }
+  .sb-th { width: 62px; height: 40px; border-radius: 8px; background: #20284a center/cover no-repeat; flex: 0 0 auto; }
+  .sb-nm { font-weight: 900; font-size: 16px; white-space: nowrap; }
+  .sb-opt { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .sb-opt .olab { color: #93a0c4; font-size: 12px; margin-right: 2px; }
+  .sel-bar #btnStart { margin-left: auto; width: auto; max-width: none; flex: 0 0 auto; }
+  .art-logo { filter: drop-shadow(0 6px 18px rgba(255,176,58,.28)); }
 
   /* 게임 화면 (캔버스형) */
   #game { position: fixed; inset: 0; display: none; touch-action: none;
@@ -553,7 +584,8 @@
     body.host #playerCount { grid-area: count; font-size: 18px; }
     body.host #btnCloseRoom { grid-area: close; }
     body.host #hostRight { grid-area: right; width: 100%; }
-    body.host .game-grid { grid-template-columns: 1fr 1fr; max-width: none; }
+    body.host .game-grid { grid-template-columns: repeat(3, 1fr); max-width: none; }
+    body.host .sel-bar { max-width: none; }
     body.host .game-tabs { max-width: none; justify-content: flex-start; }
     body.host .gtab { font-size: 15px; padding: 8px 16px; }
     body.host .game-card p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -562,7 +594,7 @@
     body.host #btnStart { max-width: none; font-size: 21px; padding: 18px; }
   }
   @media (min-width: 1300px) {
-    body.host .game-grid { grid-template-columns: 1fr 1fr 1fr; }
+    body.host .game-grid { grid-template-columns: repeat(4, 1fr); }
   }
   #hostRight { display: flex; flex-direction: column; gap: 14px; align-items: center; width: 100%; max-width: 720px; }
 /* ---- 블록 배틀 (CUBE STACK) — 넷마블풍 글로시 ---- */
@@ -677,9 +709,9 @@ body.host #tetLogo { height: 72px; }
 
 <!-- 첫 화면 -->
 <div class="view on" id="home">
-  <img id="homeLogo" class="pix-logo" src="sprites/logo.png" alt="교실 아케이드"
+  <img id="homeLogo" class="art-logo" src="sprites/logo-class.png" alt="Class Arcade"
        onerror="this.remove(); document.getElementById('homeTitle').style.display='block'">
-  <h1 class="logo" id="homeTitle" style="display:none">교실 <span class="accent">아케이드</span></h1>
+  <h1 class="logo" id="homeTitle" style="display:none">Class <span class="accent">Arcade</span></h1>
   <p class="sub">우리 반이 한 방에 모여 실시간 미니게임!</p>
   <div class="role-card teacher" id="btnCreate">
     <b>🎮 방 만들기</b> <span style="float:right;color:#ffb03a;font-size:13px;font-weight:700">선생님용</span>
@@ -704,7 +736,7 @@ body.host #tetLogo { height: 72px; }
 
 <!-- 호스트 로비 -->
 <div class="view" id="hostLobby">
-  <img id="lobbyLogo" class="pix-logo" src="sprites/logo.png" alt="교실 아케이드" onerror="this.remove()">
+  <img id="lobbyLogo" class="art-logo" src="sprites/logo-class.png" alt="Class Arcade" onerror="this.remove()">
   <div class="sub">휴대폰 카메라로 QR을 찍거나, 사이트에서 <b>게임 들어가기</b> → 코드 입력</div>
   <div class="code-big" id="codeBig">0000</div>
   <div class="qr-wrap"><canvas id="qr"></canvas></div>
@@ -718,7 +750,12 @@ body.host #tetLogo { height: 72px; }
     <div class="chips" id="chips"></div>
     <div class="game-tabs" id="gameTabs"></div>
     <div class="game-grid" id="gameGrid"></div>
-    <button class="btn green" id="btnStart" disabled>게임 시작</button>
+    <div class="sel-bar" id="selBar">
+      <div class="sb-th" id="sbThumb"></div>
+      <div class="sb-nm" id="sbName">게임을 골라요</div>
+      <div class="sb-opt" id="sbOpt"></div>
+      <button class="btn green" id="btnStart" disabled>게임 시작</button>
+    </div>
   </div>
   <button class="btn danger-ghost" id="btnCloseRoom">방 닫기 (모두 내보내기)</button>
 </div>
@@ -2609,107 +2646,79 @@ function renderGameGrid() {
     $('gameTabs').appendChild(b);
   }
   $('gameGrid').innerHTML = '';
-  const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
-                     race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
-                     sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox', timing: 'timing', run: 'runner',
-                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs', tetris: 'tet', draw: 'draw', cray: 'crayballoon' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     if (gameTabSel !== 'all' && !(GAME_CAT_OF[key] || []).includes(gameTabSel)) continue;
     const el = document.createElement('div');
     el.className = 'game-card' + (key === selectedGame ? ' sel' : '');
-    el.innerHTML = `<div class="gc-head"><img class="gc-ico" src="sprites/${CARD_SPR[key]}.png" alt=""
-        onerror="this.outerHTML='<span style=font-size:30px>${meta.icon}</span>'">
-      <b>${meta.name}</b><span class="badge" style="margin-left:auto">${meta.badge}</span></div><p>${meta.desc}</p>`;
+    el.innerHTML = `<div class="gc-thumb">
+        <img src="sprites/thumb-${key}.jpg" alt="" loading="lazy"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="gc-ph" style="display:none">${meta.icon}</div>
+        <span class="badge">${meta.badge}</span></div>
+      <div class="gc-name">${meta.name}</div>`;
     el.onclick = () => { selectedGame = key; SFX.ok(); renderGameGrid(); };
-    // 퀴즈쇼: 카테고리·문제 수 선택
-    if (key === 'quiz') {
-      const chip = (label, on, kind, val) => `<button data-kind="${kind}" data-v="${val == null ? label : val}" style="padding:4px 10px;border-radius:99px;border:1.5px solid ${on ? '#ffb03a' : '#3a4680'};background:${on ? '#ffb03a' : 'transparent'};color:${on ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${label}</button>`;
-      const opt = document.createElement('div');
-      opt.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:8px';
-      opt.innerHTML =
-        `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="color:#93a0c4;font-size:13px">주제</span>${QUIZ_CATS.map(c => chip(c, c === quizCatSel, 'cat', c)).join('')}</div>` +
-        `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="color:#93a0c4;font-size:13px">난이도</span>${['믹스', '하', '중', '상'].map(d => chip(d, d === quizDiffSel, 'diff', d)).join('')}</div>` +
-        `<div style="display:flex;gap:5px;align-items:center"><span style="color:#93a0c4;font-size:13px">문제</span>${[5, 10, 15].map(n => chip(n + '개', n === quizCountSel, 'cnt', n)).join('')}</div>`;
-      opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
-        ev.stopPropagation();
-        const kind = b2.dataset.kind, v = b2.dataset.v;
-        if (kind === 'cnt') { quizCountSel = parseInt(v); localStorage.setItem('ca_qcnt', String(quizCountSel)); }
-        else if (kind === 'diff') { quizDiffSel = v; localStorage.setItem('ca_qdiff', v); }
-        else { quizCatSel = v; localStorage.setItem('ca_qcat', v); }
-        selectedGame = 'quiz';
-        renderGameGrid();
-      });
-      // 내 문제: 붙여넣기 입력창 (AI로 만든 문제를 그대로 붙여넣는 용도)
-      if (quizCatSel === '내문제') {
-        const ta = document.createElement('textarea');
-        ta.placeholder = '한 줄에 한 문제씩 붙여넣기:\n문제 / 정답 / 오답1 / 오답2 / 오답3\n예) 광합성에 필요한 기체는? / 이산화탄소 / 산소 / 질소 / 수소';
-        ta.value = localStorage.getItem('ca_customq') || '';
-        ta.style.cssText = 'width:100%;height:96px;background:#141a35;border:1.5px solid #3a4680;border-radius:10px;color:#e8ecf8;font-size:13px;padding:8px 10px;font-family:inherit;resize:vertical;line-height:1.5';
-        ta.onpointerdown = ev => ev.stopPropagation();
-        ta.onclick = ev => ev.stopPropagation();
-        const cnt = document.createElement('div');
-        const refresh = () => {
-          const n = parseCustomQ(ta.value).length;
-          cnt.textContent = n >= 3 ? `✅ 유효한 문제 ${n}개` : `⚠️ 유효한 문제 ${n}개 — 3개 이상 필요해요`;
-          cnt.style.cssText = `font-size:12px;font-weight:700;color:${n >= 3 ? '#3ddc84' : '#ffb03a'}`;
-        };
-        ta.oninput = () => { localStorage.setItem('ca_customq', ta.value); refresh(); };
-        refresh();
-        const tip = document.createElement('div');
-        tip.textContent = '💡 AI에게 "형식: 문제/정답/오답1/오답2/오답3 으로 우리 반 복습문제 10개"라고 시켜서 붙여넣으면 끝!';
-        tip.style.cssText = 'font-size:12px;color:#93a0c4';
-        opt.appendChild(ta); opt.appendChild(cnt); opt.appendChild(tip);
-      }
-      el.appendChild(opt);
-    }
-    // 통아저씨: 위험도(1인당 칼 개수) 선택
-    if (key === 'pirate') {
-      const opt = document.createElement('div');
-      opt.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:8px';
-      opt.innerHTML = '<span style="color:#93a0c4;font-size:13px">1인당 칼</span>' +
-        [1, 2, 3].map(k => `<button data-k="${k}" style="padding:4px 10px;border-radius:99px;border:1.5px solid ${k === pirateKnives ? '#ffb03a' : '#3a4680'};background:${k === pirateKnives ? '#ffb03a' : 'transparent'};color:${k === pirateKnives ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${k}자루</button>`).join('');
-      opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
-        ev.stopPropagation();
-        pirateKnives = +b2.dataset.k;
-        localStorage.setItem('ca_knives', String(pirateKnives));
-        selectedGame = 'pirate';
-        renderGameGrid();
-      });
-      el.appendChild(opt);
-    }
-    // 물풍선 대작전: 개인전/팀전 선택
-    if (key === 'cray') {
-      const opt = document.createElement('div');
-      opt.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px';
-      opt.innerHTML = '<span style="color:#93a0c4;font-size:13px">모드</span>' +
-        [['solo', '🥇 개인전'], ['team', '🔴🔵 팀전']].map(([v, lb]) => `<button data-m="${v}" style="padding:4px 12px;border-radius:99px;border:1.5px solid ${v === crayModeSel ? '#ffb03a' : '#3a4680'};background:${v === crayModeSel ? '#ffb03a' : 'transparent'};color:${v === crayModeSel ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${lb}</button>`).join('');
-      opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
-        ev.stopPropagation();
-        crayModeSel = b2.dataset.m;
-        localStorage.setItem('ca_craymode', crayModeSel);
-        selectedGame = 'cray';
-        renderGameGrid();
-      });
-      el.appendChild(opt);
-    }
-    // OX 서바이벌: 난이도 선택 (어려울수록 제한시간도 짧아짐)
-    if (key === 'ox') {
-      const opt = document.createElement('div');
-      opt.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px';
-      opt.innerHTML = '<span style="color:#93a0c4;font-size:13px">난이도</span>' +
-        ['믹스', '하', '중', '상'].map(d => `<button data-d="${d}" style="padding:4px 12px;border-radius:99px;border:1.5px solid ${d === oxDiffSel ? '#ffb03a' : '#3a4680'};background:${d === oxDiffSel ? '#ffb03a' : 'transparent'};color:${d === oxDiffSel ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${d}</button>`).join('');
-      opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
-        ev.stopPropagation();
-        oxDiffSel = b2.dataset.d;
-        localStorage.setItem('ca_oxdiff', oxDiffSel);
-        selectedGame = 'ox';
-        renderGameGrid();
-      });
-      el.appendChild(opt);
-    }
     $('gameGrid').appendChild(el);
   }
-  $('btnStart').textContent = `${GAMES_META[selectedGame].icon} ${GAMES_META[selectedGame].name} 시작`;
+  renderSelBar();
+}
+
+// 하단 선택 바: 고른 게임의 썸네일·이름·옵션·시작 버튼을 갱신
+function renderSelBar() {
+  const key = selectedGame, meta = GAMES_META[key];
+  $('sbThumb').style.backgroundImage = `url('sprites/thumb-${key}.jpg')`;
+  $('sbName').textContent = `${meta.icon} ${meta.name}`;
+  $('btnStart').textContent = `▶ ${meta.name} 시작`;
+  const opt = $('sbOpt'); opt.innerHTML = '';
+  renderGameOptions(key, opt);
+}
+
+// 게임별 옵션 UI를 선택 바 안에 렌더 (바뀌면 선택 바만 다시 그린다)
+function renderGameOptions(key, opt) {
+  const cs = on => `padding:4px 10px;border-radius:99px;border:1.5px solid ${on ? '#ffb03a' : '#3a4680'};background:${on ? '#ffb03a' : 'transparent'};color:${on ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer`;
+  const chip = (label, on, val) => `<button data-v="${val == null ? label : val}" style="${cs(on)}">${label}</button>`;
+  if (key === 'quiz') {
+    const box = document.createElement('div');
+    box.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+    box.innerHTML =
+      `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span class="olab">주제</span>${QUIZ_CATS.map(c => chip(c, c === quizCatSel, 'cat|' + c)).join('')}</div>` +
+      `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span class="olab">난이도</span>${['믹스', '하', '중', '상'].map(d => chip(d, d === quizDiffSel, 'diff|' + d)).join('')}</div>` +
+      `<div style="display:flex;gap:5px;align-items:center"><span class="olab">문제</span>${[5, 10, 15].map(n => chip(n + '개', n === quizCountSel, 'cnt|' + n)).join('')}</div>`;
+    box.querySelectorAll('button').forEach(b2 => b2.onclick = () => {
+      const [kind, v] = b2.dataset.v.split('|');
+      if (kind === 'cnt') { quizCountSel = parseInt(v); localStorage.setItem('ca_qcnt', String(quizCountSel)); }
+      else if (kind === 'diff') { quizDiffSel = v; localStorage.setItem('ca_qdiff', v); }
+      else { quizCatSel = v; localStorage.setItem('ca_qcat', v); }
+      renderSelBar();
+    });
+    opt.appendChild(box);
+    if (quizCatSel === '내문제') {
+      const ta = document.createElement('textarea');
+      ta.placeholder = '한 줄에 한 문제씩: 문제 / 정답 / 오답1 / 오답2 / 오답3';
+      ta.value = localStorage.getItem('ca_customq') || '';
+      ta.style.cssText = 'width:100%;min-width:280px;height:78px;background:#141a35;border:1.5px solid #3a4680;border-radius:10px;color:#e8ecf8;font-size:13px;padding:8px 10px;font-family:inherit;resize:vertical;line-height:1.5';
+      const cnt = document.createElement('div');
+      const refresh = () => {
+        const n = parseCustomQ(ta.value).length;
+        cnt.textContent = n >= 3 ? `✅ 유효한 문제 ${n}개` : `⚠️ 유효한 문제 ${n}개 — 3개 이상 필요해요`;
+        cnt.style.cssText = `font-size:12px;font-weight:700;color:${n >= 3 ? '#3ddc84' : '#ffb03a'}`;
+      };
+      ta.oninput = () => { localStorage.setItem('ca_customq', ta.value); refresh(); };
+      refresh();
+      const tip = document.createElement('div');
+      tip.textContent = '💡 AI에게 "문제/정답/오답1/오답2/오답3 형식으로 복습문제 10개"라고 시켜 붙여넣으면 끝!';
+      tip.style.cssText = 'font-size:12px;color:#93a0c4';
+      box.appendChild(ta); box.appendChild(cnt); box.appendChild(tip);
+    }
+  } else if (key === 'pirate') {
+    opt.innerHTML = '<span class="olab">1인당 칼</span>' + [1, 2, 3].map(k => chip(k + '자루', k === pirateKnives, k)).join('');
+    opt.querySelectorAll('button').forEach(b2 => b2.onclick = () => { pirateKnives = +b2.dataset.v; localStorage.setItem('ca_knives', String(pirateKnives)); renderSelBar(); });
+  } else if (key === 'cray') {
+    opt.innerHTML = '<span class="olab">모드</span>' + [['solo', '🥇 개인전'], ['team', '🔴🔵 팀전']].map(([v, lb]) => chip(lb, v === crayModeSel, v)).join('');
+    opt.querySelectorAll('button').forEach(b2 => b2.onclick = () => { crayModeSel = b2.dataset.v; localStorage.setItem('ca_craymode', crayModeSel); renderSelBar(); });
+  } else if (key === 'ox') {
+    opt.innerHTML = '<span class="olab">난이도</span>' + ['믹스', '하', '중', '상'].map(d => chip(d, d === oxDiffSel, d)).join('');
+    opt.querySelectorAll('button').forEach(b2 => b2.onclick = () => { oxDiffSel = b2.dataset.v; localStorage.setItem('ca_oxdiff', oxDiffSel); renderSelBar(); });
+  }
 }
 
 function renderHostLobby() {
