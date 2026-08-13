@@ -957,10 +957,12 @@ const GAMES_META = {
   pairs: { icon: '🃏', name: '같은 그림 찾기', desc: '뒤집힌 카드 20장에서 짝을 찾아라! 배치는 모두 동일 — 적게 뒤집고 빨리 끝낼수록 고득점. 탈락 없음.', badge: '75초', rule: '카드 두 장을 뒤집어 짝을 맞추세요!\n먼저 다 찾으면 완주 보너스' },
   tetris: { icon: '🧱', name: '블록 배틀', desc: '전원 동시 테트리스 대전! 2줄 이상 지우면 친구 보드에 쓰레기 줄 공격. 갈수록 빨라진다 — 최후의 1인은 누구?', badge: '실시간 대전', rule: '◀▶ 이동 · ⟳ 회전 · ▼ 빨리 내리기 · 쿵! 즉시 낙하\n2줄 이상 지우면 친구에게 공격!' },
   draw: { icon: '🎨', name: '그림 퀴즈', desc: '선생님이 지목한 친구가 몰래 답을 정하고 그림으로만 설명! 그림이 TV에 실시간으로 — 빨리 맞힐수록 고득점.', badge: '캐치마인드', rule: '출제자: 답을 정하고 그림으로 표현!\n나머지: 그림을 보고 폰에 정답 입력!' },
+  cray: { icon: '💧', name: '물풍선 대작전', desc: '크레이지 아케이드처럼! 물풍선을 놓아 십자 물줄기로 친구를 물방울에 가두고, 갇힌 친구를 톡 치면 탈락. 상자를 부숴 🎈💧👟 아이템을 모아라. 개인전·팀전 선택!', badge: '최후 1인', rule: '조이스틱: 이동 · 버튼: 물풍선 설치!\n물줄기에 맞으면 물방울에 갇혀요 — 팀전은 아군이 터치해 구출!' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
 const GAME_CATS = [
   { key: 'all',   label: '전체' },
+  { key: 'cray',  label: '💧 물풍선' },
   { key: 'sur',   label: '⚔️ 서바이벌' },
   { key: 'score', label: '🏆 점수 경쟁' },
   { key: 'quiz',  label: '🧠 퀴즈·두뇌' },
@@ -979,6 +981,8 @@ const GAME_CAT_OF = {
   simon: ['memory'], chimp: ['memory'], flash: ['memory'], pairs: ['memory'],
   // 🎲 복불복
   sadari: ['luck'], pirate: ['luck'],
+  // 💧 물풍선 (전용 탭)
+  cray: ['cray'],
 };
 const QUIZ_CATS = ['믹스', '스포츠', '역사', '연예', '영화', '음악', '상식', '내문제'];
 // 붙여넣은 텍스트 → 문제 배열. 한 줄 = "문제 / 정답 / 오답1 / 오답2 / 오답3" (| 구분도 허용)
@@ -1007,6 +1011,7 @@ let phaseEndAt = 0;
 let gameType = 'bomb';       // 현재 진행 중 게임
 let selectedGame = 'bomb';   // 호스트가 고른 게임
 let snaps = [];
+let crayGrid = null;   // 물풍선 대작전 맵 캐시 (grid는 바뀔 때만 서버가 보냄)
 let arena = { w: 800, h: 800 };
 let wasAlive = false;
 let lastWordJson = '';
@@ -1023,6 +1028,7 @@ let quizCatSel = localStorage.getItem('ca_qcat') || '믹스';       // 퀴즈쇼
 let quizCountSel = +(localStorage.getItem('ca_qcnt') || 10);      // 퀴즈쇼: 문제 수
 let quizDiffSel = localStorage.getItem('ca_qdiff') || '믹스';     // 퀴즈쇼: 난이도(하/중/상/믹스)
 let oxDiffSel = localStorage.getItem('ca_oxdiff') || '믹스';      // OX: 난이도(하/중/상/믹스)
+let crayModeSel = localStorage.getItem('ca_craymode') || 'solo';  // 물풍선: 개인전(solo)/팀전(team)
 let myQAnswer = -1, myQIdx = -1, lastQuizJson = '';               // 퀴즈쇼: 내 답·문제 추적
 let myTap = false, myTapRound = -1;                               // 10초를 잡아라: 내가 탭했나
 let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
@@ -2470,12 +2476,13 @@ function enterGameView(keepInput) {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기·사다리·통) / 버튼(인형뽑기·부스터·발사·대시)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run');
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray');
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
       : gameType === 'sumo' ? '대시!<br>💨'
-      : gameType === 'run' ? '점프<br>⬆️' : '집게<br>내리기';
+      : gameType === 'run' ? '점프<br>⬆️'
+      : gameType === 'cray' ? '물풍선<br>💧' : '집게<br>내리기';
     // 설원 러너 전용 부스터 버튼 (점프와 별개)
     $('btnBoost').style.display = (!isHost && gameType === 'run') ? 'block' : 'none';
     $('btnBoost').classList.add('wait'); $('btnBoost').classList.remove('ready'); $('btnBoost').__label = '';
@@ -2492,6 +2499,7 @@ function enterGameView(keepInput) {
   if (!keepInput) resetInputState();
   seenDeadAt = 0; seenInfectedAt = 0;
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
+  crayGrid = null;                  // 물풍선 맵 캐시도 판마다 초기화
   $('hudTime').textContent = '';
   $('hudLeft').textContent = '';
 }
@@ -2586,7 +2594,7 @@ function renderGameGrid() {
   const CARD_SPR = { bomb: 'bomb', tag: 'zombie', coin: 'coin', mos: 'mos', claw: 'doll',
                      race: 'car', gala: 'alien', dodge: 'boom', word: 'mascot', cho: 'hangul',
                      sumo: 'sumo', chair: 'chair', sadari: 'sadari', pirate: 'pirate', quiz: 'quiz', ox: 'ox', timing: 'timing', run: 'runner',
-                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs', tetris: 'tet', draw: 'draw' };
+                     simon: 'simon', chimp: 'chimp', flash: 'flash', pairs: 'pairs', tetris: 'tet', draw: 'draw', cray: 'crayballoon' };
   for (const [key, meta] of Object.entries(GAMES_META)) {
     if (gameTabSel !== 'all' && !(GAME_CAT_OF[key] || []).includes(gameTabSel)) continue;
     const el = document.createElement('div');
@@ -2651,6 +2659,21 @@ function renderGameGrid() {
       });
       el.appendChild(opt);
     }
+    // 물풍선 대작전: 개인전/팀전 선택
+    if (key === 'cray') {
+      const opt = document.createElement('div');
+      opt.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px';
+      opt.innerHTML = '<span style="color:#93a0c4;font-size:13px">모드</span>' +
+        [['solo', '🥇 개인전'], ['team', '🔴🔵 팀전']].map(([v, lb]) => `<button data-m="${v}" style="padding:4px 12px;border-radius:99px;border:1.5px solid ${v === crayModeSel ? '#ffb03a' : '#3a4680'};background:${v === crayModeSel ? '#ffb03a' : 'transparent'};color:${v === crayModeSel ? '#241a05' : '#93a0c4'};font-weight:800;font-size:13px;cursor:pointer">${lb}</button>`).join('');
+      opt.querySelectorAll('button').forEach(b2 => b2.onclick = ev => {
+        ev.stopPropagation();
+        crayModeSel = b2.dataset.m;
+        localStorage.setItem('ca_craymode', crayModeSel);
+        selectedGame = 'cray';
+        renderGameGrid();
+      });
+      el.appendChild(opt);
+    }
     // OX 서바이벌: 난이도 선택 (어려울수록 제한시간도 짧아짐)
     if (key === 'ox') {
       const opt = document.createElement('div');
@@ -2689,6 +2712,7 @@ function renderHostLobby() {
 function gameOpt(key) {
   if (key === 'pirate') return { knives: pirateKnives };
   if (key === 'ox') return { diff: oxDiffSel };
+  if (key === 'cray') return { mode: crayModeSel };
   if (key === 'quiz') {
     const o = { cat: quizCatSel, count: quizCountSel, diff: quizDiffSel };
     if (quizCatSel === '내문제') o.custom = parseCustomQ(localStorage.getItem('ca_customq'));
@@ -2909,7 +2933,8 @@ const SPR = {};
  'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
  'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
  'ship', 'alien', 'alien2', 'chair', 'pirate', 'knife', 'sumo', 'sadari',
- 'runner', 'runner2', 'iceblock', 'icespike', 'pine'].forEach(name => {
+ 'runner', 'runner2', 'iceblock', 'icespike', 'pine',
+ 'crayballoon', 'craybox', 'crayblock'].forEach(name => {
   const im = new Image();
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
@@ -2939,7 +2964,7 @@ GRASS_IMG.src = 'sprites/grass.jpg';
 GRASS_IMG.onload = () => { grassReady = true; };
 // 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
 const FLOORS = {};
-['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing'].forEach(k => {
+['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing', 'cray'].forEach(k => {
   const im = new Image();
   im.src = 'sprites/floor-' + k + '.jpg';
   im.onload = () => { FLOORS[k] = im; };
@@ -3097,11 +3122,11 @@ function stopFire() {
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (isHost || phase !== 'playing') return;
-  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run') return;
+  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run' && gameType !== 'cray') return;
   send({ type: 'action' });
   if (navigator.vibrate) navigator.vibrate(15);   // 진동으로 손맛 (소리는 기본 끔)
   // 소리 켠 학생: 버튼 손맛 — 부스터/집게/대시만 (갤러그 연사는 시끄러워서 제외)
-  if (gameType === 'race' || gameType === 'claw' || gameType === 'sumo') SFX.swat();
+  if (gameType === 'race' || gameType === 'claw' || gameType === 'sumo' || gameType === 'cray') SFX.swat();
   // 갤러그: 누르고 있는 동안 연사
   if (gameType === 'gala') {
     firePid = e.pointerId;
@@ -3395,6 +3420,73 @@ function draw() {
       }
     }
   }
+  if (latest.mode === 'cray') {
+    if (latest.grid) crayGrid = latest.grid;   // 맵은 바뀔 때만 오므로 캐시
+    const CELL = 60, COLS = 15, ROWS = 13;
+    const cs = CELL * scale;
+    // 은은한 격자선 (칸 감각)
+    ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1;
+    for (let i = 1; i < COLS; i++) { ctx.beginPath(); ctx.moveTo(ox + i * cs, oy); ctx.lineTo(ox + i * cs, oy + ROWS * cs); ctx.stroke(); }
+    for (let i = 1; i < ROWS; i++) { ctx.beginPath(); ctx.moveTo(ox, oy + i * cs); ctx.lineTo(ox + COLS * cs, oy + i * cs); ctx.stroke(); }
+    // 블록·상자
+    if (crayGrid) {
+      for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
+        const v = crayGrid.charCodeAt(cy * COLS + cx) - 48;
+        if (!v) continue;
+        const x = ox + cx * cs, y = oy + cy * cs;
+        const spr = v === 1 ? SPR.crayblock : SPR.craybox;
+        if (spr) ctx.drawImage(spr, x + cs * .02, y + cs * .02, cs * .96, cs * .96);
+        else {
+          ctx.fillStyle = v === 1 ? '#5a6379' : '#c98d4b';
+          ctx.fillRect(x + cs * .06, y + cs * .06, cs * .88, cs * .88);
+          ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 2 * dpr;
+          ctx.strokeRect(x + cs * .06, y + cs * .06, cs * .88, cs * .88);
+        }
+      }
+    }
+    // 바닥 아이템 (둥둥 떠 보이게)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [cx, cy, t2] of (latest.items || [])) {
+      const x = ox + (cx + 0.5) * cs, y = oy + (cy + 0.5) * cs + Math.sin(performance.now() / 260 + cx * 2) * 3 * scale;
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.beginPath(); ctx.arc(x, y, cs * .3, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 2.5 * dpr;
+      ctx.beginPath(); ctx.arc(x, y, cs * .3, 0, 7); ctx.stroke();
+      ctx.font = `${cs * .38}px serif`;
+      ctx.fillText(['🎈', '💧', '👟'][t2] || '❓', x, y + cs * .02);
+    }
+    // 물풍선 (심지 타는 만큼 두근두근 커진다)
+    for (const [cx, cy, left] of (latest.balloons || [])) {
+      const x = ox + (cx + 0.5) * cs, y = oy + (cy + 0.5) * cs;
+      const urgency = Math.max(0, 1 - left / 2800);
+      const pulse = 1 + Math.sin(performance.now() / (140 - urgency * 90)) * (0.05 + urgency * 0.07);
+      const w = cs * 0.92 * pulse;
+      if (SPR.crayballoon) drawSpr(SPR.crayballoon, x, y, w);
+      else {
+        ctx.fillStyle = '#3b8bff';
+        ctx.beginPath(); ctx.arc(x, y, w * .4, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.5)';
+        ctx.beginPath(); ctx.arc(x - w * .12, y - w * .14, w * .12, 0, 7); ctx.fill();
+      }
+    }
+    // 물줄기 (십자 물기둥 — 셀마다 파란 캡슐이 출렁)
+    const sc2 = latest.streams || [];
+    for (let i = 0; i < sc2.length; i += 2) {
+      const x = ox + sc2[i] * cs, y = oy + sc2[i + 1] * cs;
+      const a2 = 0.65 + 0.25 * Math.sin(performance.now() / 70 + i);
+      ctx.fillStyle = `rgba(80,160,255,${a2})`;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x + cs * .07, y + cs * .07, cs * .86, cs * .86, cs * .28)
+                    : ctx.rect(x + cs * .07, y + cs * .07, cs * .86, cs * .86);
+      ctx.fill();
+      ctx.fillStyle = `rgba(210,240,255,${a2 * .8})`;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x + cs * .24, y + cs * .24, cs * .52, cs * .52, cs * .2)
+                    : ctx.rect(x + cs * .24, y + cs * .24, cs * .52, cs * .52);
+      ctx.fill();
+    }
+    ctx.textBaseline = 'alphabetic';
+  }
   // 인형 뽑기: 인형 더미
   if (latest.mode === 'claw' && latest.dolls) {
     for (const [dx2, dy2, v] of latest.dolls) {
@@ -3654,9 +3746,48 @@ function draw() {
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * dpr;
       ctx.beginPath(); ctx.arc(px, py, rr + 4 * dpr, 0, 7); ctx.stroke();
     }
+    // 물풍선 대작전: 팀 링 + 물방울(갇힘) + 아이템/구출 연출
+    if (latest.mode === 'cray' && alive) {
+      const trapMs = pb[6] || 0, team = pb[7] || 0, fx2 = pb[11] || 0;
+      if (latest.teamMode) {   // 팀 구분 링 (홍/청)
+        ctx.strokeStyle = team === 0 ? 'rgba(255,80,80,.9)' : 'rgba(80,140,255,.9)';
+        ctx.lineWidth = 3.5 * dpr;
+        ctx.beginPath(); ctx.arc(px, py, rr + 8 * dpr, 0, 7); ctx.stroke();
+      }
+      if (trapMs > 0) {        // 물방울에 갇힘 — 반투명 방울 + 남은 초
+        const br2 = rr * 1.75 + Math.sin(performance.now() / 180) * 2 * dpr;
+        const grad = ctx.createRadialGradient(px - br2 * .3, py - br2 * .35, br2 * .1, px, py, br2);
+        grad.addColorStop(0, 'rgba(220,245,255,.75)');
+        grad.addColorStop(0.7, 'rgba(120,190,255,.35)');
+        grad.addColorStop(1, 'rgba(80,150,255,.55)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(px, py, br2, 0, 7); ctx.fill();
+        ctx.strokeStyle = 'rgba(160,215,255,.9)'; ctx.lineWidth = 2.5 * dpr;
+        ctx.beginPath(); ctx.arc(px, py, br2, 0, 7); ctx.stroke();
+        // 반짝이는 하이라이트
+        ctx.fillStyle = 'rgba(255,255,255,.85)';
+        ctx.beginPath(); ctx.ellipse(px - br2 * .38, py - br2 * .42, br2 * .16, br2 * .09, -0.6, 0, 7); ctx.fill();
+        ctx.fillStyle = '#ff5a5a';
+        ctx.font = `900 ${16 * dpr}px Pretendard, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(Math.ceil(trapMs / 1000) + '', px, py - br2 - 6 * dpr);
+      }
+      if (fx2 === 1) {         // 아이템 획득 반짝
+        ctx.fillStyle = '#ffd24a';
+        ctx.font = `900 ${18 * dpr}px Pretendard, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText('✨UP!', px, py - rr * 2 - 4 * dpr);
+      } else if (fx2 === 2) {  // 구출됨
+        ctx.fillStyle = '#3ddc84';
+        ctx.font = `900 ${18 * dpr}px Pretendard, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText('💚구출!', px, py - rr * 2 - 4 * dpr);
+      }
+    }
     let name = meta.nick;
     if (latest.mode === 'coin') name += ` ${extra}`;
-    if (latest.mode === 'bomb' && !alive) name += ' 💀';
+    if (latest.mode === 'cray' && extra > 0) name += ` ⚔${extra}`;   // 킬 수
+    if ((latest.mode === 'bomb' || latest.mode === 'cray') && !alive) name += ' 💀';
     ctx.fillStyle = id === myId ? '#ffb03a' : '#c8d0e8';
     ctx.font = `${(id === myId ? 800 : 600)} ${(isHost ? 21 : 14) * dpr}px Pretendard, sans-serif`;
     ctx.textAlign = 'center';
@@ -3670,6 +3801,21 @@ function draw() {
       const booming = latest.bombs.filter(bb => bb[3] === 1).length;
       if (booming > sndPrev.boom) SFX.boom();
       sndPrev.boom = booming;
+    }
+    if (latest.mode === 'cray') {
+      // 물풍선 설치음 / 폭발음 / 갇힘음 / 탈락음 — 개수 변화로 감지
+      const nb = (latest.balloons || []).length;
+      if (nb > (sndPrev.crayBalloons || 0)) SFX.grab();
+      sndPrev.crayBalloons = nb;
+      const ns = (latest.streams || []).length;
+      if (ns > 0 && (sndPrev.crayStreams || 0) === 0) SFX.boom();
+      sndPrev.crayStreams = ns;
+      const trapped = latest.players.filter(pp => !pp[4] && (pp[6] || 0) > 0).length;
+      if (trapped > (sndPrev.crayTrapped || 0)) SFX.hit();
+      sndPrev.crayTrapped = trapped;
+      const alive2 = latest.players.filter(pp => !pp[4] && pp[3]).length;
+      if ((sndPrev.crayAlive || 0) > 0 && alive2 < sndPrev.crayAlive) SFX.miss();
+      sndPrev.crayAlive = alive2;
     }
     if (latest.mode === 'coin') {
       const totalScore = latest.players.reduce((s, pp) => s + (pp[5] || 0), 0);
@@ -3788,6 +3934,20 @@ function draw() {
   if (isHost) drawHostBoard(latest, ox, oy, scale, dpr, W, H);
 
   // HUD (같은 문자열이면 건드리지 않는다)
+  // 물풍선 HUD: 팀전은 팀별 생존, 개인전은 생존 + 내 능력치
+  function crayHud(m2, aliveN) {
+    if (m2.teamMode) {
+      let r2 = 0, b2 = 0;
+      for (const pp of m2.players) if (!pp[4] && pp[3]) { if ((pp[7] || 0) === 0) r2++; else b2++; }
+      const base = `🔴${r2} vs 🔵${b2}`;
+      if (isHost) return '💧 ' + base;
+      const me3 = m2.players.find(pp => pp[0] === myId);
+      return base + (me3 ? ` · 💧${me3[8]}·길이${me3[9]}·👟${me3[10]}` : '');
+    }
+    if (isHost) return '💧 생존 ' + aliveN;
+    const me3 = m2.players.find(pp => pp[0] === myId);
+    return '생존 ' + aliveN + (me3 ? ` · 💧${me3[8]}·길이${me3[9]}·👟${me3[10]}` : '');
+  }
   const hudText = tapHud !== null ? tapHud
     : latest.mode === 'tag' ? '남은 사람 ' + humanCount
     : latest.mode === 'coin' ? (isHost ? '💣 폭탄 조심!' : '내 돈 ' + myScore + '원')
@@ -3801,8 +3961,20 @@ function draw() {
     : latest.mode === 'pirate' ? `🏴‍☠️ ${latest.round || 1}라운드 · 🗡️ ${latest.pickedCount || 0}/${latest.aliveCount || 0}명`
     : latest.mode === 'ox' ? `⭕❌ 문제 ${(latest.oxIdx || 0) + 1}/${latest.oxTotal || 0} · 생존 ${aliveCount}`
     : latest.mode === 'timing' ? `⏱️ ${(latest.round || 0) + 1}/${latest.totalRounds || 4}라운드` + (isHost ? '' : ` · 내 점수 ${myScore}`)
+    : latest.mode === 'cray' ? crayHud(latest, aliveCount)
     : '생존 ' + aliveCount;
   setText($('hudLeft'), hudText);
+  // 물풍선: 학생 버튼에 남은 풍선 개수 표시 + 갇힘/소진 시 비활성 느낌
+  if (latest.mode === 'cray' && !isHost && phase === 'playing') {
+    const me2 = latest.players.find(pp => pp[0] === myId);
+    if (me2) {
+      const trapped = (me2[6] || 0) > 0, capLeft = me2[8] || 0;
+      const btn = $('btnAction');
+      const label = !me2[3] ? '탈락<br>💀' : trapped ? '갇힘!<br>🫧' : `물풍선<br>💧×${capLeft}`;
+      if (btn.__label !== label) { btn.__label = label; btn.innerHTML = label; }
+      btn.classList.toggle('wait', !me2[3] || trapped || capLeft === 0);
+    }
+  }
   if (phase === 'playing') {
     if (phaseEndAt) {
       const left = Math.max(0, phaseEndAt - serverNow());

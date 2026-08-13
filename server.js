@@ -785,6 +785,239 @@ const TIMING_READY_MS = 3500;
 const TIMING_REVEAL_MS = 6500;
 const TIMING_EXTRA_MS = 8000;    // 목표 시간 + 8초까지 기다렸다가 마감
 
+// ---------- 물풍선 대작전 (크레이지 아케이드식) ----------
+const CRAY_COLS = 15, CRAY_ROWS = 13, CRAY_CELL = 60;   // 격자 15x13, 셀 60유닛 → 900x780
+const CRAY_MS = 180000;          // 3분 제한 (그 전에 최후 1인/1팀이 나오면 즉시 종료)
+const CRAY_R = 20;               // 플레이어 충돌 반지름
+const CRAY_FUSE_MS = 2800;       // 물풍선 설치 → 폭발까지
+const CRAY_STREAM_MS = 550;      // 물줄기 지속 시간
+const CRAY_TRAP_MS = 7000;       // 물방울에 갇혀 버티는 시간 (안 구해지면 탈락)
+const CRAY_INV_MS = 1500;        // 구출·갇힘 직후 물줄기 무적 (연속으로 또 갇히는 것 방지)
+const CRAY_BASE_SPEED = 195;     // 기본 이동 속도
+const CRAY_SPEED_STEP = 22;      // 👟 하나당 증가
+const CRAY_MAX_CAP = 6;          // 🎈 물풍선 최대 개수
+const CRAY_MAX_POW = 7;          // 💧 물줄기 최대 길이
+const CRAY_MAX_SPD = 4;          // 👟 최대 단계
+const CRAY_ITEM_CHANCE = 0.45;   // 상자 파괴 시 아이템 드랍 확률
+
+// 맵 생성: 고정 기둥(단단한 블록) + 랜덤 상자. 스폰 칸과 그 주변은 비워 갇힘 방지.
+function crayBuildMap(n) {
+  // grid[cy][cx]: 0=빈칸 1=단단한블록(안부서짐) 2=상자(부서짐)
+  const grid = Array.from({ length: CRAY_ROWS }, () => new Array(CRAY_COLS).fill(0));
+  for (let cy = 0; cy < CRAY_ROWS; cy++)
+    for (let cx = 0; cx < CRAY_COLS; cx++) {
+      if (cx % 4 === 2 && cy % 4 === 2) grid[cy][cx] = 1;          // 기둥 패턴
+      else if (Math.random() < 0.48) grid[cy][cx] = 2;             // 상자
+    }
+  // 스폰: 바깥 테두리 칸을 시계방향으로 돌며 인원수만큼 고르게
+  const ring = [];
+  for (let cx = 0; cx < CRAY_COLS; cx++) ring.push([cx, 0]);
+  for (let cy = 1; cy < CRAY_ROWS; cy++) ring.push([CRAY_COLS - 1, cy]);
+  for (let cx = CRAY_COLS - 2; cx >= 0; cx--) ring.push([cx, CRAY_ROWS - 1]);
+  for (let cy = CRAY_ROWS - 2; cy >= 1; cy--) ring.push([0, cy]);
+  const spawns = [];
+  for (let i = 0; i < n; i++) {
+    const [sx, sy] = ring[Math.floor(i * ring.length / n) % ring.length];
+    spawns.push([sx, sy]);
+    // 스폰 칸 + 상하좌우는 상자 제거 (시작하자마자 갇히는 일 방지. 기둥은 그대로)
+    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ax = sx + dx, ay = sy + dy;
+      if (ax >= 0 && ax < CRAY_COLS && ay >= 0 && ay < CRAY_ROWS && grid[ay][ax] === 2) grid[ay][ax] = 0;
+    }
+    if (grid[sy][sx] === 1) grid[sy][sx] = 0;   // 만에 하나 기둥 위 스폰이면 기둥 제거
+  }
+  return { grid, spawns };
+}
+const crayCellOf = v => Math.max(0, Math.min(CRAY_COLS - 1, Math.floor(v / CRAY_CELL)));
+const crayCellOfY = v => Math.max(0, Math.min(CRAY_ROWS - 1, Math.floor(v / CRAY_CELL)));
+
+// 원(플레이어)과 격자 칸의 충돌 — 이동 판정용
+function crayBlocked(g, px, py, exemptBalloons) {
+  const minCx = Math.max(0, Math.floor((px - CRAY_R) / CRAY_CELL));
+  const maxCx = Math.min(CRAY_COLS - 1, Math.floor((px + CRAY_R) / CRAY_CELL));
+  const minCy = Math.max(0, Math.floor((py - CRAY_R) / CRAY_CELL));
+  const maxCy = Math.min(CRAY_ROWS - 1, Math.floor((py + CRAY_R) / CRAY_CELL));
+  for (let cy = minCy; cy <= maxCy; cy++)
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      const solid = g.grid[cy][cx] !== 0 || (g.balloonAt.has(cy * CRAY_COLS + cx) && !exemptBalloons.has(cy * CRAY_COLS + cx));
+      if (!solid) continue;
+      // 원-사각형 겹침
+      const nx = Math.max(cx * CRAY_CELL, Math.min(px, (cx + 1) * CRAY_CELL));
+      const ny = Math.max(cy * CRAY_CELL, Math.min(py, (cy + 1) * CRAY_CELL));
+      if ((px - nx) * (px - nx) + (py - ny) * (py - ny) < CRAY_R * CRAY_R) return true;
+    }
+  return false;
+}
+
+function crayTick(room, now, dt) {
+  const g = room.game;
+
+  // 1. 이동 (트랩 중엔 못 움직임). 축 분리 이동으로 벽에 비벼도 미끄러지듯 지나간다.
+  for (const p of room.players.values()) {
+    if (!p.alive || p.waiting) continue;
+    if (now < p.crayTrapUntil) { continue; }
+    const sp = CRAY_BASE_SPEED + (p.craySpd || 0) * CRAY_SPEED_STEP;
+    // 지금 겹쳐 있는 물풍선 칸은 예외 (자기가 놓은 풍선 위에서 걸어나올 수 있어야 함)
+    const exempt = new Set();
+    for (const key of g.balloonAt.keys()) {
+      const bx = (key % CRAY_COLS) * CRAY_CELL + CRAY_CELL / 2;
+      const by = Math.floor(key / CRAY_COLS) * CRAY_CELL + CRAY_CELL / 2;
+      if (Math.abs(p.x - bx) < CRAY_CELL / 2 + CRAY_R && Math.abs(p.y - by) < CRAY_CELL / 2 + CRAY_R) exempt.add(key);
+    }
+    let nx = Math.max(CRAY_R, Math.min(g.arenaW - CRAY_R, p.x + p.dirX * sp * dt));
+    if (!crayBlocked(g, nx, p.y, exempt)) p.x = nx;
+    let ny = Math.max(CRAY_R, Math.min(g.arenaH - CRAY_R, p.y + p.dirY * sp * dt));
+    if (!crayBlocked(g, p.x, ny, exempt)) p.y = ny;
+  }
+
+  // 2. 물풍선 폭발 (연쇄 포함)
+  let exploded = false;
+  for (let guard = 0; guard < 50; guard++) {
+    const due = g.balloons.find(b => now >= b.explodeAt && !b.done);
+    if (!due) break;
+    due.done = true;
+    exploded = true;
+    g.balloonAt.delete(due.cy * CRAY_COLS + due.cx);
+    const owner = room.players.get(due.owner);
+    if (owner) owner.crayPlaced = Math.max(0, (owner.crayPlaced || 0) - 1);
+    const cells = [[due.cx, due.cy]];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (let s = 1; s <= due.pow; s++) {
+        const cx = due.cx + dx * s, cy = due.cy + dy * s;
+        if (cx < 0 || cx >= CRAY_COLS || cy < 0 || cy >= CRAY_ROWS) break;
+        if (g.grid[cy][cx] === 1) break;                       // 기둥: 물줄기 차단
+        if (g.grid[cy][cx] === 2) {                            // 상자: 부수고 정지
+          g.grid[cy][cx] = 0; g.gridDirty = true;
+          if (Math.random() < CRAY_ITEM_CHANCE) {
+            const r = Math.random();
+            g.items.push({ cx, cy, t: r < 0.4 ? 0 : r < 0.8 ? 1 : 2 });   // 0=🎈 1=💧 2=👟
+          }
+          cells.push([cx, cy]);
+          break;
+        }
+        cells.push([cx, cy]);
+        const bkey = cy * CRAY_COLS + cx;
+        if (g.balloonAt.has(bkey)) {                           // 다른 풍선: 연쇄 폭발
+          const other = g.balloons.find(b => !b.done && b.cx === cx && b.cy === cy);
+          if (other) other.explodeAt = now;
+          break;
+        }
+        const iIdx = g.items.findIndex(it => it.cx === cx && it.cy === cy);
+        if (iIdx >= 0) { g.items.splice(iIdx, 1); break; }     // 바닥 아이템은 물줄기에 터진다
+      }
+    }
+    g.streams.push({ cells, until: now + CRAY_STREAM_MS, owner: due.owner });
+  }
+  g.balloons = g.balloons.filter(b => !b.done);
+  g.streams = g.streams.filter(s => now <= s.until);
+  if (exploded) g.boomAt = now;   // 클라 효과음 힌트
+
+  // 3. 물줄기 피격 → 갇힘(트랩) / 이미 갇힌 사람은 즉사
+  const streamSet = new Set();
+  const streamOwner = new Map();
+  for (const s of g.streams) for (const [cx, cy] of s.cells) {
+    const k = cy * CRAY_COLS + cx;
+    streamSet.add(k);
+    if (!streamOwner.has(k)) streamOwner.set(k, s.owner);
+  }
+  for (const p of room.players.values()) {
+    if (!p.alive || p.waiting || now < p.crayInvUntil) continue;
+    const k = crayCellOfY(p.y) * CRAY_COLS + crayCellOf(p.x);
+    if (!streamSet.has(k)) continue;
+    if (now < p.crayTrapUntil) {                                // 갇힌 상태에서 또 맞음 → 탈락
+      p.alive = false; p.deadAt = now; p.crayTrapUntil = 0;
+      const killer = room.players.get(streamOwner.get(k));
+      if (killer && killer.id !== p.id) killer.crayKills = (killer.crayKills || 0) + 1;
+    } else {                                                    // 물방울에 갇힘
+      p.crayTrapUntil = now + CRAY_TRAP_MS;
+      p.crayTrappedBy = streamOwner.get(k);
+      p.crayInvUntil = now + 600;                               // 같은 물줄기에 중복 판정 방지
+    }
+  }
+
+  // 4. 갇힌 사람 처리: 시간초과 → 탈락 / 터치 → 팀전 아군이면 구출, 적(개인전 전원)이면 탈락
+  for (const p of room.players.values()) {
+    if (!p.alive || p.waiting || !(p.crayTrapUntil > 0)) continue;
+    if (now >= p.crayTrapUntil) {                               // 아무도 안 건드림 → 물방울 터져 탈락
+      p.alive = false; p.deadAt = now; p.crayTrapUntil = 0;
+      const killer = room.players.get(p.crayTrappedBy);
+      if (killer && killer.id !== p.id && killer !== p) killer.crayKills = (killer.crayKills || 0) + 1;
+      continue;
+    }
+    for (const q of room.players.values()) {
+      if (q === p || !q.alive || q.waiting) continue;
+      if (now < q.crayTrapUntil) continue;                      // 갇힌 사람끼리는 못 건드림
+      const dx = q.x - p.x, dy = q.y - p.y;
+      if (dx * dx + dy * dy > (CRAY_R * 2.2) * (CRAY_R * 2.2)) continue;
+      if (g.teamMode && q.crayTeam === p.crayTeam) {            // 아군 터치 = 구출
+        p.crayTrapUntil = 0; p.crayInvUntil = now + CRAY_INV_MS;
+        p.crayRescuedAt = now; q.crayRescues = (q.crayRescues || 0) + 1;
+      } else if (!g.teamMode || q.crayTeam !== p.crayTeam) {    // 적 터치 = 탈락
+        p.alive = false; p.deadAt = now; p.crayTrapUntil = 0;
+        q.crayKills = (q.crayKills || 0) + 1;
+      }
+      break;
+    }
+  }
+
+  // 5. 아이템 획득 (갇힌 동안엔 못 줍는다)
+  for (const p of room.players.values()) {
+    if (!p.alive || p.waiting || now < p.crayTrapUntil) continue;
+    const cx = crayCellOf(p.x), cy = crayCellOfY(p.y);
+    const idx = g.items.findIndex(it => it.cx === cx && it.cy === cy);
+    if (idx < 0) continue;
+    const it = g.items[idx];
+    g.items.splice(idx, 1);
+    if (it.t === 0) p.crayCap = Math.min(CRAY_MAX_CAP, (p.crayCap || 1) + 1);
+    else if (it.t === 1) p.crayPow = Math.min(CRAY_MAX_POW, (p.crayPow || 1) + 1);
+    else p.craySpd = Math.min(CRAY_MAX_SPD, (p.craySpd || 0) + 1);
+    p.crayItemAt = now;   // 클라 연출용
+  }
+
+  // 6. 종료 판정: 개인전 최후 1인 / 팀전 최후 1팀 / 시간 종료
+  const alive = [...room.players.values()].filter(p => p.alive && !p.waiting);
+  let over = now >= room.phaseEndAt;
+  if (g.teamMode) {
+    const teamsAlive = new Set(alive.map(p => p.crayTeam));
+    if (teamsAlive.size <= 1 && g.startingCount >= 2) over = true;
+  } else if ((g.startingCount >= 2 && alive.length <= 1) || alive.length === 0) over = true;
+  if (over) { endCray(room, now); return; }
+  sendState(room, now);
+}
+
+function endCray(room, now) {
+  const g = room.game;
+  const alive = [...room.players.values()].filter(p => p.alive && !p.waiting);
+  // 팀전: 승리 팀 판정 (생존자가 있는 팀. 둘 다 있으면(시간종료) 생존자 많은 팀, 그래도 같으면 무승부)
+  let winTeam = -1;
+  if (g.teamMode) {
+    const cnt = [0, 0];
+    for (const p of alive) cnt[p.crayTeam]++;
+    if (cnt[0] !== cnt[1]) winTeam = cnt[0] > cnt[1] ? 0 : 1;
+  }
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    if (g.teamMode && winTeam >= 0) {
+      const aw = a.crayTeam === winTeam ? 1 : 0, bw = b.crayTeam === winTeam ? 1 : 0;
+      if (aw !== bw) return bw - aw;
+    }
+    if (a.alive !== b.alive) return a.alive ? -1 : 1;
+    if ((a.deadAt || 0) !== (b.deadAt || 0)) return (b.deadAt || 0) - (a.deadAt || 0);
+    return (b.crayKills || 0) - (a.crayKills || 0);
+  });
+  const teamName = t => t === 0 ? '🔴홍팀' : '🔵청팀';
+  finishGame(room, sorted, p => {
+    const k = p.crayKills || 0, r = p.crayRescues || 0;
+    const tag = g.teamMode ? teamName(p.crayTeam) + ' · ' : '';
+    const stat = k + '킬' + (r ? ` · 구출${r}` : '');
+    if (g.teamMode && winTeam >= 0 && p.crayTeam === winTeam) return tag + '승리! 🏆 ' + stat;
+    return tag + (p.alive ? '생존 · ' + stat : '탈락 · ' + stat);
+  }, p => {
+    if (g.teamMode && winTeam >= 0 && p.crayTeam === winTeam && p.alive) return 'W';   // 승리팀 생존자 공동 1위
+    return (p.alive ? 'A' : String(p.deadAt || 0)) + '-' + (p.crayKills || 0);
+  });
+}
+
 // ---------- 블록 배틀 (실시간 테트리스, 브랜드명 CUBE STACK) ----------
 const TET_W = 10, TET_H = 20;
 const TET_MAX_MS = 360000;       // 6분 안전 캡 (배틀로얄 — 원래는 최후 1인까지)
@@ -824,7 +1057,7 @@ function drawSuggest() {
   return [...out];
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -1265,6 +1498,25 @@ function startGame(room, type, opt) {
     const randT = (min, max) => (min * 2 + Math.floor(Math.random() * ((max - min) * 2 + 1))) / 2 * 1000;
     g.tTargets = [randT(4, 6), randT(6, 9), randT(9, 12), randT(12, 16)];
     g.tIdx = 0; g.tPhase = 'idle';
+  } else if (type === 'cray') {
+    g.roundMs = CRAY_MS;
+    g.arenaW = CRAY_COLS * CRAY_CELL; g.arenaH = CRAY_ROWS * CRAY_CELL;
+    g.teamMode = (opt && opt.mode) === 'team' && n >= 2;
+    const { grid, spawns } = crayBuildMap(n);
+    g.grid = grid; g.gridDirty = true; g.gridSentAt = 0;
+    g.balloons = []; g.balloonAt = new Map();   // key(cy*COLS+cx) → true (이동 충돌·연쇄 판정용)
+    g.streams = []; g.items = []; g.boomAt = 0;
+    // 팀 배정: 참가 순서 섞어서 번갈아 (인원 균형 ±1)
+    const shuffled = [...actives].sort(() => Math.random() - 0.5);
+    shuffled.forEach((p, i) => { p.crayTeam = g.teamMode ? i % 2 : 0; });
+    actives.forEach((p, i) => {
+      const [sx, sy] = spawns[i];
+      p.x = sx * CRAY_CELL + CRAY_CELL / 2;
+      p.y = sy * CRAY_CELL + CRAY_CELL / 2;
+      p.crayCap = 1; p.crayPow = 1; p.craySpd = 0; p.crayPlaced = 0;
+      p.crayTrapUntil = 0; p.crayInvUntil = 0; p.crayTrappedBy = 0;
+      p.crayKills = 0; p.crayRescues = 0; p.crayItemAt = 0; p.crayRescuedAt = 0;
+    });
   } else if (type === 'ox') {
     g.roundMs = 0;
     g.arenaW = 1100; g.arenaH = 760;   // 가로로 넓게 — 왼쪽 O, 오른쪽 X
@@ -1408,6 +1660,7 @@ function tick(room) {
   else if (room.gameType === 'pairs') pairsTick(room, now);
   else if (room.gameType === 'tetris') tetrisTick(room, now);
   else if (room.gameType === 'draw') drawTick(room, now);
+  else if (room.gameType === 'cray') crayTick(room, now, dt);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -3224,6 +3477,7 @@ function sendState(room, now) {
     players: [...room.players.values()].map(p => {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
         : type === 'sadari' ? (p.sadariCaught || 0)   // 점수 대신 걸린 횟수
+        : type === 'cray' ? (p.crayKills || 0)
         : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'timing' || type === 'run') ? p.score
         : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0) : 0;
       const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
@@ -3246,6 +3500,14 @@ function sendState(room, now) {
                  now < (p.feverUntil || 0) ? 1 : 0,
                  now - (p.stumbleAt || 0) < 600 ? 1 : 0,
                  p.coins || 0, p.gauge || 0);
+      }
+      // 물풍선: [갇힘 남은ms, 팀, 보유풍선(남은), 물줄기 길이, 스피드 단계, 최근 아이템/구출 연출]
+      if (type === 'cray') {
+        row.push(p.crayTrapUntil > now ? Math.round(p.crayTrapUntil - now) : 0,
+                 p.crayTeam || 0,
+                 Math.max(0, (p.crayCap || 1) - (p.crayPlaced || 0)),
+                 p.crayPow || 1, p.craySpd || 0,
+                 now - (p.crayItemAt || 0) < 600 ? 1 : now - (p.crayRescuedAt || 0) < 800 ? 2 : 0);
       }
       // 폭탄 밟은 직후 1초간 "0원!" 연출
       if (type === 'coin') row.push(now - (p.lostAt || 0) < 1000 ? 1 : 0);
@@ -3305,6 +3567,19 @@ function sendState(room, now) {
     msg.elapsed = Math.round((now - g.startedAt) / 1000);
   }
   if (type === 'claw') msg.dolls = g.dolls.map(d => [Math.round(d.x), Math.round(d.y), d.v]);
+  if (type === 'cray') {
+    // 맵은 바뀔 때 + 1.5초마다 재전송 (새로고침·재접속 복구용). 나머지는 매 틱.
+    if (g.gridDirty || now - g.gridSentAt > 1500) {
+      msg.grid = g.grid.map(row => row.join('')).join('');
+      g.gridDirty = false; g.gridSentAt = now;
+    }
+    msg.teamMode = g.teamMode ? 1 : 0;
+    msg.balloons = g.balloons.map(b => [b.cx, b.cy, Math.max(0, Math.round(b.explodeAt - now))]);
+    const sc = [];
+    for (const s of g.streams) for (const [cx, cy] of s.cells) sc.push(cx, cy);
+    msg.streams = sc;
+    msg.items = g.items.map(it => [it.cx, it.cy, it.t]);
+  }
   if (type === 'sumo') msg.ring = Math.round(g.ringR);
   if (type === 'chair') {
     msg.cphase = g.cphase;
@@ -3600,6 +3875,17 @@ wss.on('connection', (ws) => {
           const now2 = Date.now();
           // 착지 후에만 다시 점프 (공중 이단 점프 없음)
           if (!p.jumpStartAt || now2 - p.jumpStartAt >= RUN_JUMP_MS) p.jumpStartAt = now2;
+        }
+        else if (room.gameType === 'cray' && room.state === 'playing' && p.alive) {
+          const g2 = room.game, now2 = Date.now();
+          if (now2 < p.crayTrapUntil) return;                     // 갇힌 동안엔 설치 불가
+          if ((p.crayPlaced || 0) >= (p.crayCap || 1)) return;    // 보유 개수 초과
+          const cx = crayCellOf(p.x), cy = crayCellOfY(p.y);
+          const key = cy * CRAY_COLS + cx;
+          if (g2.balloonAt.has(key) || g2.grid[cy][cx] !== 0) return;   // 그 칸에 이미 뭔가 있음
+          g2.balloons.push({ cx, cy, owner: p.id, explodeAt: now2 + CRAY_FUSE_MS, pow: p.crayPow || 1, done: false });
+          g2.balloonAt.set(key, true);
+          p.crayPlaced = (p.crayPlaced || 0) + 1;
         }
         break;
       }
