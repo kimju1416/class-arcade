@@ -1517,6 +1517,7 @@ function handle(m) {
         cho: '초성이 달라요! 다시 보세요',
         list: '앗, 목록에 없는 제목이에요. 다른 답으로!',
         dict: '사전에 없는 단어예요. 진짜 단어를 써 보세요!',
+        notword: '그런 단어는 없어요! 진짜 단어를 써 보세요',
         short: '한 글자는 안 돼요! 두 글자 이상',
         dup: '이미 나온 단어! 다른 단어를 찾으세요',
         wrong: '땡! 다시 입력해 보세요',
@@ -2776,7 +2777,7 @@ function renderWord(m) {
   if (m.mode === 'cho') {
     $('choCat').style.display = m.category ? 'block' : 'none';
     $('choCat').textContent = !m.category ? ''
-      : m.freeMode ? `[${m.category}] 초성에 맞는 단어면 정답!`
+      : m.freeMode ? `[${m.category}] 초성에 맞는 진짜 단어면 정답!`
       : `[${m.category} 제목]` + (m.answerCount > 1 ? ` 정답 ${m.answerCount}개` : '');
     if (phase === 'countdown') $('wordBig').textContent = '준비하세요…';
     else if (m.wordPhase === 'show') $('wordBig').textContent = m.word ? [...m.word].join(' ') : '…';

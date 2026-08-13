@@ -253,6 +253,17 @@ const CHO_DATA = {
 // CHO_FREE_CATS는 이제 라운드 배정(1~4라운드)과 안내 문구 구분용으로만 쓰인다.
 const CHO_FREE_CATS = new Set(['음식', '동물', '사물·장소']);
 
+// 넓은 한국어 국어사전(35만 단어). 자유 카테고리에서 "실제로 있는 단어인지" 검사에 쓴다.
+// → 초성만 맞는 엉터리 단어(예: '긓챠')는 걸러지고, 사전에 없는 진짜 단어는 통과한다.
+// 파일이 없으면(로드 실패) 빈 Set → 관대 모드로 폴백(초성만 맞으면 인정).
+const KOREAN_WORDS = new Set();
+try {
+  const wl = fs.readFileSync(path.join(__dirname, 'data', 'korean_words.txt'), 'utf8');
+  for (const w of wl.split('\n')) { const t = w.trim(); if (t) KOREAN_WORDS.add(t); }
+  console.log('[국어사전] 단어', KOREAN_WORDS.size + '개 로드');
+} catch (e) { console.log('[국어사전] 로드 실패 — 관대 모드로 폴백', e.message); }
+function isRealKoreanWord(w) { return KOREAN_WORDS.size === 0 || KOREAN_WORDS.has(w); }
+
 // 카테고리별 초성 사전: 패턴 → 정답 단어 목록
 const CHO_INDEX = {};
 for (const [cat, words] of Object.entries(CHO_DATA)) {
@@ -3847,19 +3858,21 @@ wss.on('connection', (ws) => {
         } else if (room.gameType === 'cho') {
           const norm = normalizeWord(msg.text);
           if (!norm) return;
-          // 자유 카테고리(음식·동물·사물장소): 초성과 글자수만 맞으면 사전에 없어도 정답 인정.
-          //   → 진짜 정답인데 사전에 없어서 오답 처리되던 문제 해결.
+          // 자유 카테고리(음식·동물·사물장소): 카테고리 사전에 있거나, 국어사전에 있는 '진짜 단어'면 정답.
+          //   → 사전에 없어서 오답 처리되던 진짜 단어는 통과하고, 초성만 맞는 엉터리 단어는 걸러진다.
           //   한 라운드에 1번만 맞힐 수 있어(wordDone) 점수 도배는 애초에 불가능하다.
-          // 제목 카테고리(영화·노래): 실제 제목이어야 하므로 사전 대조 유지.
+          // 제목 카테고리(영화·노래): 실제 제목이어야 하므로 전용 사전 대조 유지.
           const free = CHO_FREE_CATS.has(g.category);
+          const inList = !!(g.answers && g.answers.has(norm));
+          const accepted = free ? (inList || isRealKoreanWord(norm)) : inList;
           if (hasBadWord(norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'bad' });
           } else if (norm.length < 2) {
             roomSend(ws, { type: 'word_bad', reason: 'short' });   // 한 글자 답 방지
           } else if (choseongOf(norm) !== g.pattern) {
             roomSend(ws, { type: 'word_bad', reason: 'cho' });
-          } else if (!free && !(g.answers && g.answers.has(norm))) {
-            roomSend(ws, { type: 'word_bad', reason: 'list' });
+          } else if (!accepted) {
+            roomSend(ws, { type: 'word_bad', reason: free ? 'notword' : 'list' });
           } else if (g.claimed.some(c => c.w === norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'dup' });
           } else {
