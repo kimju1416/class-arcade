@@ -957,7 +957,7 @@ const GAMES_META = {
   pairs: { icon: '🃏', name: '같은 그림 찾기', desc: '뒤집힌 카드 20장에서 짝을 찾아라! 배치는 모두 동일 — 적게 뒤집고 빨리 끝낼수록 고득점. 탈락 없음.', badge: '75초', rule: '카드 두 장을 뒤집어 짝을 맞추세요!\n먼저 다 찾으면 완주 보너스' },
   tetris: { icon: '🧱', name: '블록 배틀', desc: '전원 동시 테트리스 대전! 2줄 이상 지우면 친구 보드에 쓰레기 줄 공격. 갈수록 빨라진다 — 최후의 1인은 누구?', badge: '실시간 대전', rule: '◀▶ 이동 · ⟳ 회전 · ▼ 빨리 내리기 · 쿵! 즉시 낙하\n2줄 이상 지우면 친구에게 공격!' },
   draw: { icon: '🎨', name: '그림 퀴즈', desc: '선생님이 지목한 친구가 몰래 답을 정하고 그림으로만 설명! 그림이 TV에 실시간으로 — 빨리 맞힐수록 고득점.', badge: '캐치마인드', rule: '출제자: 답을 정하고 그림으로 표현!\n나머지: 그림을 보고 폰에 정답 입력!' },
-  cray: { icon: '💧', name: '물풍선 대작전', desc: '크레이지 아케이드처럼! 물풍선을 놓아 십자 물줄기로 친구를 물방울에 가두고, 갇힌 친구를 톡 치면 탈락. 상자를 부숴 🎈💧👟 아이템을 모아라. 개인전·팀전 선택!', badge: '최후 1인', rule: '조이스틱: 이동 · 버튼: 물풍선 설치!\n물줄기에 맞으면 물방울에 갇혀요 — 팀전은 아군이 터치해 구출!' },
+  cray: { icon: '💧', name: '물풍선 대작전', desc: '물풍선을 놓아 십자 물줄기로 친구를 물방울에 가두고, 갇힌 친구를 톡 치면 탈락! 상자를 부숴 🎈💧👟 아이템을 모아라. 개인전·팀전 선택!', badge: '최후 1인', rule: '조이스틱: 이동 · 버튼: 물풍선 설치!\n물줄기에 맞으면 물방울에 갇혀요 — 팀전은 아군이 터치해 구출!' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
 const GAME_CATS = [
@@ -1183,6 +1183,21 @@ const SFX = (() => {
         this._melSrc = null; this._melGain = null;
       }
     },
+    // 물풍선 대작전: 통통 튀는 합성 배틀 BGM 루프 (완전 합성 — 저작권 안전, TV 전용)
+    crayBgmStart() {
+      if (this._crayIv || !isHost || muted) return;
+      // C장조 신나는 8비트 멜로디 + 베이스 (16스텝 루프)
+      const lead = [784, 0, 880, 784, 659, 0, 784, 880, 1047, 0, 988, 880, 784, 659, 587, 0];
+      const bass = [196, 196, 262, 196, 165, 165, 220, 165, 174, 174, 262, 196, 147, 147, 196, 196];
+      this._crayStep = 0;
+      this._crayIv = setInterval(() => {
+        const s = this._crayStep++ % lead.length;
+        if (bass[s]) tone(bass[s], .17, { type: 'square', vol: .05 });
+        if (lead[s]) tone(lead[s], .13, { type: 'triangle', vol: .085 });
+        if (s % 4 === 0) noise(.02, .015);   // 가벼운 하이햇
+      }, 160);
+    },
+    crayBgmStop() { clearInterval(this._crayIv); this._crayIv = null; },
     get muted() { return muted; },
     get off() { return isHost ? muted : !stuSnd; },     // "이 기기에서 꺼져 있나" — 버튼 아이콘용
     get ready() { return Object.keys(bufs).length; },   // 디코딩된 샘플 수 (검증·디버깅용)
@@ -1190,7 +1205,7 @@ const SFX = (() => {
       if (isHost) {
         muted = !muted;
         localStorage.setItem('ca_mute', muted ? '1' : '0');
-        if (muted) this.melodyStop();
+        if (muted) { this.melodyStop(); this.crayBgmStop(); }
         else this.unlock();
       } else {
         stuSnd = !stuSnd;
@@ -1446,6 +1461,7 @@ function handle(m) {
       if (samePlaying) break;
       if (phase === 'countdown' || phase === 'playing') {
         if (phase === 'countdown') {
+          SFX.crayBgmStop();   // 이전 판 배틀 BGM 잔여 정지
           snaps = []; wasAlive = true; lastWordJson = '';
           camX = null; camY = null;
           drawRaceCars._myHz = 0; drawRaceCars._myPos = null;
@@ -1456,10 +1472,12 @@ function handle(m) {
         // 시작 효과음은 카운트다운에서 넘어올 때만 (재접속 복귀 때는 울리지 않게)
         // TV만 — 40대 폰이 동시에 "GO!"를 외치면 교실이 뒤섞인다
         if (isHost && phase === 'playing' && prev === 'countdown') SFX.go();
+        // 물풍선 대작전: 배틀 BGM 시작 (TV 전용)
+        if (isHost && phase === 'playing' && prev === 'countdown' && gameType === 'cray') SFX.crayBgmStart();
         // 카운트다운 → 같은 게임 playing 전환에서는 조이스틱을 놓지 않는다(미리 잡은 스틱 유지)
         enterGameView(prev === 'countdown' && phase === 'playing');
       } else if (phase === 'lobby') {
-        SFX.melodyStop();
+        SFX.melodyStop(); SFX.crayBgmStop();
         clearSimonTimers();
         show(isHost ? 'hostLobby' : 'playerLobby');
       }
@@ -1558,7 +1576,7 @@ function handle(m) {
       toast('나쁜 말은 안 돼요!');
       break;
     case 'result':
-      SFX.melodyStop();
+      SFX.melodyStop(); SFX.crayBgmStop();
       clearSimonTimers();
       showResult(m.ranking, m.champ);
       break;
@@ -2934,7 +2952,8 @@ const SPR = {};
  'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
  'ship', 'alien', 'alien2', 'chair', 'pirate', 'knife', 'sumo', 'sadari',
  'runner', 'runner2', 'iceblock', 'icespike', 'pine',
- 'crayballoon', 'craybox', 'crayblock'].forEach(name => {
+ 'crayballoon', 'craybox', 'crayblock',
+ 'crayitem_balloon', 'crayitem_water', 'crayitem_shoe'].forEach(name => {
   const im = new Image();
   im.src = 'sprites/' + name + '.png';
   im.onload = () => { SPR[name] = im; };
@@ -3450,16 +3469,29 @@ function draw() {
         }
       }
     }
-    // 바닥 아이템 (둥둥 떠 보이게)
+    // 바닥 아이템 (둥둥 떠 보이게) — 스프라이트, 없으면 이모지 폴백
+    const ITEM_SPR = [SPR.crayitem_balloon, SPR.crayitem_water, SPR.crayitem_shoe];
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const [cx, cy, t2] of (latest.items || [])) {
       const x = ox + (cx + 0.5) * cs, y = oy + (cy + 0.5) * cs + Math.sin(performance.now() / 260 + cx * 2) * 3 * scale;
-      ctx.fillStyle = 'rgba(255,255,255,.85)';
-      ctx.beginPath(); ctx.arc(x, y, cs * .3, 0, 7); ctx.fill();
-      ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 2.5 * dpr;
-      ctx.beginPath(); ctx.arc(x, y, cs * .3, 0, 7); ctx.stroke();
-      ctx.font = `${cs * .38}px serif`;
-      ctx.fillText(['🎈', '💧', '👟'][t2] || '❓', x, y + cs * .02);
+      // 은은한 발광 후광 (아이템이 도드라지게)
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, cs * .5);
+      glow.addColorStop(0, 'rgba(255,225,120,.55)');
+      glow.addColorStop(1, 'rgba(255,225,120,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(x, y, cs * .5, 0, 7); ctx.fill();
+      const spr = ITEM_SPR[t2];
+      if (spr) {
+        const pulse = 1 + Math.sin(performance.now() / 240 + cx) * 0.06;
+        drawSpr(spr, x, y, cs * .82 * pulse);
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,.85)';
+        ctx.beginPath(); ctx.arc(x, y, cs * .3, 0, 7); ctx.fill();
+        ctx.strokeStyle = '#ffb03a'; ctx.lineWidth = 2.5 * dpr;
+        ctx.beginPath(); ctx.arc(x, y, cs * .3, 0, 7); ctx.stroke();
+        ctx.font = `${cs * .38}px serif`;
+        ctx.fillText(['🎈', '💧', '👟'][t2] || '❓', x, y + cs * .02);
+      }
     }
     // 물풍선 (심지 타는 만큼 두근두근 커진다)
     for (const [cx, cy, left] of (latest.balloons || [])) {
