@@ -294,14 +294,24 @@ const RUN_ROUND_MS = 80000;      // 80초 달리기
 // 트랙 정의는 클라이언트(index.html KART_TRACK_DEF)와 반드시 동일해야 한다 (렌더-판정 일치)
 const KART_TRACK_DEF = [[25,0,0],[20,2.6,0],[15,0,0],[22,-3.2,30],[18,0,0],[15,1.8,-25],[25,-1.4,0],[20,3.4,40],[18,0,0],[15,-2.2,0],[12,0,20],[20,2.8,0],[15,0,0]];
 const KART_SEG = 200;
-const KART_CURVES = [];               // 세그별 커브값 (전개)
-for (const [n, c] of KART_TRACK_DEF) for (let i = 0; i < n; i++) KART_CURVES.push(c);
+const KART_CURVE_SMOOTH = 4;          // 클라이언트(KART_CURVE_SMOOTH)와 반드시 동일해야 한다
+const KART_CURVES = [];               // 세그별 커브값 (전개 후 완만화)
+{ const cs = [];
+  for (const [n, c] of KART_TRACK_DEF) for (let i = 0; i < n; i++) cs.push(c);
+  const n2 = cs.length, R = KART_CURVE_SMOOTH;
+  // 구간 경계에서 원심력이 뚝 바뀌지 않게 — 보이는 도로(클라 렌더)와 같은 커브를 써야 조작감이 맞는다
+  for (let i = 0; i < n2; i++) {
+    let s = 0, w = 0;
+    for (let d = -R; d <= R; d++) { const t = 1 - Math.abs(d) / (R + 1); s += cs[(i + d + n2) % n2] * t; w += t; }
+    KART_CURVES.push(s / w);
+  }
+}
 const KART_N = KART_CURVES.length;    // 240 세그
 const KART_TRACK = KART_N * KART_SEG; // 한 랩 48,000유닛
-const KART_LAPS = 3;
-const KART_ROUND_MS = 240000;         // 최대 4분 (1등 나오면 35초로 단축)
-const KART_AFTER_FIRST_MS = 35000;
-const KART_MAX_SPEED = 1450;          // 유닛/초 (랩 ~33초)
+const KART_LAPS = 2;                  // 실측 1바퀴 ~48초 → 2바퀴 약 1분 40초 (다른 게임과 비슷한 길이)
+const KART_ROUND_MS = 170000;         // 최대 2분 50초 (1등 나오면 30초로 단축)
+const KART_AFTER_FIRST_MS = 30000;
+const KART_MAX_SPEED = 1450;          // 유닛/초 (랩 ~33초, 실제로는 조향·잔디 때문에 ~48초)
 const KART_BOOST_MULT = 1.4;
 const KART_BOOST_MS = 1600;
 const KART_OFF_MULT = 0.45;           // 잔디 감속
