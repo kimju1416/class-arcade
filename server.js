@@ -290,6 +290,26 @@ const RACE_AFTER_FIRST_MS = 30000; // 1등 완주 후 나머지에게 주는 시
 
 // ---------- 설원 러너 ----------
 const RUN_ROUND_MS = 80000;      // 80초 달리기
+// ---------- 카트 그랑프리 ----------
+// 트랙 정의는 클라이언트(index.html KART_TRACK_DEF)와 반드시 동일해야 한다 (렌더-판정 일치)
+const KART_TRACK_DEF = [[25,0,0],[20,2.6,0],[15,0,0],[22,-3.2,30],[18,0,0],[15,1.8,-25],[25,-1.4,0],[20,3.4,40],[18,0,0],[15,-2.2,0],[12,0,20],[20,2.8,0],[15,0,0]];
+const KART_SEG = 200;
+const KART_CURVES = [];               // 세그별 커브값 (전개)
+for (const [n, c] of KART_TRACK_DEF) for (let i = 0; i < n; i++) KART_CURVES.push(c);
+const KART_N = KART_CURVES.length;    // 240 세그
+const KART_TRACK = KART_N * KART_SEG; // 한 랩 48,000유닛
+const KART_LAPS = 3;
+const KART_ROUND_MS = 240000;         // 최대 4분 (1등 나오면 35초로 단축)
+const KART_AFTER_FIRST_MS = 35000;
+const KART_MAX_SPEED = 1450;          // 유닛/초 (랩 ~33초)
+const KART_BOOST_MULT = 1.4;
+const KART_BOOST_MS = 1600;
+const KART_OFF_MULT = 0.45;           // 잔디 감속
+const KART_SPIN_MS = 1200;            // 바나나·등껍질 맞으면 스핀
+const KART_BOX_RESPAWN_MS = 3000;
+// 아이템 박스: [세그, 측면x] — 4구역 × 3개
+const KART_BOXES = [[30,-0.55],[31,0],[32,0.55],[90,-0.55],[91,0],[92,0.55],[150,-0.55],[151,0],[152,0.55],[205,-0.55],[206,0],[207,0.55]];
+
 const RUN_LANES = 3;
 const RUN_BASE_SPEED = 240;      // 유닛/초 (10유닛 = 1m 표기)
 const RUN_MAX_SPEED = 430;       // 시간이 갈수록 여기까지 빨라진다
@@ -1057,7 +1077,7 @@ function drawSuggest() {
   return [...out];
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray', 'kart'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -1101,6 +1121,12 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
         : undefined,
       sumo: r.gameType === 'sumo' && r.game ? { ring: Math.round(r.game.ringR) } : undefined,
+      kart: r.gameType === 'kart' && r.game && r.game.kBoxes
+        ? { bananas: r.game.kBananas.length, shells: r.game.kShells.length,
+            racers: [...r.players.values()].filter(p => !p.waiting).map(p =>
+              ({ nick: p.nick, total: Math.round(p.kTotal || 0), x: Math.round((p.kX || 0) * 100) / 100,
+                 lap: Math.floor((p.kTotal || 0) / KART_TRACK) + 1, item: p.kItem || 0, fin: !!p.finishedAt })) }
+        : undefined,
       timing: r.gameType === 'timing' && r.game && r.game.tTargets
         ? { phase: r.game.tPhase, round: r.game.tIdx, target: r.game.tTargets[r.game.tIdx],
             startAt: r.game.startAt || 0, results: r.game.results,
@@ -1517,6 +1543,17 @@ function startGame(room, type, opt) {
       p.crayTrapUntil = 0; p.crayInvUntil = 0; p.crayTrappedBy = 0;
       p.crayKills = 0; p.crayRescues = 0; p.crayItemAt = 0; p.crayRescuedAt = 0;
     });
+  } else if (type === 'kart') {
+    g.roundMs = KART_ROUND_MS;
+    g.kBoxes = KART_BOXES.map(([s, x]) => ({ s, x, at: 0 }));  // at: 리스폰 가능 시각
+    g.kBananas = []; g.kShells = []; g.kNextId = 1;
+    actives.forEach((p, i) => {
+      p.kTotal = 0;                          // 누적 주행거리 (랩·순위의 근거)
+      p.kX = ((i % 4) - 1.5) * 0.5;          // 출발 그리드: 측면으로만 분산 (카트끼리 충돌 없음)
+      p.kSpeed = 0; p.kItem = 0;             // 0없음 1부스터 2바나나 3등껍질
+      p.kBoostUntil = 0; p.kSpinUntil = 0; p.kBoxIdx = 0;
+      p.finishedAt = 0;
+    });
   } else if (type === 'ox') {
     g.roundMs = 0;
     g.arenaW = 1100; g.arenaH = 760;   // 가로로 넓게 — 왼쪽 O, 오른쪽 X
@@ -1661,6 +1698,7 @@ function tick(room) {
   else if (room.gameType === 'tetris') tetrisTick(room, now);
   else if (room.gameType === 'draw') drawTick(room, now);
   else if (room.gameType === 'cray') crayTick(room, now, dt);
+  else if (room.gameType === 'kart') kartTick(room, now, dt);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -2782,6 +2820,126 @@ function endRace(room) {
     p => p.finishedAt ? String(p.finishedAt) : 'dnf' + Math.round(p.raceProgress || 0));
 }
 
+// ---------- 카트 그랑프리 ----------
+function kartCurveAt(total) {
+  const seg = Math.floor(((total % KART_TRACK) + KART_TRACK) % KART_TRACK / KART_SEG) % KART_N;
+  return KART_CURVES[seg];
+}
+function kartUseItem(room, p, now) {
+  const g = room.game;
+  if (!p.alive || p.finishedAt || !p.kItem) return;
+  const item = p.kItem; p.kItem = 0;
+  if (item === 1) {                      // 🚀 부스터
+    p.kBoostUntil = now + KART_BOOST_MS;
+  } else if (item === 2) {               // 🍌 바나나: 내 뒤에 설치
+    if (g.kBananas.length < 24) g.kBananas.push({ id: g.kNextId++, pos: p.kTotal - 90, x: p.kX });
+  } else if (item === 3) {               // 🐢 등껍질: 내 레인을 따라 전진, 첫 카트 명중
+    if (g.kShells.length < 12) g.kShells.push({ id: g.kNextId++, pos: p.kTotal + 80, x: p.kX, owner: p.id, until: now + 4000 });
+  }
+}
+function kartTick(room, now, dt) {
+  const g = room.game;
+  const racers = [...room.players.values()].filter(p => p.alive);
+
+  for (const p of racers) {
+    if (p.finishedAt) continue;
+    const spinning = now < p.kSpinUntil;
+    const boosting = now < p.kBoostUntil;
+    const offRoad = Math.abs(p.kX) > 1.08;
+    const max = KART_MAX_SPEED * (boosting ? KART_BOOST_MULT : 1) * (offRoad ? KART_OFF_MULT : 1) * (spinning ? 0.25 : 1);
+    p.kSpeed += (max - p.kSpeed) * Math.min(1, dt * (p.kSpeed < max ? 0.6 : 2.4));
+    const prevTotal = p.kTotal;
+    p.kTotal += p.kSpeed * dt;
+
+    // 조향 + 커브 원심력 (클라 렌더 공식과 동일 감각)
+    if (!spinning) p.kX += p.dirX * dt * 1.9 * (p.kSpeed / KART_MAX_SPEED);
+    p.kX -= kartCurveAt(p.kTotal) * dt * 0.09 * (p.kSpeed / KART_MAX_SPEED);
+    // 잔디 자동 복귀 보정 (조작 서툰 학생 배려 — 길 쪽으로 살짝 당김)
+    if (offRoad && !spinning) p.kX -= Math.sign(p.kX) * dt * 0.55;
+    p.kX = Math.max(-1.9, Math.min(1.9, p.kX));
+
+    // 아이템 박스: 이번 틱에 지나친 박스만 스윕 (러너 패턴)
+    if (!p.kItem) {
+      const lapBase = Math.floor(prevTotal / KART_TRACK) * KART_TRACK;
+      for (const b of g.kBoxes) {
+        if (now < b.at) continue;
+        for (const base of [lapBase, lapBase + KART_TRACK]) {   // 랩 경계 걸침 대응
+          const bp = base + b.s * KART_SEG;
+          if (bp > prevTotal && bp <= p.kTotal && Math.abs(p.kX - b.x) < 0.5) {
+            b.at = now + KART_BOX_RESPAWN_MS;
+            // 순위 보정: 뒤처질수록 부스터 확률↑ (교실 배려)
+            const rank = racers.filter(q => (q.kTotal || 0) > p.kTotal).length;
+            const luck = rank / Math.max(1, racers.length - 1);
+            const r = Math.random();
+            p.kItem = r < 0.34 + luck * 0.4 ? 1 : r < 0.7 ? 2 : 3;
+            p.kItemAt = now;
+            break;
+          }
+        }
+        if (p.kItem) break;
+      }
+    }
+
+    // 바나나 밟기
+    if (!spinning) for (let i = g.kBananas.length - 1; i >= 0; i--) {
+      const b = g.kBananas[i];
+      const d = ((p.kTotal - b.pos) % KART_TRACK + KART_TRACK) % KART_TRACK;
+      const dd = Math.min(d, KART_TRACK - d);
+      if (dd < 45 && Math.abs(p.kX - b.x) < 0.38) {
+        p.kSpinUntil = now + KART_SPIN_MS; p.kSpinAt = now;
+        g.kBananas.splice(i, 1);
+        break;
+      }
+    }
+
+    // 랩·완주
+    const lap = Math.floor(p.kTotal / KART_TRACK);
+    if (p.kTotal >= KART_LAPS * KART_TRACK && !p.finishedAt) {
+      p.finishedAt = now;
+      p.kTotal = KART_LAPS * KART_TRACK;
+      if (room.phaseEndAt > now + KART_AFTER_FIRST_MS) {   // 1등 완주 → 남은 시간 단축
+        room.phaseEndAt = now + KART_AFTER_FIRST_MS;
+        broadcast(room, { type: 'phase', state: 'playing', gameType: 'kart', endAt: room.phaseEndAt, st: now });
+      }
+    }
+  }
+
+  // 등껍질 이동·명중
+  for (let i = g.kShells.length - 1; i >= 0; i--) {
+    const s = g.kShells[i];
+    if (now > s.until) { g.kShells.splice(i, 1); continue; }
+    s.pos += 2500 * dt;
+    let hit = false;
+    for (const p of racers) {
+      if (p.id === s.owner || p.finishedAt || now < p.kSpinUntil) continue;
+      const d = ((p.kTotal - s.pos) % KART_TRACK + KART_TRACK) % KART_TRACK;
+      const dd = Math.min(d, KART_TRACK - d);
+      if (dd < 55 && Math.abs(p.kX - s.x) < 0.42) {
+        p.kSpinUntil = now + KART_SPIN_MS; p.kSpinAt = now;
+        hit = true; break;
+      }
+    }
+    if (hit) g.kShells.splice(i, 1);
+  }
+
+  const allDone = racers.length > 0 && racers.every(p => p.finishedAt);
+  if (now >= room.phaseEndAt || allDone || racers.length === 0) { endKart(room); }
+}
+function endKart(room) {
+  const g = room.game;
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    const af = a.finishedAt || Infinity, bf = b.finishedAt || Infinity;
+    if (af !== bf) return af - bf;
+    return (b.kTotal || 0) - (a.kTotal || 0);
+  });
+  finishGame(room, sorted,
+    p => p.finishedAt
+      ? ((p.finishedAt - g.startedAt) / 1000).toFixed(1) + '초 완주 🏁'
+      : `${Math.min(KART_LAPS, Math.floor((p.kTotal || 0) / KART_TRACK) + 1)}랩에서 종료`,
+    p => p.finishedAt ? String(p.finishedAt) : 'dnf' + Math.round(p.kTotal || 0));
+}
+
 // ---------- 설원 러너 ----------
 function runTick(room, now, dt) {
   const g = room.game;
@@ -3470,6 +3628,18 @@ function sendState(room, now) {
       })
       .forEach((p, i) => raceOrder.set(p.id, i + 1));
   }
+  // 카트: 누적거리 순 등수 (완주자는 완주 순서 고정)
+  let kartOrder = null;
+  if (type === 'kart') {
+    kartOrder = new Map();
+    [...room.players.values()].filter(p => !p.waiting)
+      .sort((a, bb) => {
+        const af = a.finishedAt || Infinity, bf = bb.finishedAt || Infinity;
+        if (af !== bf) return af - bf;
+        return (bb.kTotal || 0) - (a.kTotal || 0);
+      })
+      .forEach((p, i) => kartOrder.set(p.id, i + 1));
+  }
   const msg = {
     type: 'state', mode: type, st: now,
     arena: { w: g.arenaW, h: g.arenaH },
@@ -3479,7 +3649,8 @@ function sendState(room, now) {
         : type === 'sadari' ? (p.sadariCaught || 0)   // 점수 대신 걸린 횟수
         : type === 'cray' ? (p.crayKills || 0)
         : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'timing' || type === 'run') ? p.score
-        : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0) : 0;
+        : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0)
+        : type === 'kart' ? (kartOrder ? kartOrder.get(p.id) || 0 : 0) : 0;
       const row = [p.id, Math.round(p.x), Math.round(p.y), p.alive ? 1 : 0, p.waiting ? 1 : 0, extra];
       // 스모: 대시 중 / 대시 쿨타임(0.1초 단위) / 최근 충돌
       if (type === 'sumo') {
@@ -3524,6 +3695,17 @@ function sendState(room, now) {
                  now - (p.gotAt || 0) < 700 ? (p.clawGot || 0) : 0,
                  now - (p.missAt || 0) < 500 ? 1 : 0);
       }
+      // 카트: [트랙내 위치, 측면×100, 랩(1~), 아이템, 부스터, 스핀 연출, 완주, 아이템 획득 연출]
+      if (type === 'kart') {
+        row.push(Math.round(((p.kTotal || 0) % KART_TRACK + KART_TRACK) % KART_TRACK),
+                 Math.round((p.kX || 0) * 100),
+                 Math.min(KART_LAPS, Math.floor((p.kTotal || 0) / KART_TRACK) + 1),
+                 p.kItem || 0,
+                 now < (p.kBoostUntil || 0) ? 1 : 0,
+                 now - (p.kSpinAt || 0) < KART_SPIN_MS ? 1 : 0,
+                 p.finishedAt ? 1 : 0,
+                 now - (p.kItemAt || 0) < 600 ? 1 : 0);
+      }
       // 레이싱: 방향각·랩·부스터·완주 순위·스핀/물 상태
       if (type === 'race') {
         // 랩 표시는 출발점부터 달린 거리 기준 (격자 보정과 일관되게)
@@ -3539,6 +3721,14 @@ function sendState(room, now) {
       return row;
     }),
   };
+  if (type === 'kart') {
+    // 아이템 박스 활성 비트마스크 + 바나나·등껍질 (트랙 위치는 랩 무관 pos%TRACK)
+    let mask = 0;
+    g.kBoxes.forEach((b, i) => { if (now >= b.at) mask |= (1 << i); });
+    msg.boxMask = mask;
+    msg.bananas = g.kBananas.map(b => [Math.round(((b.pos % KART_TRACK) + KART_TRACK) % KART_TRACK), Math.round(b.x * 100)]);
+    msg.shells = g.kShells.map(s => [Math.round(((s.pos % KART_TRACK) + KART_TRACK) % KART_TRACK), Math.round(s.x * 100)]);
+  }
   if (type === 'bomb') msg.bombs = g.bombs.map(b => {
     const boom = now >= b.explodeAt;
     const prog = boom ? (now - b.explodeAt) / BOMB_BOOM_MS
@@ -3886,6 +4076,9 @@ wss.on('connection', (ws) => {
           g2.balloons.push({ cx, cy, owner: p.id, explodeAt: now2 + CRAY_FUSE_MS, pow: p.crayPow || 1, done: false });
           g2.balloonAt.set(key, true);
           p.crayPlaced = (p.crayPlaced || 0) + 1;
+        }
+        else if (room.gameType === 'kart' && room.state === 'playing' && p.alive) {
+          kartUseItem(room, p, Date.now());
         }
         break;
       }

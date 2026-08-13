@@ -995,6 +995,7 @@ const GAMES_META = {
   tetris: { icon: '🧱', name: '블록 배틀', desc: '전원 동시 테트리스 대전! 2줄 이상 지우면 친구 보드에 쓰레기 줄 공격. 갈수록 빨라진다 — 최후의 1인은 누구?', badge: '실시간 대전', rule: '◀▶ 이동 · ⟳ 회전 · ▼ 빨리 내리기 · 쿵! 즉시 낙하\n2줄 이상 지우면 친구에게 공격!' },
   draw: { icon: '🎨', name: '그림 퀴즈', desc: '선생님이 지목한 친구가 몰래 답을 정하고 그림으로만 설명! 그림이 TV에 실시간으로 — 빨리 맞힐수록 고득점.', badge: '캐치마인드', rule: '출제자: 답을 정하고 그림으로 표현!\n나머지: 그림을 보고 폰에 정답 입력!' },
   cray: { icon: '💧', name: '물풍선 대작전', desc: '물풍선을 놓아 십자 물줄기로 친구를 물방울에 가두고, 갇힌 친구를 톡 치면 탈락! 상자를 부숴 🎈💧👟 아이템을 모아라. 개인전·팀전 선택!', badge: '최후 1인', rule: '조이스틱: 이동 · 버튼: 물풍선 설치!\n물줄기에 맞으면 물방울에 갇혀요 — 팀전은 아군이 터치해 구출!' },
+  kart: { icon: '🏁', name: '카트 그랑프리', desc: '내 캐릭터가 카트를 타고 달린다! 운전석 시점으로 3바퀴 레이스. ? 박스에서 🚀부스터·🍌바나나·🐢등껍질을 얻어 역전하라!', badge: '3랩', rule: '왼손: 핸들 · 오른손: 아이템 사용!\n가속은 자동 — 방향만 잡으면 돼요. ? 박스를 밟아 아이템 획득!' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
 const GAME_CATS = [
@@ -1011,7 +1012,7 @@ const GAME_CAT_OF = {
   // ⚔️ 서바이벌: 탈락이 있고 최후 생존을 다투는 게임
   bomb: ['sur'], tag: ['sur'], dodge: ['sur'], sumo: ['sur'], chair: ['sur'], gala: ['sur'], tetris: ['sur'],
   // 🏆 점수 경쟁: 탈락 없이 점수·기록으로 겨루는 게임
-  coin: ['score'], mos: ['score'], claw: ['score'], race: ['score'], run: ['score'], timing: ['score'],
+  coin: ['score'], mos: ['score'], claw: ['score'], race: ['score'], run: ['score'], timing: ['score'], kart: ['score'],
   // 🧠 퀴즈·두뇌: 문제를 풀거나 맞히는 게임
   word: ['quiz'], cho: ['quiz'], quiz: ['quiz'], ox: ['quiz'], draw: ['quiz'],
   // 🧩 기억력
@@ -1504,7 +1505,8 @@ function handle(m) {
           drawRaceCars._myHz = 0; drawRaceCars._myPos = null;
           sndPrev = { count: -1, boom: 0, coinTotal: -1, infected: -1, done: 0, blown: 0, mosTotal: -1, clawTotal: -1, clawMiss: 0, boosts: 0, raceFin: 0, spins: 0, wave: 1, dodgeAlive: -1,
                       bumps: 0, sumoAlive: -1, cphase: '', sat: 0, chairAlive: -1, sadariTotal: null, pirPop: 0,
-                      runCoins: -1, runStumble: 0, runFever: 0 };
+                      runCoins: -1, runStumble: 0, runFever: 0,
+                      kartSpin: 0, kartItem: 0, kartFin: 0, kartSpins: 0, kartItems: 0 };
         }
         // 시작 효과음은 카운트다운에서 넘어올 때만 (재접속 복귀 때는 울리지 않게)
         // TV만 — 40대 폰이 동시에 "GO!"를 외치면 교실이 뒤섞인다
@@ -2531,13 +2533,14 @@ function enterGameView(keepInput) {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기·사다리·통) / 버튼(인형뽑기·부스터·발사·대시)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray');
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart');
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
       : gameType === 'sumo' ? '대시!<br>💨'
       : gameType === 'run' ? '점프<br>⬆️'
-      : gameType === 'cray' ? '물풍선<br>💧' : '집게<br>내리기';
+      : gameType === 'cray' ? '물풍선<br>💧'
+      : gameType === 'kart' ? '아이템<br>🎁' : '집게<br>내리기';
     // 설원 러너 전용 부스터 버튼 (점프와 별개)
     $('btnBoost').style.display = (!isHost && gameType === 'run') ? 'block' : 'none';
     $('btnBoost').classList.add('wait'); $('btnBoost').classList.remove('ready'); $('btnBoost').__label = '';
@@ -3097,9 +3100,9 @@ function initInput() {
     const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
       || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
       || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
-      || gameType === 'cray';
+      || gameType === 'cray' || gameType === 'kart';
     if (!usesStick) return;
-    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
+    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
     stickPid = e.pointerId;
@@ -3151,11 +3154,11 @@ function stopFire() {
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (isHost || phase !== 'playing') return;
-  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run' && gameType !== 'cray') return;
+  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run' && gameType !== 'cray' && gameType !== 'kart') return;
   send({ type: 'action' });
   if (navigator.vibrate) navigator.vibrate(15);   // 진동으로 손맛 (소리는 기본 끔)
   // 소리 켠 학생: 버튼 손맛 — 부스터/집게/대시만 (갤러그 연사는 시끄러워서 제외)
-  if (gameType === 'race' || gameType === 'claw' || gameType === 'sumo' || gameType === 'cray') SFX.swat();
+  if (gameType === 'race' || gameType === 'claw' || gameType === 'sumo' || gameType === 'cray' || gameType === 'kart') SFX.swat();
   // 갤러그: 누르고 있는 동안 연사
   if (gameType === 'gala') {
     firePid = e.pointerId;
@@ -3204,7 +3207,7 @@ setInterval(() => {
   const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
     || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
-    || gameType === 'cray';
+    || gameType === 'cray' || gameType === 'kart';
   if (isHost || !moves || (phase !== 'playing' && phase !== 'countdown')) return;
   const kd = keyDir();
   const d = kd || curDir;
@@ -3229,6 +3232,7 @@ function draw() {
   const dpr = devicePixelRatio;
   ctx.clearRect(0, 0, W, H);
   if (gameType === 'run') { drawRunGame(W, H, dpr); return; }   // 설원 러너는 유사 3D 전용 렌더
+  if (gameType === 'kart') { drawKartGame(W, H, dpr); return; } // 카트는 운전석 시점 전용 렌더
 
   const pad = 8 * dpr, topPad = (isHost ? 64 : 48) * dpr;
   let scale = Math.min((W - pad * 2) / arena.w, (H - topPad - pad) / arena.h);
@@ -4912,6 +4916,338 @@ function drawSpace(ox, oy, aw, ah, dpr) {
 // ---------- 설원 러너 렌더링 (뒤에서 보는 유사 3D) ----------
 // 원근: s = f/(f+rel)로 축소, 바닥 y는 horizon~nearY 사이를 s로 보간
 let runCamZ = null;   // 추적 카메라 z (학생=나, TV=선두를 부드럽게 따라감)
+// ---------- 카트 그랑프리 (운전석 시점 + TV 전체 맵) ----------
+// 트랙 정의는 서버(KART_TRACK_DEF)와 반드시 동일해야 한다
+const KART_TRACK_DEF = [[25,0,0],[20,2.6,0],[15,0,0],[22,-3.2,30],[18,0,0],[15,1.8,-25],[25,-1.4,0],[20,3.4,40],[18,0,0],[15,-2.2,0],[12,0,20],[20,2.8,0],[15,0,0]];
+const KART_SEG = 200, KART_LAPS = 3;
+const KART_SEGS = [];
+{ let yy = 0;
+  for (const [n, c, h] of KART_TRACK_DEF) for (let i = 0; i < n; i++) {
+    yy += h ? Math.sin((i / n) * Math.PI) * h : 0;
+    KART_SEGS.push({ curve: c, wy: yy });
+  } }
+const KART_N = KART_SEGS.length, KART_TRACK = KART_N * KART_SEG;
+const KART_BOXES = [[30,-0.55],[31,0],[32,0.55],[90,-0.55],[91,0],[92,0.55],[150,-0.55],[151,0],[152,0.55],[205,-0.55],[206,0],[207,0.55]];
+// TV·미니맵용 2D 폴리라인: 매끈한 GP 서킷 모양의 표시용 루프 (진행도 → 좌표만 담당, 판정 무관)
+const KART_MAP = (() => {
+  const pts = [];
+  for (let i = 0; i <= KART_N; i++) {
+    const t = i / KART_N, th = t * Math.PI * 2 - Math.PI / 2;
+    const r = 1 + 0.16 * Math.sin(th * 2 + 1.1) + 0.1 * Math.sin(th * 3 + 2.4);
+    pts.push([Math.cos(th) * r, Math.sin(th) * r * 0.68]);
+  }
+  let mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
+  for (const [a, b] of pts) { mnx = Math.min(mnx, a); mxx = Math.max(mxx, a); mny = Math.min(mny, b); mxy = Math.max(mxy, b); }
+  const w = mxx - mnx || 1, h = mxy - mny || 1;
+  return { pts: pts.map(([a, b]) => [(a - mnx) / w, (b - mny) / h]), ar: w / h };
+})();
+function kartMapXY(pos, ox, oy, mw, mh) {   // 트랙 pos → 맵 픽셀 좌표
+  const f = (((pos % KART_TRACK) + KART_TRACK) % KART_TRACK) / KART_SEG;
+  const i = Math.floor(f), t2 = f - i;
+  const a = KART_MAP.pts[i], b = KART_MAP.pts[Math.min(i + 1, KART_MAP.pts.length - 1)];
+  return [ox + (a[0] + (b[0] - a[0]) * t2) * mw, oy + (a[1] + (b[1] - a[1]) * t2) * mh];
+}
+const KIMG = {};
+function kartLoadAssets() {
+  if (KIMG.bg) return;
+  for (const [k2, src] of Object.entries({ bg: 'kart-bg.jpg', tree: 'kart-tree.png', box: 'kart-box.png', banana: 'kart-banana.png', shell: 'kart-shell.png' })) {
+    const im = new Image(); im.src = 'sprites/' + src; KIMG[k2] = im;
+  }
+}
+const KART_CHAR = {};   // ci → Image (karts/<slug>.png, 캐릭터가 카트에 탄 뒷모습)
+function kartCharImg(ci) {
+  const meta = CHAR_LIST[ci || 0];
+  if (!meta) return null;
+  if (!(ci in KART_CHAR)) { const im = new Image(); im.src = 'sprites/karts/' + meta.slug + '.png'; KART_CHAR[ci] = im; }
+  const im = KART_CHAR[ci];
+  return im.complete && im.naturalWidth ? im : null;
+}
+function kartHash(i) { let h2 = i * 2654435761 >>> 0; h2 ^= h2 >>> 13; h2 = Math.imul(h2, 0x5bd1e995); h2 ^= h2 >>> 15; return (h2 >>> 0) / 4294967295; }
+// 행: [0id 1x 2y 3alive 4wait 5rank 6pos 7x100 8lap 9item 10boost 11spin 12fin 13itemFx]
+function drawKartGame(W, H, dpr) {
+  kartLoadAssets();
+  const now = performance.now();
+  let latest = null; const lerped = new Map();
+  if (snaps.length) {
+    const rt = now - 120;
+    let a = snaps[0], b = snaps[snaps.length - 1];
+    for (let i = 0; i < snaps.length - 1; i++)
+      if (snaps[i].rt <= rt && snaps[i + 1].rt >= rt) { a = snaps[i]; b = snaps[i + 1]; break; }
+    const t = (b.rt === a.rt) ? 1 : Math.max(0, Math.min(1, (rt - a.rt) / (b.rt - a.rt)));
+    const posA = new Map(a.m.players.map(p => [p[0], p]));
+    for (const pb of b.m.players) {
+      const pa = posA.get(pb[0]) || pb;
+      let dp = pb[6] - pa[6];
+      if (dp < -KART_TRACK / 2) dp += KART_TRACK;   // 랩 경계 보간
+      lerped.set(pb[0], { pos: (pa[6] + dp * t + KART_TRACK) % KART_TRACK, kx: lerp(pa[7], pb[7], t) / 100 });
+    }
+    latest = snaps[snaps.length - 1].m;
+  }
+  if (!latest) { ctx.fillStyle = '#0d1327'; ctx.fillRect(0, 0, W, H); return; }
+  if (isHost) { drawKartHostMap(W, H, dpr, latest, lerped); return; }
+
+  const meRow = latest.players.find(r => r[0] === myId);
+  const meL = lerped.get(myId);
+  const camPos = meL ? meL.pos : 0, camKX = meL ? meL.kx : 0;
+  const horizon = H * 0.55;
+
+  // 배경 파노라마 (커브 파랄랙스)
+  drawKartGame._bgShift = (drawKartGame._bgShift || 0);
+  const baseSeg = KART_SEGS[Math.floor(camPos / KART_SEG) % KART_N];
+  drawKartGame._bgShift += baseSeg.curve * 1.1 * dpr;
+  if (KIMG.bg && KIMG.bg.complete && KIMG.bg.naturalWidth) {
+    const bh = horizon * 1.12, bw = bh / (KIMG.bg.height / KIMG.bg.width);
+    let off = ((-drawKartGame._bgShift) % bw + bw) % bw - bw;
+    for (let x2 = off; x2 < W; x2 += bw) ctx.drawImage(KIMG.bg, x2, horizon - bh * 0.97, bw, bh);
+  } else { ctx.fillStyle = '#2e63d8'; ctx.fillRect(0, 0, W, horizon); }
+  ctx.fillStyle = '#7fbf5e'; ctx.fillRect(0, horizon - 2, W, H - horizon + 2);
+
+  // 도로 (시안과 동일한 세그먼트 투영)
+  const camY = KART_SEGS[Math.floor(camPos / KART_SEG) % KART_N].wy + 330;
+  const camZ = camPos - KART_SEG * 1.2;
+  const proj = (camX2, wy, wz) => {
+    const dz = wz - camZ, sc = (H * 0.82) / dz;
+    return { x: W / 2 + sc * (-camX2) * KART_SEG * 2.1, y: H * 0.5 - sc * (wy - camY), w: sc * KART_SEG * 2.1, sc };
+  };
+  const kpoly = (x1, y1, x2, y2, x3, y3, x4, y4) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4); ctx.closePath(); ctx.fill(); };
+  const baseI = Math.floor(camPos / KART_SEG);
+  let maxy = H, cx2 = 0, dx2 = -baseSeg.curve * ((camPos % KART_SEG) / KART_SEG);
+  const spr = [];
+  // 시야 내 오브젝트 준비 (pos → 세그 창 안에 들어오는 것)
+  const inWindow = (pos, n) => { const d = ((pos - camPos) % KART_TRACK + KART_TRACK) % KART_TRACK; return d >= n * KART_SEG && d < (n + 1) * KART_SEG; };
+  for (let n = 0; n < 80; n++) {
+    const i = (baseI + n) % KART_N, s = KART_SEGS[i];
+    const z1 = (baseI + n) * KART_SEG + 2, z2 = z1 + KART_SEG;
+    cx2 += dx2; dx2 += s.curve * 0.18;
+    const p1 = proj(camKX - cx2, s.wy, z1);
+    const p2 = proj(camKX - cx2 - dx2 * 0.18, KART_SEGS[(i + 1) % KART_N].wy, z2);
+    if (p2.y >= maxy || p2.y >= p1.y) continue;
+    const alt = Math.floor((baseI + n) / 3) % 2;
+    ctx.fillStyle = alt ? 'rgba(126,190,92,.55)' : 'rgba(108,176,78,.55)'; ctx.fillRect(0, p2.y, W, p1.y - p2.y);
+    const k1 = p1.w * 1.18, k2 = p2.w * 1.18;
+    ctx.fillStyle = alt ? '#e74c3c' : '#ffffff';
+    kpoly(p1.x - k1, p1.y, p1.x + k1, p1.y, p2.x + k2, p2.y, p2.x - k2, p2.y);
+    ctx.fillStyle = alt ? '#6b7280' : '#646c78';
+    kpoly(p1.x - p1.w, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y);
+    if (alt) { ctx.fillStyle = '#eef2ff';
+      kpoly(p1.x - p1.w * 0.013, p1.y, p1.x + p1.w * 0.013, p1.y, p2.x + p2.w * 0.013, p2.y, p2.x - p2.w * 0.013, p2.y); }
+    if (i < 3) {   // 출발선 체커
+      for (let r2 = 0; r2 < 2; r2++) for (let c2 = 0; c2 < 10; c2++) {
+        if ((r2 + c2) % 2 === 0) continue;
+        const fx1 = p1.x - p1.w + (2 * p1.w) * (c2 / 10), fx2 = p1.x - p1.w + (2 * p1.w) * ((c2 + 1) / 10);
+        const fy1 = p1.y + (p2.y - p1.y) * (r2 / 2), fy2 = p1.y + (p2.y - p1.y) * ((r2 + 1) / 2);
+        ctx.fillStyle = 'rgba(18,20,30,.8)'; ctx.fillRect(fx1, fy2, fx2 - fx1, fy1 - fy2);
+      }
+    }
+    maxy = p2.y;
+    // 스프라이트 수집 (도로폭 기준 크기)
+    if (kartHash(i) > 0.66 && n >= 2) { const side = kartHash(i * 7) > 0.5 ? 1 : -1;
+      spr.push({ type: 'tree', x: p2.x + p2.w * side * (1.75 + kartHash(i * 13) * 1.6), y: p2.y, w2: p2.w, z: n, v: kartHash(i * 3) }); }
+    if (latest.boxMask != null) KART_BOXES.forEach(([bs, bx], bi) => {
+      if (bs === i && (latest.boxMask & (1 << bi)))
+        spr.push({ type: 'box', x: p2.x + p2.w * bx * 0.8, y: p2.y, w2: p2.w, z: n, seg: i });
+    });
+    for (const [bp, bx100] of (latest.bananas || []))
+      if (inWindow(bp, n)) spr.push({ type: 'banana', x: p2.x + p2.w * (bx100 / 100) * 0.8, y: p2.y, w2: p2.w, z: n });
+    for (const [sp2, sx100] of (latest.shells || []))
+      if (inWindow(sp2, n)) spr.push({ type: 'shell', x: p2.x + p2.w * (sx100 / 100) * 0.8, y: p2.y, w2: p2.w, z: n });
+    for (const r of latest.players) {
+      if (r[0] === myId || r[4] || !r[3]) continue;
+      const l2 = lerped.get(r[0]); if (!l2) continue;
+      if (inWindow(l2.pos, n)) spr.push({ type: 'kart', x: p2.x + p2.w * l2.kx * 0.8, y: p2.y, w2: p2.w, z: n, row: r });
+    }
+  }
+  spr.sort((a2, b2) => b2.z - a2.z);
+  for (const sp2 of spr) {
+    if (sp2.type === 'tree' && KIMG.tree && KIMG.tree.complete) {
+      const h2 = sp2.w2 * (1.15 + sp2.v * 0.75); if (h2 < 10 || h2 > H * 0.9) continue;
+      const w2 = h2 * (KIMG.tree.width / KIMG.tree.height);
+      ctx.drawImage(KIMG.tree, sp2.x - w2 / 2, sp2.y - h2, w2, h2);
+    } else if (sp2.type === 'box' && KIMG.box && KIMG.box.complete) {
+      const s2 = sp2.w2 * 0.34; if (s2 < 6) continue;
+      const bob = Math.sin(now / 260 + sp2.seg) * s2 * 0.1;
+      ctx.save(); ctx.translate(sp2.x, sp2.y - s2 * 0.55 + bob); ctx.rotate(Math.sin(now / 480 + sp2.seg) * 0.14);
+      ctx.drawImage(KIMG.box, -s2 / 2, -s2 / 2, s2, s2 * (KIMG.box.height / KIMG.box.width)); ctx.restore();
+    } else if (sp2.type === 'banana' && KIMG.banana && KIMG.banana.complete) {
+      const s2 = sp2.w2 * 0.26; if (s2 < 5) continue;
+      ctx.drawImage(KIMG.banana, sp2.x - s2 / 2, sp2.y - s2 * 0.8, s2, s2 * (KIMG.banana.height / KIMG.banana.width));
+    } else if (sp2.type === 'shell' && KIMG.shell && KIMG.shell.complete) {
+      const s2 = sp2.w2 * 0.3; if (s2 < 5) continue;
+      ctx.save(); ctx.translate(sp2.x, sp2.y - s2 * 0.4); ctx.rotate(now / 90);
+      ctx.drawImage(KIMG.shell, -s2 / 2, -s2 / 2, s2, s2 * (KIMG.shell.height / KIMG.shell.width)); ctx.restore();
+    } else if (sp2.type === 'kart') {
+      const s2 = sp2.w2 * 0.62; if (s2 < 8) continue;
+      const meta2 = roster.get(sp2.row[0]) || { ci: 0, nick: '?' };
+      const im = kartCharImg(meta2.ci);
+      ctx.fillStyle = 'rgba(0,0,0,.25)';
+      ctx.beginPath(); ctx.ellipse(sp2.x, sp2.y, s2 * 0.4, s2 * 0.09, 0, 0, 7); ctx.fill();
+      ctx.save(); ctx.translate(sp2.x, sp2.y);
+      if (sp2.row[11]) ctx.rotate(now / 80);        // 스핀 연출
+      if (im) ctx.drawImage(im, -s2 / 2, -s2 * (im.height / im.width) * 0.96, s2, s2 * (im.height / im.width));
+      else { ctx.fillStyle = COLORS[meta2.ci % COLORS.length]; ctx.beginPath(); ctx.arc(0, -s2 * 0.3, s2 * 0.34, 0, 7); ctx.fill(); }
+      ctx.restore();
+      // 이름표
+      if (s2 > 26) { ctx.fillStyle = 'rgba(232,236,248,.92)'; ctx.font = `700 ${Math.max(10, s2 * 0.16)}px Pretendard, sans-serif`;
+        ctx.textAlign = 'center'; ctx.fillText(meta2.nick, sp2.x, sp2.y - s2 * 1.02); }
+    }
+  }
+  // 내 카트 (화면 하단 고정)
+  const myMeta = roster.get(myId) || { ci: myCi || 0 };
+  const myIm = kartCharImg(myMeta.ci);
+  const mw = Math.min(W * 0.21, 230 * dpr);
+  const mh = myIm ? mw * (myIm.height / myIm.width) : mw * 0.9;
+  const spin2 = meRow && meRow[11], boost2 = meRow && meRow[10];
+  const bump = Math.sin(now / 90) * 2.2 * dpr;
+  ctx.save();
+  ctx.translate(W / 2, H - mh * 0.12 + bump);
+  if (spin2) ctx.rotate(now / 80);
+  else ctx.rotate((curDir.x || 0) * 0.1);
+  ctx.fillStyle = 'rgba(0,0,0,.28)';
+  ctx.beginPath(); ctx.ellipse(0, -mh * 0.06, mw * 0.42, mw * 0.08, 0, 0, 7); ctx.fill();
+  if (boost2) { const f2 = 0.7 + Math.random() * 0.5;
+    ctx.fillStyle = 'rgba(120,200,255,.85)';
+    ctx.beginPath(); ctx.moveTo(-mw * 0.15, -mh * 0.14); ctx.lineTo(0, mh * 0.24 * f2); ctx.lineTo(mw * 0.15, -mh * 0.14); ctx.fill();
+    ctx.fillStyle = 'rgba(255,210,80,.9)';
+    ctx.beginPath(); ctx.moveTo(-mw * 0.08, -mh * 0.14); ctx.lineTo(0, mh * 0.15 * f2); ctx.lineTo(mw * 0.08, -mh * 0.14); ctx.fill(); }
+  if (myIm) ctx.drawImage(myIm, -mw / 2, -mh * 0.98, mw, mh);
+  else { ctx.fillStyle = COLORS[(myMeta.ci || 0) % COLORS.length]; ctx.beginPath(); ctx.arc(0, -mh * 0.4, mw * 0.3, 0, 7); ctx.fill(); }
+  ctx.restore();
+  if (boost2) { ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2 * dpr;
+    for (let i = 0; i < 10; i++) { const a2 = Math.random() * 6.283, r1 = H * 0.28, r2 = H * 0.52;
+      ctx.beginPath(); ctx.moveTo(W / 2 + Math.cos(a2) * r1, H / 2 + Math.sin(a2) * r1);
+      ctx.lineTo(W / 2 + Math.cos(a2) * r2, H / 2 + Math.sin(a2) * r2); ctx.stroke(); } }
+  // HUD (캔버스): 순위·랩
+  if (meRow) {
+    ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = `900 ${30 * dpr}px Pretendard, sans-serif`;
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 6 * dpr;
+    ctx.fillText(`${meRow[5]}위`, 14 * dpr, 76 * dpr);
+    ctx.font = `800 ${15 * dpr}px Pretendard, sans-serif`; ctx.fillStyle = '#ffd24a';
+    ctx.fillText(`LAP ${meRow[8]}/${KART_LAPS}`, 14 * dpr, 98 * dpr);
+    ctx.shadowBlur = 0;
+    if (meRow[12]) {   // 완주
+      ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(13,19,39,.75)';
+      ctx.fillRect(0, H * 0.36, W, H * 0.16);
+      ctx.fillStyle = '#ffd24a'; ctx.font = `900 ${34 * dpr}px Pretendard, sans-serif`;
+      ctx.fillText(`🏁 완주! ${meRow[5]}위`, W / 2, H * 0.46);
+    }
+  }
+  // 미니맵 (좌하단)
+  drawKartMiniMap(W, H, dpr, latest, lerped);
+  // 아이템 버튼 라벨 갱신 (바뀔 때만 DOM 접근)
+  const item = meRow ? meRow[9] : 0;
+  if (drawKartGame._item !== item) {
+    drawKartGame._item = item;
+    const btn = $('btnAction');
+    btn.innerHTML = item === 1 ? '사용!<br>🚀' : item === 2 ? '사용!<br>🍌' : item === 3 ? '사용!<br>🐢' : '아이템<br>🎁';
+    btn.classList.toggle('wait', !item);
+  }
+  // 사운드 (내 이벤트만 — 전역음은 TV 전용 정책)
+  if (meRow && !isHost) {
+    if (meRow[11] && !sndPrev.kartSpin) SFX.miss();
+    sndPrev.kartSpin = meRow[11];
+    if (meRow[13] && !sndPrev.kartItem) SFX.coin();
+    sndPrev.kartItem = meRow[13];
+    if (meRow[12] && !sndPrev.kartFin) SFX.fanfare();
+    sndPrev.kartFin = meRow[12];
+  }
+}
+function drawKartMiniMap(W, H, dpr, latest, lerped) {
+  const s = Math.min(W, H) * 0.19;
+  const mw = s * (KART_MAP.ar >= 1 ? 1 : KART_MAP.ar), mh = s * (KART_MAP.ar >= 1 ? 1 / KART_MAP.ar : 1);
+  const ox = 16 * dpr, oy = H - mh - 16 * dpr;
+  ctx.save(); ctx.globalAlpha = 0.92;
+  ctx.strokeStyle = 'rgba(13,19,39,.6)'; ctx.lineWidth = 7 * dpr; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  KART_MAP.pts.forEach(([a, b], i) => { const X = ox + a * mw, Y = oy + b * mh; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+  ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5 * dpr; ctx.stroke();
+  for (const r of latest.players) {
+    if (r[4] || !r[3]) continue;
+    const l2 = lerped.get(r[0]); if (!l2) continue;
+    const [X, Y] = kartMapXY(l2.pos, ox, oy, mw, mh);
+    const mine = r[0] === myId;
+    ctx.fillStyle = mine ? '#ffd24a' : '#e74c3c';
+    ctx.beginPath(); ctx.arc(X, Y, (mine ? 5.5 : 3.8) * dpr, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawKartHostMap(W, H, dpr, latest, lerped) {
+  // TV: 전체 트랙 맵 + 캐릭터 마커 + 우측 순위
+  ctx.fillStyle = '#0d1327'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(120,150,255,.05)';
+  for (let y2 = 0; y2 < H; y2 += 22 * dpr) for (let x2 = 0; x2 < W; x2 += 22 * dpr) ctx.fillRect(x2, y2, dpr, dpr);
+  const rankW = Math.min(W * 0.3, 340 * dpr);
+  const availW = W - rankW - 60 * dpr, availH = H - 140 * dpr;
+  let mw = availW, mh = mw / KART_MAP.ar;
+  if (mh > availH) { mh = availH; mw = mh * KART_MAP.ar; }
+  const ox = 30 * dpr + (availW - mw) / 2, oy = 90 * dpr + (availH - mh) / 2;
+  // 트랙 리본
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = '#232c50'; ctx.lineWidth = 34 * dpr;
+  ctx.beginPath();
+  KART_MAP.pts.forEach(([a, b], i) => { const X = ox + a * mw, Y = oy + b * mh; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+  ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = '#646c78'; ctx.lineWidth = 26 * dpr; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.5 * dpr; ctx.setLineDash([8 * dpr, 10 * dpr]); ctx.stroke(); ctx.setLineDash([]);
+  // 출발선
+  const [sx2, sy2] = kartMapXY(0, ox, oy, mw, mh);
+  ctx.fillStyle = '#fff'; ctx.font = `${22 * dpr}px sans-serif`; ctx.textAlign = 'center';
+  ctx.fillText('🏁', sx2, sy2 - 18 * dpr);
+  // 아이템 박스
+  if (latest.boxMask != null) KART_BOXES.forEach(([bs], bi) => {
+    if (!(latest.boxMask & (1 << bi))) return;
+    const [X, Y] = kartMapXY(bs * KART_SEG, ox, oy, mw, mh);
+    ctx.fillStyle = '#b16dff'; ctx.beginPath(); ctx.arc(X, Y, 4.5 * dpr, 0, 7); ctx.fill();
+  });
+  for (const [bp] of (latest.bananas || [])) {
+    const [X, Y] = kartMapXY(bp, ox, oy, mw, mh);
+    ctx.font = `${13 * dpr}px sans-serif`; ctx.fillText('🍌', X, Y + 4 * dpr);
+  }
+  for (const [sp2] of (latest.shells || [])) {
+    const [X, Y] = kartMapXY(sp2, ox, oy, mw, mh);
+    ctx.font = `${13 * dpr}px sans-serif`; ctx.fillText('🐢', X, Y + 4 * dpr);
+  }
+  // 카트 마커 (캐릭터 얼굴)
+  const rows = latest.players.filter(r => !r[4]).sort((a, b) => a[5] - b[5]);
+  for (const r of rows) {
+    const l2 = lerped.get(r[0]); if (!l2) continue;
+    const [X, Y] = kartMapXY(l2.pos, ox, oy, mw, mh);
+    const meta2 = roster.get(r[0]) || { ci: 0, nick: '?' };
+    const im = charSprite(meta2.ci);
+    const R = 16 * dpr;
+    ctx.save();
+    if (r[11]) ctx.translate(Math.sin(performance.now() / 40) * 2 * dpr, 0);   // 스핀 흔들림
+    ctx.beginPath(); ctx.arc(X, Y, R, 0, 7);
+    ctx.fillStyle = COLORS[meta2.ci % COLORS.length]; ctx.fill();
+    ctx.lineWidth = 2.5 * dpr; ctx.strokeStyle = r[5] === 1 ? '#ffd24a' : 'rgba(13,19,39,.7)'; ctx.stroke();
+    if (im) { ctx.clip(); ctx.drawImage(im, X - R, Y - R, R * 2, R * 2); }
+    ctx.restore();
+    if (r[5] === 1) { ctx.font = `${15 * dpr}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('👑', X, Y - R - 5 * dpr); }
+    if (r[10]) { ctx.font = `${12 * dpr}px sans-serif`; ctx.fillText('🔥', X + R * 0.9, Y + R * 0.6); }
+  }
+  // 우측 순위판
+  const rx = W - rankW - 20 * dpr;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffd24a'; ctx.font = `900 ${20 * dpr}px Pretendard, sans-serif`;
+  ctx.fillText('🏁 실시간 순위', rx, 82 * dpr);
+  ctx.font = `700 ${16 * dpr}px Pretendard, sans-serif`;
+  rows.slice(0, 14).forEach((r, i2) => {
+    const meta2 = roster.get(r[0]) || { nick: '?' };
+    const y2 = (112 + i2 * 27) * dpr;
+    ctx.fillStyle = i2 === 0 ? '#ffd24a' : '#c8d0e8';
+    const fin = r[12] ? ' 🏁' : ` · ${r[8]}랩`;
+    ctx.fillText(`${r[5]}. ${meta2.nick}${fin}`, rx, y2);
+  });
+  if (rows.length > 14) { ctx.fillStyle = '#93a0c4'; ctx.fillText(`외 ${rows.length - 14}명…`, rx, (112 + 14 * 27) * dpr); }
+  // TV 사운드: 스핀·아이템 획득 감지
+  const spins = latest.players.filter(r => r[11]).length;
+  if (spins > (sndPrev.kartSpins || 0)) SFX.boom();
+  sndPrev.kartSpins = spins;
+  const items = latest.players.filter(r => r[13]).length;
+  if (items > (sndPrev.kartItems || 0)) SFX.coin();
+  sndPrev.kartItems = items;
+}
+
 function drawRunGame(W, H, dpr) {
   const f = 340, VIEW = 1500;                        // 앞으로 1500유닛까지 보임
   const horizon = H * 0.34, nearY = H * 0.90;

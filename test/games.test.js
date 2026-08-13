@@ -121,8 +121,10 @@ module.exports = async function run() {
     const rm = await H.waitRoom(r.code, x => x.sadari && x.sadari.round >= 1, 8000, '사다리 1라운드');
     t.eq(rm.sadari.lanes, 4, '사다리: 4명 → 4칸');
     t.eq(rm.sadari.prizes.length, 4, '사다리: 상품도 4개');
-    const sorted = [...rm.sadari.prizes].sort((a, b) => b - a);
-    t.ok(sorted[0] === 10 && sorted[3] === -5, `사다리: 황금(+10)과 폭탄(-5)은 항상 포함 (${sorted.join(',')})`);
+    // bd57fc6 개편: 상품제(+10/-5) → 꽝 1칸(loserSlot) 피하기 방식
+    const bombs = rm.sadari.prizes.filter(v => v === 1).length;
+    t.ok(bombs === 1 && rm.sadari.prizes.every(v => v === 0 || v === 1),
+      `사다리: 꽝은 정확히 1칸 (${rm.sadari.prizes.join(',')})`);
     t.ok(rm.sadari.map.length === 4 && rm.sadari.map.every(v => v >= 0 && v < 4), '사다리: 경로가 4칸 안에서 매핑');
     // 범위 밖 칸 선택은 무시된다
     H.send(r.bots[0], { type: 'pick', v: 7 });
@@ -136,13 +138,13 @@ module.exports = async function run() {
     r.close();
   }
 
-  // ---------- 사다리: 최소 3칸 보장 ----------
+  // ---------- 사다리: 최소 2칸 보장 (bd57fc6 개편: 1인 1칸·최소 2) ----------
   {
     const r = await H.makeRoom(2);
     H.send(r.host, { type: 'start_game', game: 'sadari' });
     await H.waitPlaying(r.code);
     const rm = await H.waitRoom(r.code, x => x.sadari && x.sadari.round >= 1, 8000, '사다리 1라운드');
-    t.eq(rm.sadari.lanes, 3, '사다리: 2명이어도 최소 3칸');
+    t.eq(rm.sadari.lanes, 2, '사다리: 2명이면 2칸 (1인 1칸)');
     H.send(r.host, { type: 'back_to_lobby' });
     await H.waitRoom(r.code, x => x.state === 'lobby', 6000);
     r.close();
