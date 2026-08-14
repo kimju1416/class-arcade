@@ -1,4 +1,4 @@
-// 회귀 스모크 — 게임 24종이 전부 시작·진행·중단되는지.
+// 회귀 스모크 — 게임 26종이 전부 시작·진행·중단되는지.
 // 새 게임을 추가하다 기존 게임을 깨뜨리는 사고를 잡는 게 목적이라 가장 먼저 돌린다.
 const H = require('./helpers');
 
@@ -13,6 +13,7 @@ const GAMES = [
   ['timing', '10초를 잡아라'], ['run', '설원 러너'], ['simon', '사이먼 가라사대'],
   ['chimp', '침팬지 테스트'], ['flash', '순간 포착'], ['pairs', '같은 그림 찾기'],
   ['tetris', '블록 배틀'], ['draw', '그림 퀴즈'],
+  ['cray', '물풍선 대작전'], ['kart', '카트 그랑프리'],
 ];
 
 module.exports = async function run() {
@@ -51,7 +52,19 @@ module.exports = async function run() {
   // 전체 진행 중 서버 예외가 하나도 없어야 한다
   const errs = H.serverErrors();
   t.ok(errs.length === 0, `서버 예외 0건${errs.length ? ' — ' + errs.slice(0, 3).join(' | ') : ''}`);
-  t.ok(GAMES.length === 24, `게임 목록 24종 (실제 ${GAMES.length}종)`);
+  // 서버가 아는 게임과 이 목록이 정확히 같아야 한다.
+  // 예전엔 GAMES.length === 24 처럼 '자기 목록 개수'만 확인해서, 서버에 게임을 추가해도
+  // 스모크가 통과했다 — 실제로 카트·물풍선이 오래 검사 없이 방치됐다.
+  const serverSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+  const serverKeys = (serverSrc.match(/const GAME_KEYS = \[([^\]]+)\]/)[1].match(/'([a-z]+)'/g) || [])
+    .map(x => x.replace(/'/g, ''));
+  const listed = GAMES.map(g => g[0]);
+  const missing = serverKeys.filter(k => !listed.includes(k));
+  const extra = listed.filter(k => !serverKeys.includes(k));
+  t.ok(missing.length === 0 && extra.length === 0,
+    `스모크가 서버 게임 ${serverKeys.length}종을 모두 덮는다` +
+    (missing.length ? ` — 빠짐: ${missing.join(',')}` : '') +
+    (extra.length ? ` — 서버에 없음: ${extra.join(',')}` : ''));
 
   r.close();
   return t;
