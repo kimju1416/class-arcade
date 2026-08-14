@@ -272,8 +272,25 @@ for (const [cat, words] of Object.entries(CHO_DATA)) {
     const key = choseongOf(w);
     if (key.length < 2) continue;
     if (!CHO_INDEX[cat].has(key)) CHO_INDEX[cat].set(key, []);
-    CHO_INDEX[cat].get(key).push(w.replace(/\s+/g, ''));
+    // 속편 숫자는 초성에 드러나지 않는다 — '미니언즈'와 '미니언즈2'가 서로 다른 정답인 양
+    // 같은 문제에 나란히 뜨는 걸 막으려고 끝 숫자를 떼고 중복을 없앤다
+    const norm = w.replace(/\s+/g, '').replace(/\d+$/, '');
+    const list = CHO_INDEX[cat].get(key);
+    if (norm && !list.includes(norm)) list.push(norm);
   }
+}
+
+// 초성 게임에 실제로 낼 만한 문제만 미리 추려둔다.
+//  - 자유 카테고리: 초성 2~3글자 · 정답 3개 이상 (여러 명이 점수를 딸 수 있어야 한다)
+//  - 제목 카테고리: 초성 2~4글자 · 정답 2개 이상 (긴 초성은 사실상 못 맞힌다)
+const CHO_GOOD = {};
+for (const [cat, m] of Object.entries(CHO_INDEX)) {
+  const free = CHO_FREE_CATS.has(cat);
+  CHO_GOOD[cat] = [...m.keys()].filter(k => {
+    const cnt = m.get(k).length;
+    return free ? (k.length >= 2 && k.length <= 3 && cnt >= 3)
+                : (k.length >= 2 && k.length <= 4 && cnt >= 2);
+  });
 }
 
 // 레이싱
@@ -441,8 +458,8 @@ const CHAIR_GRAB_MS = 9000;
 const CHAIR_R = 24;
 
 // 사다리 복불복 (내려가 보기 전엔 모른다)
-const SADARI_ROUNDS = 5;
-const SADARI_LANES = 16;         // 최대 칸 수 — 접속자 수만큼(렌더 한계로 16까지)
+const SADARI_ROUNDS = 1;         // 네이버 사다리처럼 한 판에 딱 한 명만 걸린다
+const SADARI_LANES = 24;         // 최대 칸 수 — 접속자 수만큼(렌더 한계로 24까지)
 const SADARI_PICK_MS = 11000;
 const SADARI_TRACE_MS = 3600;    // 공이 내려가는 애니메이션 시간
 const SADARI_REVEAL_MS = 6500;   // 애니메이션 + 결과 감상
@@ -1111,6 +1128,8 @@ const server = http.createServer((req, res) => {
         ({ nick: p.nick, x: Math.round(p.x), y: Math.round(p.y), alive: p.alive,
            infected: p.infected, score: p.score, connected: p.connected,
            lap: p.crossings, fin: !!p.finishedAt,
+           run: r.gameType === 'race' ? Math.round(p.raceRun || 0) : undefined,
+           sIdx: r.gameType === 'race' ? (p.trackIdx || 0) : undefined,
            dist: Math.round((r.gameType === 'run' ? p.dist : p.trackDist) || 0),
            coins: r.gameType === 'run' ? (p.coins || 0) : undefined,
            lane: r.gameType === 'run' ? Math.round((p.lane || 0) * 100) / 100 : undefined })),
@@ -1380,7 +1399,7 @@ function startGame(room, type, opt) {
     p.angle = 0; p.boostsLeft = 0; p.boostUntil = 0;
     p.spinUntil = 0; p.spinImmuneUntil = 0; p.inWater = false;
     p.fireReadyAt = 0;
-    p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.startS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0;
+    p.crossings = 0; p.finishedAt = 0; p.prevS = null; p.startS = null; p.trackIdx = 0; p.trackDist = 0; p.raceProgress = 0; p.raceRun = 0;
     p.vx = 0; p.vy = 0; p.dashUntil = 0; p.dashReadyAt = 0; p.dashDx = 0; p.dashDy = 0; p.bumpAt = 0;
     p.satChair = null; p.outRound = 0; p.pick = -1; p.picks = [];
     p.qAnswer = -1; p.qAnswerAt = 0; p.qGain = 0; p.tapAt = 0;
@@ -1410,7 +1429,8 @@ function startGame(room, type, opt) {
     g.roundMs = BOMB_ROUND_MS;
   } else if (type === 'tag') {
     g.roundMs = TAG_ROUND_MS;
-    const zombieCount = Math.max(1, Math.floor(n / 8));
+    // 좀비 수: 7명당 1명 (13명 → 2명, 18명 → 3명). 최소 1명이되 참가자의 1/3은 넘지 않게
+    const zombieCount = Math.max(1, Math.min(Math.round(n / 7), Math.floor(n / 3)));
     const shuffled = [...actives].sort(() => Math.random() - 0.5);
     shuffled.slice(0, zombieCount).forEach(p => { p.infected = true; p.patientZero = true; });
   } else if (type === 'coin') {
@@ -2056,23 +2076,23 @@ function startChoRound(room, now) {
   const useTitle = g.round >= WORD_ROUNDS && titleCats.length > 0;
   const pool = useTitle ? titleCats : (freeCats.length ? freeCats : Object.keys(CHO_INDEX));
 
-  for (let tryN = 0; tryN < 120; tryN++) {
-    const cat = pool[Math.floor(Math.random() * pool.length)];
-    const patterns = [...CHO_INDEX[cat].keys()];
-    const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-    if (g.usedPatterns.has(cat + ':' + pattern)) continue;
-    const answers = CHO_INDEX[cat].get(pattern);
-    // 자유 카테고리는 2~3글자 초성이라야 떠올릴 단어가 많다
-    if (!useTitle && tryN < 90 && (pattern.length < 2 || pattern.length > 3)) continue;
-    // 사전 대조 판정이라 정답이 여럿인 문제라야 여러 명이 점수를 딸 수 있다
-    if (!useTitle && tryN < 70 && answers.length < 3) continue;
-    // 제목 카테고리는 정답이 여러 개인 쪽이 눈치싸움이 된다
-    if (useTitle && tryN < 60 && answers.length < 2) continue;
+  // 조건을 하나씩 풀어가며 뽑으면(예전 방식) 대부분 느슨한 꼬리에 걸려
+  // ㅅㅇㅇㅁㅎㅂ(=소원을말해봐)처럼 정답 1개짜리 긴 초성이 그대로 출제됐다.
+  // 미리 추려둔 '좋은 문제' 후보(CHO_GOOD)에서 먼저 뽑고, 다 썼을 때만 아무거나 쓴다.
+  const tryPick = (cats, list) => {
+    const cands = [];
+    for (const cat of cats) for (const pattern of (list[cat] || []))
+      if (!g.usedPatterns.has(cat + ':' + pattern)) cands.push([cat, pattern]);
+    if (!cands.length) return false;
+    const [cat, pattern] = cands[Math.floor(Math.random() * cands.length)];
     g.usedPatterns.add(cat + ':' + pattern);
     g.category = cat; g.pattern = pattern;
-    g.answers = new Set(answers);
-    break;
-  }
+    g.answers = new Set(CHO_INDEX[cat].get(pattern));
+    return true;
+  };
+  const anyList = {};
+  for (const cat of pool) anyList[cat] = [...CHO_INDEX[cat].keys()];
+  tryPick(pool, CHO_GOOD) || tryPick(pool, anyList);
   // 안 쓴 패턴을 못 찾은 경우(사전이 작아지면 생길 수 있음) 아무 문제나 하나 강제 배정
   if (!g.pattern || !g.answers) {
     const cat = pool[0] || Object.keys(CHO_INDEX)[0];
@@ -2240,7 +2260,9 @@ function endGala(room, now) {
   });
   finishGame(room, sorted,
     p => p.score + '격추' + (p.alive ? ' · 생존' : ''),
-    p => p.score + '|' + (p.alive ? 'a' : p.deadAt));
+    // 순위는 격추수로만 매긴다 — 예전엔 사망 시각(ms)까지 키에 넣어 같은 격추수라도
+    // 공동순위가 절대 나오지 않았다 (생존 여부는 정렬 순서·라벨에만 반영)
+    p => String(p.score));
 }
 
 // ---------- 탄막 서바이벌 ----------
@@ -2449,9 +2471,9 @@ function startSadariRound(room, now) {
       if (l - prev >= 2 && Math.random() < 0.34) { g.rungs.push([r, l]); prev = l; }
     }
   }
-  // 복불복: 도착 칸 중 딱 하나만 꽝(당첨=걸림), 나머지는 전부 안전.
-  g.loserSlot = Math.floor(Math.random() * L);
-  g.prizes = Array.from({ length: L }, (_, i) => i === g.loserSlot ? 1 : 0);  // 1=꽝(걸림), 0=안전
+  // 꽝 칸은 선택이 끝난 뒤(사람이 선 칸 중에서) 정한다 — 빈 칸이 뽑혀 아무도 안 걸리는 일 방지
+  g.loserSlot = -1;
+  g.prizes = Array.from({ length: L }, () => 0);   // 1=꽝(걸림), 0=안전
   // 각 출발 칸이 어느 도착 칸으로 가는지 미리 계산
   g.map = [];
   for (let s = 0; s < L; s++) {
@@ -2474,9 +2496,22 @@ function sadariTick(room, now) {
   if (g.sPhase === 'pick') {
     const allPicked = alive.length > 0 && alive.every(p => p.pick >= 0);
     if (now >= g.pickEndAt || allPicked) {
-      // 못 고른 사람은 랜덤 칸 (복불복이니 억울할 것 없음)
-      for (const p of room.players.values())
-        if (p.alive && p.pick < 0) p.pick = Math.floor(Math.random() * g.lanes);
+      // 못 고른 사람은 남은 빈 칸 중에서 랜덤 배정 (1인 1칸 유지)
+      const taken = new Set([...room.players.values()].filter(q => q.alive && !q.waiting && q.pick >= 0).map(q => q.pick));
+      for (const p of room.players.values()) {
+        if (!p.alive || p.waiting || p.pick >= 0) continue;
+        const free = [];
+        for (let i = 0; i < g.lanes; i++) if (!taken.has(i)) free.push(i);
+        p.pick = free.length ? free[Math.floor(Math.random() * free.length)]
+                             : Math.floor(Math.random() * g.lanes);   // 인원이 칸보다 많을 때만
+        taken.add(p.pick);
+      }
+      // 꽝 칸은 '사람이 실제로 도착하는 칸' 중에서 고른다 → 반드시 한 명이 걸린다
+      const dests = [...new Set([...room.players.values()]
+        .filter(q => q.alive && !q.waiting && q.pick >= 0).map(q => g.map[q.pick]))];
+      g.loserSlot = dests.length ? dests[Math.floor(Math.random() * dests.length)]
+                                 : Math.floor(Math.random() * g.lanes);
+      g.prizes = Array.from({ length: g.lanes }, (_, i) => i === g.loserSlot ? 1 : 0);
       g.sPhase = 'reveal';
       g.revealAt = now; g.revealEndAt = now + SADARI_REVEAL_MS;
     }
@@ -2503,7 +2538,7 @@ function endSadari(room) {
   const parts = [...room.players.values()].filter(p => !p.waiting);
   const sorted = parts.sort((a, b) => (a.sadariCaught || 0) - (b.sadariCaught || 0));
   finishGame(room, sorted,
-    p => (p.sadariCaught || 0) === 0 ? '한 번도 안 걸림 😎' : `${p.sadariCaught}번 걸림 💣`,
+    p => (p.sadariCaught || 0) === 0 ? '휴~ 안 걸렸다 😎' : '💣 걸렸다!',
     p => String(p.sadariCaught || 0));
 }
 
@@ -2772,31 +2807,42 @@ function raceTick(room, now, dt) {
   for (const p of racers) {
     if (p.finishedAt) continue;
     const n = t.pts.length;
+    // 코너를 가로지르면 가장 가까운 트랙 점이 한 번에 여러 칸 건너뛴다 → 창을 넉넉히 본다
     let bi = p.trackIdx || 0, bd = Infinity;
-    for (let k = -16; k <= 16; k++) {
+    for (let k = -28; k <= 28; k++) {
       const i = ((p.trackIdx + k) % n + n) % n;
       const dx = p.x - t.pts[i][0], dy = p.y - t.pts[i][1];
       const d = dx * dx + dy * dy;
       if (d < bd) { bd = d; bi = i; }
     }
-    // 지름길 방지: 한 틱에 트랙 인덱스가 크게 건너뛰면(S자 코너가 겹치는 구간을
-    // 가로질러 진행도를 훔치는 것) 그 진행을 무효로 하고 이전 위치를 유지한다.
-    const fwd = ((bi - (p.trackIdx || 0)) % n + n) % n;
-    const jumped = fwd > 8 && fwd < n - 8;
-    if (jumped) { p.trackDist = Math.sqrt(bd); continue; }  // 랩·s 갱신 없이 넘어감
+    // 잔디를 크게 가로질러 창 밖으로 나갔으면 전 구간에서 다시 찾는다
+    if (Math.sqrt(bd) > t.halfW * 2.2) {
+      for (let i = 0; i < n; i++) {
+        const dx = p.x - t.pts[i][0], dy = p.y - t.pts[i][1];
+        const d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; bi = i; }
+      }
+    }
     p.trackIdx = bi; p.trackDist = Math.sqrt(bd);
     const sNow = t.cum[bi];
-    if (p.startS == null) p.startS = sNow;   // 출발 지점(형평성 기준)
-    if (p.prevS != null) {
-      const d = sNow - p.prevS;
-      if (d < -t.total / 2) p.crossings++;        // 결승선 앞으로 통과
-      else if (d > t.total / 2) p.crossings--;    // 결승선 뒤로 넘어감 (역주행)
-    }
+    if (p.prevS == null) { p.prevS = sNow; p.startS = sNow; p.raceRun = 0; }
+    // 진행도는 "내 출발점부터 트랙을 따라 달린 거리"를 매 틱 누적해서 잰다.
+    // 예전처럼 crossings*total + s 로 재면 두 가지가 깨진다:
+    //  ① 출발 격자 뒷줄일수록 s가 커서 같은 위치인데도 앞선 것으로 집계된다(순위 오류)
+    //  ② 출발 직후 뒤로 밀리면 crossings가 -1이 되어 4바퀴를 돌아야 완주가 된다
+    let d = sNow - p.prevS;
+    if (d > t.total / 2) d -= t.total;        // 결승선 뒤로 넘어감 (역주행)
+    else if (d < -t.total / 2) d += t.total;  // 결승선 앞으로 통과
+    // 지름길 방지는 "한 틱에 물리적으로 갈 수 있는 거리까지만 인정"으로 한다.
+    // 예전처럼 크게 건너뛸 때 갱신을 통째로 건너뛰면, 코너를 한 번 가로지른 순간
+    // 트랙 인덱스가 뒤처진 채 영영 못 따라잡아 순위·랩·완주가 전부 어긋났다.
+    const maxStep = RACE_SPEED * RACE_BOOST_MULT * dt * 1.6;
+    p.raceRun = (p.raceRun || 0) + Math.max(-maxStep, Math.min(maxStep, d));
     p.prevS = sNow;
-    p.raceProgress = p.crossings * t.total + sNow;
-    // 완주 = 출발점부터 정확히 RACE_LAPS바퀴만큼 달렸을 때 (출발 격자 위치와 무관하게 공정).
-    // 매 틱 검사해야 격자 보정된 완주 지점을 놓치지 않는다.
-    if (p.raceProgress - p.startS >= RACE_LAPS * t.total - 5) {
+    p.crossings = Math.max(0, Math.floor(p.raceRun / t.total));
+    p.raceProgress = p.raceRun;               // 순위 기준 = 각자 출발점부터 달린 거리
+    // 완주 = 출발점부터 정확히 RACE_LAPS바퀴만큼 달렸을 때 (출발 격자 위치와 무관하게 공정)
+    if (p.raceRun >= RACE_LAPS * t.total - 5) {
       p.finishedAt = now;
       p.finishRank = ++g.finishCount;
       if (!g.firstFinishAt) {
@@ -3025,7 +3071,6 @@ function startSimonRound(room, now) {
   g.seq.push(Math.floor(Math.random() * 4));
   while (g.seq.length < SIMON_START_LEN) g.seq.push(Math.floor(Math.random() * 4));
   g.siPhase = 'show';
-  g.siRevived = false;
   g.showAt = now + 1200;
   g.showEndAt = g.showAt + g.seq.length * SIMON_GAP + 500;
   g.inputEndAt = 0; g.revealEndAt = 0;
@@ -3046,12 +3091,8 @@ function simonTick(room, now) {
     if (allDone || now >= g.inputEndAt) {
       // 시간 안에 다 못 누른 생존자도 탈락
       for (const p of alive) if (!p.simonDone) { p.alive = false; p.deadAt = now; p.outRound = g.siRound; }
-      const nowAlive = [...room.players.values()].filter(p => p.alive);
-      // 전원 탈락이면 전원 부활 (다음 라운드 재도전 — OX와 같은 규칙)
-      if (nowAlive.length === 0 && g.startingCount >= 2) {
-        for (const p of room.players.values()) if (!p.waiting && p.connected) { p.alive = true; p.deadAt = 0; }
-        g.siRevived = true;
-      }
+      // 부활 없음 — 틀리면 그대로 탈락. 전원이 같은 라운드에서 틀리면 그 라운드까지 버틴
+      // 사람들이 공동 순위가 되고 판이 끝난다 (예전엔 전원 부활로 판이 늘어졌다)
       g.siPhase = 'reveal';
       g.revealEndAt = now + 2600;
     }
@@ -3720,8 +3761,7 @@ function sendState(room, now) {
       // 레이싱: 방향각·랩·부스터·완주 순위·스핀/물 상태
       if (type === 'race') {
         // 랩 표시는 출발점부터 달린 거리 기준 (격자 보정과 일관되게)
-        const lapNow = p.startS == null ? 1
-          : Math.max(1, Math.min(RACE_LAPS, Math.floor((p.raceProgress - p.startS) / (g.track.total || 1)) + 1));
+        const lapNow = Math.max(1, Math.min(RACE_LAPS, Math.floor((p.raceRun || 0) / (g.track.total || 1)) + 1));
         row.push(Math.round((p.angle || 0) * 180 / Math.PI),
                  lapNow,
                  p.boostsLeft || 0,
@@ -4303,7 +4343,16 @@ wss.on('connection', (ws) => {
         const g = room.game;
         const v = Math.floor(finite(msg.v));
         if (room.gameType === 'sadari' && g.sPhase === 'pick') {
-          if (v >= 0 && v < (g.lanes || SADARI_LANES)) p.pick = v;
+          const L = g.lanes || SADARI_LANES;
+          if (v >= 0 && v < L) {
+            // 1인 1칸 선착순 — 이미 누가 고른 칸은 못 고른다.
+            // (인원이 칸보다 많은 큰 학급에서만 중복을 허용해 아무도 못 고르는 일을 막는다)
+            const nAlive = [...room.players.values()].filter(q => q.alive && q.connected && !q.waiting).length;
+            const taken = nAlive <= L && [...room.players.values()]
+              .some(q => q.id !== p.id && q.alive && !q.waiting && q.pick === v);
+            if (taken) roomSend(ws, { type: 'pick_taken', v });
+            else p.pick = v;
+          }
         } else if (room.gameType === 'pirate' && g.pPhase === 'pick') {
           if (v >= 0 && v < PIRATE_SLOTS) {
             const i = p.picks.indexOf(v);
@@ -4363,7 +4412,9 @@ wss.on('connection', (ws) => {
           //   한 라운드에 1번만 맞힐 수 있어(wordDone) 점수 도배는 애초에 불가능하다.
           // 제목 카테고리(영화·노래): 실제 제목이어야 하므로 전용 사전 대조 유지.
           const free = CHO_FREE_CATS.has(g.category);
-          const inList = !!(g.answers && g.answers.has(norm));
+          // 속편 숫자는 초성에 안 드러나므로 '미니언즈'와 '미니언즈2'를 같은 답으로 취급
+          const base = norm.replace(/\d+$/, '') || norm;
+          const inList = !!(g.answers && (g.answers.has(norm) || g.answers.has(base)));
           const accepted = free ? (inList || isRealKoreanWord(norm)) : inList;
           if (hasBadWord(norm)) {
             roomSend(ws, { type: 'word_bad', reason: 'bad' });
@@ -4373,11 +4424,11 @@ wss.on('connection', (ws) => {
             roomSend(ws, { type: 'word_bad', reason: 'cho' });
           } else if (!accepted) {
             roomSend(ws, { type: 'word_bad', reason: free ? 'notword' : 'list' });
-          } else if (g.claimed.some(c => c.w === norm)) {
-            roomSend(ws, { type: 'word_bad', reason: 'dup' });
+          } else if (g.claimed.some(c => c.w === base)) {
+            roomSend(ws, { type: 'word_bad', reason: 'dup' });   // 숫자만 다른 답도 중복 처리
           } else {
             p.wordDone = true;
-            g.claimed.push({ w: norm, id: p.id });
+            g.claimed.push({ w: base, id: p.id });
             g.correctOrder.push(p.id);
             const idx = g.correctOrder.length - 1;
             const pts = WORD_POINTS[idx] != null ? WORD_POINTS[idx] : 1;

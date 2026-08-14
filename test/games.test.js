@@ -121,10 +121,9 @@ module.exports = async function run() {
     const rm = await H.waitRoom(r.code, x => x.sadari && x.sadari.round >= 1, 8000, '사다리 1라운드');
     t.eq(rm.sadari.lanes, 4, '사다리: 4명 → 4칸');
     t.eq(rm.sadari.prizes.length, 4, '사다리: 상품도 4개');
-    // bd57fc6 개편: 상품제(+10/-5) → 꽝 1칸(loserSlot) 피하기 방식
-    const bombs = rm.sadari.prizes.filter(v => v === 1).length;
-    t.ok(bombs === 1 && rm.sadari.prizes.every(v => v === 0 || v === 1),
-      `사다리: 꽝은 정확히 1칸 (${rm.sadari.prizes.join(',')})`);
+    // 개편: 꽝 칸은 선택이 끝난 뒤 '사람이 실제로 도착하는 칸' 중에서 정한다
+    // (선택 중에 미리 정해두면 빈 칸이 뽑혀 아무도 안 걸리는 판이 생긴다)
+    t.ok(rm.sadari.prizes.every(v => v === 0), '사다리: 선택 중엔 꽝 칸 미정');
     t.ok(rm.sadari.map.length === 4 && rm.sadari.map.every(v => v >= 0 && v < 4), '사다리: 경로가 4칸 안에서 매핑');
     // 범위 밖 칸 선택은 무시된다
     H.send(r.bots[0], { type: 'pick', v: 7 });
@@ -133,6 +132,10 @@ module.exports = async function run() {
     H.send(r.bots[0], { type: 'pick', v: 3 });
     await H.sleep(300);
     t.ok((await H.room(r.code)).sadari.picks.find(p => p[0] === '봇1')[1] === 3, '사다리: 유효 칸(3) 선택 반영');
+    // 1인 1칸 선착순 — 남이 잡은 칸은 못 가져간다
+    H.send(r.bots[1], { type: 'pick', v: 3 });
+    await H.sleep(300);
+    t.ok((await H.room(r.code)).sadari.picks.find(p => p[0] === '봇2')[1] !== 3, '사다리: 이미 찬 칸은 선택 불가(선착순)');
     H.send(r.host, { type: 'back_to_lobby' });
     await H.waitRoom(r.code, x => x.state === 'lobby', 6000);
     r.close();
