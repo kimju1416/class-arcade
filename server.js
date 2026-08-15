@@ -846,6 +846,7 @@ const CRAY_MAX_CAP = 6;          // 🎈 물풍선 최대 개수
 const CRAY_MAX_POW = 7;          // 💧 물줄기 최대 길이
 const CRAY_MAX_SPD = 4;          // 👟 최대 단계
 const CRAY_ITEM_CHANCE = 0.45;   // 상자 파괴 시 아이템 드랍 확률
+const CRAY_THEME_N = 4;          // 맵 테마 수 (빌리지·얼음나라·사막·사탕나라) — 클라이언트 CRAY_THEMES와 같아야 한다
 
 // 맵 생성: 고정 기둥(단단한 블록) + 랜덤 상자. 스폰 칸과 그 주변은 비워 갇힘 방지.
 function crayBuildMap(n) {
@@ -1560,6 +1561,7 @@ function startGame(room, type, opt) {
     g.teamMode = (opt && opt.mode) === 'team' && n >= 2;
     const { grid, spawns } = crayBuildMap(n);
     g.grid = grid; g.gridDirty = true; g.gridSentAt = 0;
+    g.theme = Math.floor(Math.random() * CRAY_THEME_N);   // 판마다 맵 테마를 바꿔 질리지 않게
     g.balloons = []; g.balloonAt = new Map();   // key(cy*COLS+cx) → true (이동 충돌·연쇄 판정용)
     g.streams = []; g.items = []; g.boomAt = 0;
     // 팀 배정: 참가 순서 섞어서 번갈아 (인원 균형 ±1)
@@ -3814,6 +3816,10 @@ function sendState(room, now) {
       msg.grid = g.grid.map(row => row.join('')).join('');
       g.gridDirty = false; g.gridSentAt = now;
     }
+    // 맵 테마(빌리지·얼음·사막·사탕)는 서버가 판 시작 때 정해 grid와 함께 계속 내려준다.
+    // 클라이언트가 grid 내용으로 짐작하면 상자가 부서질 때마다 테마가 바뀌고,
+    // 중간에 들어온 학생 폰은 TV와 다른 맵을 그리게 된다.
+    if (msg.grid) msg.theme = g.theme | 0;
     msg.teamMode = g.teamMode ? 1 : 0;
     msg.balloons = g.balloons.map(b => [b.cx, b.cy, Math.max(0, Math.round(b.explodeAt - now))]);
     const sc = [];

@@ -1102,6 +1102,56 @@ let gameType = 'bomb';       // 현재 진행 중 게임
 let selectedGame = 'bomb';   // 호스트가 고른 게임
 let snaps = [];
 let crayGrid = null;   // 물풍선 대작전 맵 캐시 (grid는 바뀔 때만 서버가 보냄)
+// ── 물풍선 맵 테마 4종 ────────────────────────────────────────────────
+// 판마다 바닥·블록이 통째로 바뀐다. 어느 테마인지는 grid 문자열 해시로 정하므로
+// TV와 학생 폰이 서로 약속하지 않아도 반드시 같은 맵을 그린다(프로토콜 변경 불필요).
+const CRAY_THEMES = [
+  { key: 'village', name: '빌리지',
+    floor: ['#7ec95c', '#8ed86b'], grid: 'rgba(40,90,40,.16)',
+    road: '#9aa3b0', dash: 'rgba(255,255,255,.85)',
+    tuft: 'rgba(60,130,55,.45)', petal: ['#ffd76a', '#ff9ec4', '#ffffff'],
+    roofs: [['#e8503f', '#b8382a'], ['#f5a623', '#c97f12'], ['#f2d04b', '#c9a520'],
+            ['#4a9de8', '#2c72b5'], ['#5fc46a', '#3a9647'], ['#b06fd6', '#8248a8']],
+    wall: ['#fdf3e0', '#e6d3b3'], win: '#6fc3f0',
+    trunk: '#8a5a2b', leaf: ['#4f9c46', '#438c3c', '#387a33'],
+    crateTops: [['#e8b46b', '#cb9050'], ['#dfa65c', '#c08447'], ['#eebd77', '#d19a58']],
+    crateSide: '#9a5f2c', crateLine: 'rgba(120,70,25,.55)',
+    box: 'craybox', tree: 'craytree',
+    houses: ['crayhouse1', 'crayhouse2', 'crayhouse3', 'crayhouse4'] },
+  { key: 'ice', name: '얼음나라',
+    floor: ['#bfe6f5', '#d8f1fb'], grid: 'rgba(90,140,175,.18)',
+    road: '#a6d2e6', dash: 'rgba(255,255,255,.92)',
+    tuft: 'rgba(255,255,255,.75)', petal: ['#ffffff', '#e6f6ff', '#c7e9f7'],
+    roofs: [['#f4fbff', '#cadff0'], ['#e3f2fb', '#b9d6e8'], ['#ffffff', '#d6e8f4']],
+    wall: ['#f2fbff', '#cfe3f0'], win: '#ffd66a',
+    trunk: '#6d4a2a', leaf: ['#f4fbff', '#4e9c58', '#e3f2fb'],
+    crateTops: [['#cdeefb', '#93d6ee'], ['#bfe9f7', '#7fc9e6'], ['#dcf5ff', '#a5dcf1']],
+    crateSide: '#6fb0cd', crateLine: 'rgba(60,120,155,.50)',
+    box: 'icebox', tree: 'icetree', houses: ['icehouse'] },
+  { key: 'desert', name: '사막 오아시스',
+    floor: ['#edd39a', '#f5e2b1'], grid: 'rgba(150,110,55,.16)',
+    road: '#d6b782', dash: 'rgba(255,255,255,.40)',
+    tuft: 'rgba(170,130,60,.50)', petal: ['#e9743f', '#f2c14e', '#c9a25a'],
+    roofs: [['#e07a3c', '#b25a25'], ['#d9673a', '#a94c26'], ['#e8944a', '#bb6b2c']],
+    wall: ['#f7e3b6', '#dcbf88'], win: '#5b3a20',
+    trunk: '#c9a25a', leaf: ['#69b356', '#549a45', '#478439'],
+    crateTops: [['#f0d8a8', '#d3b47e'], ['#e8cd98', '#c8a76e'], ['#f5e0b4', '#dbbd88']],
+    crateSide: '#b98f52', crateLine: 'rgba(140,95,40,.55)',
+    box: 'dstbox', tree: 'dsttree', houses: ['dsthouse'] },
+  { key: 'candy', name: '사탕나라',
+    floor: ['#ffd6e8', '#ffe9f3'], grid: 'rgba(200,110,150,.16)',
+    road: '#a4653f', dash: 'rgba(255,255,255,.90)',
+    tuft: 'rgba(255,255,255,.70)', petal: ['#ff8fc0', '#8fe3c8', '#ffe066'],
+    roofs: [['#ff9ec4', '#e0709c'], ['#fff3f7', '#e0c3d0'], ['#ffc7dd', '#e396b6']],
+    wall: ['#d9944f', '#b9763a'], win: '#ffe066',
+    trunk: '#ff9ec4', leaf: ['#fff3f7', '#ff9ec4', '#ffe066'],
+    crateTops: [['#b6ecd6', '#86d3b8'], ['#a8e6cf', '#79c9ab'], ['#c8f2e0', '#95dcc2']],
+    crateSide: '#7fb9a2', crateLine: 'rgba(90,150,130,.55)',
+    box: 'cdybox', tree: 'cdytree', houses: ['cdyhouse'] },
+];
+// 테마 번호는 서버가 grid와 함께 내려준다(판 중간 입장자도 TV와 같은 맵을 본다).
+let crayTheme = CRAY_THEMES[0];
+const crayThemeOf = i => CRAY_THEMES[((i | 0) % CRAY_THEMES.length + CRAY_THEMES.length) % CRAY_THEMES.length];
 let arena = { w: 800, h: 800 };
 let wasAlive = false;
 let lastWordJson = '';
@@ -1637,6 +1687,10 @@ function handle(m) {
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
       arena = m.arena;
+      // 물풍선 맵은 '받은 즉시' 캐시한다. 렌더 루프에서 최신 스냅샷만 보고 캐시하면,
+      // 맵은 1.5초에 한 번만 오고 그 프레임이 최신인 시간은 50ms뿐이라
+      // 프레임이 떨어지는 기기(배경 탭·저사양 TV)에서는 그 순간을 놓쳐 맵이 통째로 안 그려진다.
+      if (m.mode === 'cray' && m.grid) { crayGrid = m.grid; crayTheme = crayThemeOf(m.theme); }
       window.__lastState = m; window.__myId = myId;  // 자동 검증용 훅
       break;
     // 사이먼: 패턴은 교사 화면에만 온다 — 서버 시각 기준으로 발광·멜로디 예약
@@ -2662,6 +2716,7 @@ function enterGameView(keepInput) {
   seenDeadAt = 0; seenInfectedAt = 0;
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
   crayGrid = null;                  // 물풍선 맵 캐시도 판마다 초기화
+  crayTheme = CRAY_THEMES[0];       // 테마도 초기화 (다음 판 첫 grid가 오면 서버 값으로 덮인다)
   $('hudTime').textContent = '';
   $('hudLeft').textContent = '';
 }
@@ -3069,11 +3124,17 @@ const SPR = {};
  'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
  'ship', 'alien', 'alien2', 'chair', 'pirate', 'knife', 'sumo', 'sadari',
  'runner', 'runner2', 'iceblock', 'icespike', 'pine',
- 'crayballoon', 'craybox', 'crayblock',
+ 'crayballoon', 'craybox', 'crayblock', 'craysplash', 'craytree',
+ 'crayhouse1', 'crayhouse2', 'crayhouse3', 'crayhouse4',
+ 'icebox', 'icehouse', 'icetree', 'dstbox', 'dsthouse', 'dsttree',
+ 'cdybox', 'cdyhouse', 'cdytree',
  'crayitem_balloon', 'crayitem_water', 'crayitem_shoe'].forEach(name => {
   const im = new Image();
-  im.src = 'sprites/' + name + '.png';
+  // onload를 src보다 먼저 걸어야 한다. 캐시된 이미지는 src 대입 즉시 로드가 끝나
+  // 그 뒤에 붙인 onload가 영영 안 불리고, 스프라이트가 통째로 안 그려진다.
   im.onload = () => { SPR[name] = im; };
+  im.src = 'sprites/' + name + '.png';
+  if (im.complete && im.naturalWidth) SPR[name] = im;   // 이미 디코딩까지 끝난 경우
 });
 // 캐릭터 아바타(최대 30종) — manifest.json의 순서가 곧 ci 번호. 이미지가 아직 없으면 색 블롭으로 폴백.
 const CHAR_IMG = [];       // ci -> Image
@@ -3082,8 +3143,9 @@ fetch('sprites/chars/manifest.json').then(r => r.ok ? r.json() : []).then(list =
   CHAR_LIST = Array.isArray(list) ? list : [];
   CHAR_LIST.forEach((c, i) => {
     const im = new Image();
+    im.onload = () => { CHAR_IMG[i] = im; };      // src보다 먼저 (캐시된 이미지 누락 방지)
     im.src = 'sprites/chars/' + c.slug + '.png';
-    im.onload = () => { CHAR_IMG[i] = im; };
+    if (im.complete && im.naturalWidth) CHAR_IMG[i] = im;
   });
   // 선택 화면이 이미 떠 있으면(목록 늦게 도착) 다시 그린다
   if ($('charSelect') && $('charSelect').classList.contains('on')) renderCharSelect();
@@ -3567,32 +3629,173 @@ function draw() {
     }
   }
   if (latest.mode === 'cray') {
-    if (latest.grid) crayGrid = latest.grid;   // 맵은 바뀔 때만 오므로 캐시
+    if (latest.grid) { crayGrid = latest.grid; crayTheme = crayThemeOf(latest.theme); }
+    const TH = crayTheme;
     const CELL = 60, COLS = 15, ROWS = 13;
     const cs = CELL * scale;
-    // 크레이지 아케이드식 체크무늬 타일 — 두 톤 초록으로 칸(이동 레인)이 또렷이 보이게
+    // ── 바닥: 잔디 + 가운데를 가로지르는 도로 (원작 '빌리지' 맵 느낌) ──────
     for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
-      ctx.fillStyle = ((cx + cy) & 1) ? 'rgba(58,120,52,.20)' : 'rgba(190,225,150,.12)';
-      ctx.fillRect(ox + cx * cs, oy + cy * cs, cs, cs);
+      const x = ox + cx * cs, y = oy + cy * cs;
+      ctx.fillStyle = ((cx + cy) & 1) ? TH.floor[0] : TH.floor[1];
+      ctx.fillRect(x, y, cs, cs);
+      ctx.fillStyle = 'rgba(255,255,255,.06)';
+      ctx.fillRect(x, y, cs, cs * .16);
     }
-    // 또렷한 격자선 (가로줄·세로줄 — 이동 방향 안내)
-    ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = Math.max(1, dpr);
+    // 도로: 세로 한 줄 (가운데 열) — 아스팔트 + 흰 점선
+    const roadCx = (COLS - 1) >> 1;
+    const rx0 = ox + roadCx * cs;
+    ctx.fillStyle = TH.road; ctx.fillRect(rx0, oy, cs, ROWS * cs);
+    ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(rx0, oy, cs * .08, ROWS * cs);
+    ctx.fillStyle = 'rgba(0,0,0,.10)'; ctx.fillRect(rx0 + cs * .92, oy, cs * .08, ROWS * cs);
+    ctx.fillStyle = TH.dash;
+    for (let i = 0; i < ROWS * 2; i++) {
+      if (i % 2) continue;
+      ctx.fillRect(rx0 + cs * .46, oy + i * cs * .5 + cs * .12, cs * .08, cs * .26);
+    }
+    ctx.strokeStyle = TH.grid; ctx.lineWidth = Math.max(1, dpr);
     for (let i = 0; i <= COLS; i++) { ctx.beginPath(); ctx.moveTo(ox + i * cs, oy); ctx.lineTo(ox + i * cs, oy + ROWS * cs); ctx.stroke(); }
     for (let i = 0; i <= ROWS; i++) { ctx.beginPath(); ctx.moveTo(ox, oy + i * cs); ctx.lineTo(ox + COLS * cs, oy + i * cs); ctx.stroke(); }
-    // 블록·상자
+    // 잔디 위 자잘한 풀·꽃 — 바닥이 밋밋해 보이지 않게 (고정 배치라 매 프레임 같다)
+    for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
+      if (cx === roadCx) continue;
+      const hh = ((cx * 92837111) ^ (cy * 689287499)) >>> 0;
+      if ((hh % 100) > 26) continue;
+      const gx = ox + cx * cs + cs * (0.2 + (hh % 7) / 14), gy = oy + cy * cs + cs * (0.55 + (hh % 5) / 20);
+      if ((hh % 3) === 0) {                        // 작은 꽃 (테마별로 눈송이·자갈·스프링클)
+        ctx.fillStyle = TH.petal[(hh >> 3) % TH.petal.length];
+        ctx.beginPath(); ctx.arc(gx, gy, cs * .045, 0, 7); ctx.fill();
+      } else {                                     // 풀 포기
+        ctx.strokeStyle = TH.tuft; ctx.lineWidth = Math.max(1, cs * .022);
+        for (const d of [-1, 0, 1]) {
+          ctx.beginPath(); ctx.moveTo(gx + d * cs * .05, gy);
+          ctx.lineTo(gx + d * cs * .085, gy - cs * .10); ctx.stroke();
+        }
+      }
+    }
+
+    // ── 블록: 캔버스로 직접 그린다 (이미지 로딩과 무관하게 항상 보인다) ──
+    // 단단블록은 칸마다 알록달록한 집 또는 나무로 — 원작처럼 맵이 심심하지 않게.
+    const hashAt = (cx, cy) => { let h2 = (cx * 73856093 ^ cy * 19349663) >>> 0; h2 ^= h2 >>> 13; return (h2 >>> 0) / 4294967295; };
+    const ROOFS = TH.roofs;
+    const shadow = (x, y) => {
+      ctx.fillStyle = 'rgba(0,0,0,.20)';
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x + cs * .10, y + cs * .28, cs * .80, cs * .68, cs * .14)
+                    : ctx.rect(x + cs * .10, y + cs * .28, cs * .80, cs * .68);
+      ctx.fill();
+    };
+    // 알록달록 레고집
+    const drawHouse = (x, y, h2) => {
+      const [roof, roofDark] = ROOFS[Math.floor(h2 * ROOFS.length) % ROOFS.length];
+      shadow(x, y);
+      const bx = x + cs * .12, bw = cs * .76;
+      const bodyTop = y + cs * .40, bodyH = cs * .50;
+      // 벽
+      const wg = ctx.createLinearGradient(0, bodyTop, 0, bodyTop + bodyH);
+      wg.addColorStop(0, TH.wall[0]); wg.addColorStop(1, TH.wall[1]);
+      ctx.fillStyle = wg;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(bx, bodyTop, bw, bodyH, cs * .06) : ctx.rect(bx, bodyTop, bw, bodyH);
+      ctx.fill();
+      // 창문 2개
+      ctx.fillStyle = TH.win;
+      for (const fx of [.26, .58]) {
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(x + cs * fx, bodyTop + bodyH * .22, cs * .16, cs * .18, cs * .03)
+                      : ctx.rect(x + cs * fx, bodyTop + bodyH * .22, cs * .16, cs * .18);
+        ctx.fill();
+      }
+      // 지붕 (사각뿔)
+      ctx.fillStyle = roof;
+      ctx.beginPath();
+      ctx.moveTo(x + cs * .06, bodyTop + cs * .02);
+      ctx.lineTo(x + cs * .50, y + cs * .10);
+      ctx.lineTo(x + cs * .94, bodyTop + cs * .02);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = roofDark;                      // 지붕 그늘진 오른쪽
+      ctx.beginPath();
+      ctx.moveTo(x + cs * .50, y + cs * .10);
+      ctx.lineTo(x + cs * .94, bodyTop + cs * .02);
+      ctx.lineTo(x + cs * .50, bodyTop + cs * .02);
+      ctx.closePath(); ctx.fill();
+      // 굴뚝
+      ctx.fillStyle = roofDark;
+      ctx.fillRect(x + cs * .70, y + cs * .12, cs * .10, cs * .16);
+      ctx.strokeStyle = 'rgba(40,30,20,.40)'; ctx.lineWidth = Math.max(1.2, cs * .022);
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(bx, bodyTop, bw, bodyH, cs * .06) : ctx.rect(bx, bodyTop, bw, bodyH);
+      ctx.stroke();
+    };
+    // 소나무
+    const drawTree = (x, y) => {
+      shadow(x, y);
+      ctx.fillStyle = TH.trunk;                      // 줄기
+      ctx.fillRect(x + cs * .44, y + cs * .66, cs * .12, cs * .26);
+      const layers = [[.30, .34], [.44, .27], [.58, .20]];
+      layers.forEach(([ty, half], i) => {
+        ctx.fillStyle = TH.leaf[i % TH.leaf.length];
+        ctx.beginPath();
+        ctx.moveTo(x + cs * .5, y + cs * (ty - .22));
+        ctx.lineTo(x + cs * (.5 + half), y + cs * (ty + .18));
+        ctx.lineTo(x + cs * (.5 - half), y + cs * (ty + .18));
+        ctx.closePath(); ctx.fill();
+      });
+      ctx.fillStyle = 'rgba(255,255,255,.22)';       // 왼쪽 하이라이트
+      ctx.beginPath();
+      ctx.moveTo(x + cs * .5, y + cs * .08);
+      ctx.lineTo(x + cs * .5, y + cs * .48);
+      ctx.lineTo(x + cs * .28, y + cs * .48);
+      ctx.closePath(); ctx.fill();
+    };
+    // 나무상자 (부서지는 블록)
+    const CRATE_TOPS = TH.crateTops;
+    const drawCrate = (x, y, h2) => {
+      shadow(x, y);
+      const p = cs * .07, w = cs - p * 2, top = cs * .74;
+      const [c1, c2] = CRATE_TOPS[Math.floor(h2 * CRATE_TOPS.length) % CRATE_TOPS.length];
+      ctx.fillStyle = TH.crateSide;                  // 옆벽
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x + p, y + p + cs * .13, w, top, cs * .10) : ctx.rect(x + p, y + p + cs * .13, w, top);
+      ctx.fill();
+      const g2 = ctx.createLinearGradient(0, y + p, 0, y + p + top);
+      g2.addColorStop(0, c1); g2.addColorStop(1, c2);
+      ctx.fillStyle = g2;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x + p, y + p, w, top, cs * .10) : ctx.rect(x + p, y + p, w, top);
+      ctx.fill();
+      ctx.strokeStyle = TH.crateLine; ctx.lineWidth = Math.max(2, cs * .05);
+      ctx.beginPath();
+      ctx.moveTo(x + p + w * .12, y + p + top * .14); ctx.lineTo(x + p + w * .88, y + p + top * .86);
+      ctx.moveTo(x + p + w * .88, y + p + top * .14); ctx.lineTo(x + p + w * .12, y + p + top * .86);
+      ctx.stroke();
+      ctx.strokeStyle = TH.crateLine; ctx.lineWidth = Math.max(1.5, cs * .03);
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x + p + w * .08, y + p + top * .10, w * .84, top * .80, cs * .06)
+                    : ctx.rect(x + p + w * .08, y + p + top * .10, w * .84, top * .80);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(40,25,10,.45)'; ctx.lineWidth = Math.max(1.5, cs * .028);
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x + p, y + p, w, top, cs * .10) : ctx.rect(x + p, y + p, w, top);
+      ctx.stroke();
+    };
     if (crayGrid) {
       for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
         const v = crayGrid.charCodeAt(cy * COLS + cx) - 48;
         if (!v) continue;
         const x = ox + cx * cs, y = oy + cy * cs;
-        const spr = v === 1 ? SPR.crayblock : SPR.craybox;
-        if (spr) ctx.drawImage(spr, x + cs * .02, y + cs * .02, cs * .96, cs * .96);
+        // 캔버스 그림을 항상 먼저 깔고, 스프라이트가 준비됐으면 그 위에 덮어 고품질로 보여준다.
+        // (이미지가 늦게 오거나 실패해도 블록이 사라지지 않는다 — 예전엔 통째로 안 보였다)
+        const h2 = hashAt(cx, cy);
+        const k = ((cx >> 2) + (cy >> 2) * 2) % 3;
+        let spr = null;
+        if (v === 2) { drawCrate(x, y, h2); spr = SPR[TH.box]; }
+        else if (k === 2) { drawTree(x, y); spr = SPR[TH.tree]; }
         else {
-          ctx.fillStyle = v === 1 ? '#5a6379' : '#c98d4b';
-          ctx.fillRect(x + cs * .06, y + cs * .06, cs * .88, cs * .88);
-          ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 2 * dpr;
-          ctx.strokeRect(x + cs * .06, y + cs * .06, cs * .88, cs * .88);
+          drawHouse(x, y, h2);
+          const hs = TH.houses.map(n => SPR[n]).filter(Boolean);
+          if (hs.length) spr = hs[((cx >> 2) + (cy >> 2) * 3) % hs.length];   // 지붕색 고르게 섞기
         }
+        if (spr) drawSpr(spr, x + cs / 2, y + cs / 2, cs * 1.04);
       }
     }
     // 바닥 아이템 (둥둥 떠 보이게) — 스프라이트, 없으면 이모지 폴백
@@ -3619,35 +3822,82 @@ function draw() {
         ctx.fillText(['🎈', '💧', '👟'][t2] || '❓', x, y + cs * .02);
       }
     }
-    // 물풍선 (심지 타는 만큼 두근두근 커진다)
+    // 물풍선 — 터지기 직전일수록 크게 부풀고 좌우로 출렁인다 (원작의 두근두근)
     for (const [cx, cy, left] of (latest.balloons || [])) {
       const x = ox + (cx + 0.5) * cs, y = oy + (cy + 0.5) * cs;
       const urgency = Math.max(0, 1 - left / 2800);
-      const pulse = 1 + Math.sin(performance.now() / (140 - urgency * 90)) * (0.05 + urgency * 0.07);
-      const w = cs * 0.92 * pulse;
-      if (SPR.crayballoon) drawSpr(SPR.crayballoon, x, y, w);
-      else {
-        ctx.fillStyle = '#3b8bff';
-        ctx.beginPath(); ctx.arc(x, y, w * .4, 0, 7); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,.5)';
-        ctx.beginPath(); ctx.arc(x - w * .12, y - w * .14, w * .12, 0, 7); ctx.fill();
+      const t2 = performance.now() / (150 - urgency * 95);
+      const pulse = 1 + Math.sin(t2) * (0.06 + urgency * 0.10);
+      const sq = 1 + Math.sin(t2) * (0.05 + urgency * 0.08);   // 가로로 눌리면 세로로 늘어난다
+      const r = cs * .40 * pulse;
+      ctx.fillStyle = 'rgba(0,0,0,.22)';
+      ctx.beginPath(); ctx.ellipse(x, y + r * .82, r * .78, r * .26, 0, 0, 7); ctx.fill();
+      ctx.save(); ctx.translate(x, y); ctx.scale(sq, 2 - sq);
+      if (SPR.crayballoon) {
+        const bw = r * 2.25, bh = bw * (SPR.crayballoon.height / SPR.crayballoon.width);
+        ctx.drawImage(SPR.crayballoon, -bw / 2, -bh / 2, bw, bh);
+      } else {
+        const bg = ctx.createRadialGradient(-r * .3, -r * .35, r * .1, 0, 0, r);
+        bg.addColorStop(0, '#9fdcff'); bg.addColorStop(.55, '#3b9bff'); bg.addColorStop(1, '#1c5fd0');
+        ctx.fillStyle = bg;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+        ctx.strokeStyle = 'rgba(12,50,110,.55)'; ctx.lineWidth = Math.max(1.5, cs * .03);
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,.75)';
+        ctx.beginPath(); ctx.ellipse(-r * .32, -r * .38, r * .20, r * .13, -0.6, 0, 7); ctx.fill();
+        ctx.fillStyle = '#2b7de0';
+        ctx.beginPath(); ctx.moveTo(-r * .16, -r * .95); ctx.lineTo(r * .16, -r * .95); ctx.lineTo(0, -r * 1.22); ctx.fill();
+      }
+      ctx.restore();
+      if (urgency > .62) {                                         // 임박 경고 링
+        ctx.strokeStyle = `rgba(255,90,90,${(urgency - .62) * 2.2})`;
+        ctx.lineWidth = Math.max(2, cs * .05);
+        ctx.beginPath(); ctx.arc(x, y, r * 1.28, 0, 7); ctx.stroke();
       }
     }
-    // 물줄기 (십자 물기둥 — 셀마다 파란 캡슐이 출렁)
+    // 물줄기 — 셀마다 물이 솟구쳐 출렁이고 물방울이 튄다 (원작의 시원한 물기둥)
     const sc2 = latest.streams || [];
+    const nowMs = performance.now();
     for (let i = 0; i < sc2.length; i += 2) {
-      const x = ox + sc2[i] * cs, y = oy + sc2[i + 1] * cs;
-      const a2 = 0.65 + 0.25 * Math.sin(performance.now() / 70 + i);
-      ctx.fillStyle = `rgba(80,160,255,${a2})`;
+      const gx = sc2[i], gy = sc2[i + 1];
+      const x = ox + gx * cs, y = oy + gy * cs;
+      const ph = nowMs / 90 + gx * 1.7 + gy * 2.3;
+      const swell = 0.86 + Math.sin(ph) * 0.12;               // 물이 부풀었다 줄었다
+      const w = cs * swell, off = (cs - w) / 2;
+      if (SPR.craysplash) {                                    // 새 물보라 스프라이트
+        ctx.save();
+        ctx.translate(x + cs / 2, y + cs / 2);
+        ctx.rotate((gx * 1.1 + gy * 0.7) % 6.283);             // 칸마다 다른 각도 — 반복돼 보이지 않게
+        const ss = cs * (1.02 + Math.sin(ph) * 0.10);
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(SPR.craysplash, -ss / 2, -ss / 2, ss, ss);
+        ctx.restore();
+        continue;
+      }
+      // 바깥 물살 (스프라이트 없을 때 폴백)
+      const wg = ctx.createRadialGradient(x + cs / 2, y + cs / 2, cs * .05, x + cs / 2, y + cs / 2, cs * .55);
+      wg.addColorStop(0, 'rgba(225,248,255,.96)');
+      wg.addColorStop(.45, 'rgba(90,180,255,.92)');
+      wg.addColorStop(1, 'rgba(40,120,230,.72)');
+      ctx.fillStyle = wg;
       ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x + cs * .07, y + cs * .07, cs * .86, cs * .86, cs * .28)
-                    : ctx.rect(x + cs * .07, y + cs * .07, cs * .86, cs * .86);
+      ctx.roundRect ? ctx.roundRect(x + off, y + off, w, w, cs * .32) : ctx.rect(x + off, y + off, w, w);
       ctx.fill();
-      ctx.fillStyle = `rgba(210,240,255,${a2 * .8})`;
+      // 하얀 포말 심지
+      ctx.fillStyle = `rgba(255,255,255,${.5 + Math.sin(ph * 1.4) * .18})`;
       ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x + cs * .24, y + cs * .24, cs * .52, cs * .52, cs * .2)
-                    : ctx.rect(x + cs * .24, y + cs * .24, cs * .52, cs * .52);
+      const iw = w * .46, io = (cs - iw) / 2;
+      ctx.roundRect ? ctx.roundRect(x + io, y + io, iw, iw, cs * .18) : ctx.rect(x + io, y + io, iw, iw);
       ctx.fill();
+      // 튀는 물방울 3개
+      ctx.fillStyle = 'rgba(235,250,255,.85)';
+      for (let d = 0; d < 3; d++) {
+        const a3 = ph * .9 + d * 2.1;
+        const rr = cs * (.30 + .12 * Math.abs(Math.sin(a3)));
+        ctx.beginPath();
+        ctx.arc(x + cs / 2 + Math.cos(a3) * rr, y + cs / 2 + Math.sin(a3) * rr, cs * .055, 0, 7);
+        ctx.fill();
+      }
     }
     ctx.textBaseline = 'alphabetic';
   }
@@ -3984,8 +4234,14 @@ function draw() {
       ctx.fillText(label, px, by + h / 2 + 1 * dpr);
       ctx.textBaseline = 'alphabetic';
     } else {
-      ctx.fillStyle = id === myId ? '#ffb03a' : '#c8d0e8';
       ctx.font = `${(id === myId ? 800 : 600)} ${(isHost ? 21 : 14) * dpr}px Pretendard, sans-serif`;
+      // 어두운 테두리를 먼저 깐다. 물풍선 맵의 눈·모래·사탕 바닥처럼 밝은 배경에서는
+      // 옅은 글자색만으로는 이름이 그대로 묻힌다(어두운 아레나에서는 티가 안 난다).
+      ctx.strokeStyle = 'rgba(12,18,38,.72)';
+      ctx.lineWidth = Math.max(2, (isHost ? 4 : 3) * dpr);
+      ctx.lineJoin = 'round';
+      ctx.strokeText(name, px, py - rr - 8 * dpr);
+      ctx.fillStyle = id === myId ? '#ffc74a' : '#eef2ff';
       ctx.fillText(name, px, py - rr - 8 * dpr);
     }
     ctx.globalAlpha = 1;
