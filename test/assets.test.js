@@ -15,7 +15,9 @@ module.exports = async function run() {
   // 'sprites/' + key + '.png' 형태로 조합되는 것들 (게임 카드 아이콘·바닥)
   const cardSpr = html.match(/const CARD_SPR = \{([\s\S]*?)\};/);
   if (cardSpr) for (const m of cardSpr[1].matchAll(/'([\w-]+)'/g)) refs.add(`sprites/${m[1]}.png`);
-  const floors = html.match(/\[([^\]]*)\]\.forEach\(k => \{\s*const im = new Image\(\);\s*im\.src = 'sprites\/floor-'/);
+  // 블록 안 어디에서 'sprites/floor-'를 쓰든 잡는다 — 문장 순서에 기대면
+  // 로더를 조금만 손봐도 목록 수집이 조용히 0이 되어 엉뚱한 곳에서 실패한다(실제로 겪음)
+  const floors = html.match(/\[([^\]]*)\]\.forEach\(k => \{[\s\S]{0,500}?'sprites\/floor-'/);
   if (floors) for (const m of floors[1].matchAll(/'([\w-]+)'/g)) refs.add(`sprites/floor-${m[1]}.jpg`);
   // SFX 파일 목록
   const files = html.match(/const FILES = \[([^\]]+)\]/);

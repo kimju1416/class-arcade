@@ -13,7 +13,7 @@ const GAMES = [
   ['timing', '10초를 잡아라'], ['run', '설원 러너'], ['simon', '사이먼 가라사대'],
   ['chimp', '침팬지 테스트'], ['flash', '순간 포착'], ['pairs', '같은 그림 찾기'],
   ['tetris', '블록 배틀'], ['draw', '그림 퀴즈'],
-  ['cray', '물풍선 대작전'], ['kart', '카트 그랑프리'],
+  ['cray', '물풍선 대작전'], ['kart', '카트 그랑프리'], ['pull', '줄다리기'],
 ];
 
 module.exports = async function run() {

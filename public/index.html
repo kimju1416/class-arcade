@@ -1040,11 +1040,13 @@ const GAMES_META = {
   draw: { icon: '🎨', name: '그림 퀴즈', desc: '선생님이 지목한 친구가 몰래 답을 정하고 그림으로만 설명! 그림이 TV에 실시간으로 — 빨리 맞힐수록 고득점.', badge: '캐치마인드', rule: '출제자: 답을 정하고 그림으로 표현!\n나머지: 그림을 보고 폰에 정답 입력!' },
   cray: { icon: '💧', name: '물풍선 대작전', desc: '물풍선을 놓아 십자 물줄기로 친구를 물방울에 가두고, 갇힌 친구를 톡 치면 탈락! 상자를 부숴 🎈💧👟 아이템을 모아라. 개인전·팀전 선택!', badge: '최후 1인', rule: '조이스틱: 이동 · 버튼: 물풍선 설치!\n물줄기에 맞으면 물방울에 갇혀요 — 팀전은 아군이 터치해 구출!' },
   kart: { icon: '🏁', name: '카트 그랑프리', desc: '내 캐릭터가 카트를 타고 달린다! 운전석 시점으로 2바퀴 레이스. ? 박스에서 🚀부스터·🍌바나나·🐢등껍질을 얻어 역전하라!', badge: '2랩', rule: '왼손: 핸들 · 오른손: 아이템 사용!\n가속은 자동 — 방향만 잡으면 돼요. ? 박스를 밟아 아이템 획득!' },
+  pull: { icon: '🪢', name: '줄다리기', desc: '반을 둘로 갈라 밧줄을 당긴다! 시작 전에 직접 좌우로 걸어가 청팀·백팀을 고르고, "영차!" 구호에 맞춰 힘을 모아라. 3판 2선승!', badge: '3판 2선승', rule: '① 좌우로 걸어가 우리 팀을 고르세요\n② 구호에 맞춰 버튼을 누르세요 — 연타는 소용없어요!\n인원이 홀수면 한 명이 심판을 맡아요 (판마다 바뀜)' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
 const GAME_CATS = [
   { key: 'all',   label: '전체' },
   { key: 'cray',  label: '💧 물풍선' },
+  { key: 'team',  label: '🤝 팀전' },
   { key: 'sur',   label: '⚔️ 서바이벌' },
   { key: 'score', label: '🏆 점수 경쟁' },
   { key: 'quiz',  label: '🧠 퀴즈·두뇌' },
@@ -1063,6 +1065,8 @@ const GAME_CAT_OF = {
   simon: ['memory'], chimp: ['memory'], flash: ['memory'], pairs: ['memory'],
   // 🎲 복불복
   sadari: ['luck'], pirate: ['luck'],
+  // 🤝 팀전
+  pull: ['team'],
   // 💧 물풍선 (전용 탭)
   cray: ['cray'],
 };
@@ -1170,7 +1174,8 @@ let quizCatSel = localStorage.getItem('ca_qcat') || '믹스';       // 퀴즈쇼
 let quizCountSel = +(localStorage.getItem('ca_qcnt') || 10);      // 퀴즈쇼: 문제 수
 let quizDiffSel = localStorage.getItem('ca_qdiff') || '믹스';     // 퀴즈쇼: 난이도(하/중/상/믹스)
 let oxDiffSel = localStorage.getItem('ca_oxdiff') || '믹스';      // OX: 난이도(하/중/상/믹스)
-let crayModeSel = localStorage.getItem('ca_craymode') || 'solo';  // 물풍선: 개인전(solo)/팀전(team)
+let crayModeSel = localStorage.getItem('ca_craymode') || 'solo';
+let pullModeSel = localStorage.getItem('ca_pullmode') || 'beat';   // 줄다리기: 구호(beat)/연타(mash)  // 물풍선: 개인전(solo)/팀전(team)
 let myQAnswer = -1, myQIdx = -1, lastQuizJson = '';               // 퀴즈쇼: 내 답·문제 추적
 let myTap = false, myTapRound = -1;                               // 10초를 잡아라: 내가 탭했나
 let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
@@ -2691,14 +2696,15 @@ function enterGameView(keepInput) {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기·사다리·통) / 버튼(인형뽑기·부스터·발사·대시)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart');
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull');
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
       : gameType === 'sumo' ? '대시!<br>💨'
       : gameType === 'run' ? '점프<br>⬆️'
       : gameType === 'cray' ? '물풍선<br>💧'
-      : gameType === 'kart' ? '아이템<br>🎁' : '집게<br>내리기';
+      : gameType === 'kart' ? '아이템<br>🎁'
+      : gameType === 'pull' ? '당겨!<br>🪢' : '집게<br>내리기';
     // 설원 러너 전용 부스터 버튼 (점프와 별개)
     $('btnBoost').style.display = (!isHost && gameType === 'run') ? 'block' : 'none';
     $('btnBoost').classList.add('wait'); $('btnBoost').classList.remove('ready'); $('btnBoost').__label = '';
@@ -2878,6 +2884,10 @@ function renderGameOptions(key, opt) {
   } else if (key === 'cray') {
     opt.innerHTML = '<span class="olab">모드</span>' + [['solo', '🥇 개인전'], ['team', '🔴🔵 팀전']].map(([v, lb]) => chip(lb, v === crayModeSel, v)).join('');
     opt.querySelectorAll('button').forEach(b2 => b2.onclick = () => { crayModeSel = b2.dataset.v; localStorage.setItem('ca_craymode', crayModeSel); renderSelBar(); });
+  } else if (key === 'pull') {
+    opt.innerHTML = '<span class="olab">방식</span>' +
+      [['beat', '📣 구호 맞추기'], ['mash', '💥 연타']].map(([v, lb]) => chip(lb, v === pullModeSel, v)).join('');
+    opt.querySelectorAll('button').forEach(b2 => b2.onclick = () => { pullModeSel = b2.dataset.v; localStorage.setItem('ca_pullmode', pullModeSel); renderSelBar(); });
   } else if (key === 'ox') {
     opt.innerHTML = '<span class="olab">난이도</span>' + ['믹스', '하', '중', '상'].map(d => chip(d, d === oxDiffSel, d)).join('');
     opt.querySelectorAll('button').forEach(b2 => b2.onclick = () => { oxDiffSel = b2.dataset.v; localStorage.setItem('ca_oxdiff', oxDiffSel); renderSelBar(); });
@@ -2903,6 +2913,7 @@ function gameOpt(key) {
   if (key === 'pirate') return { knives: pirateKnives };
   if (key === 'ox') return { diff: oxDiffSel };
   if (key === 'cray') return { mode: crayModeSel };
+  if (key === 'pull') return { mode: pullModeSel };
   if (key === 'quiz') {
     const o = { cat: quizCatSel, count: quizCountSel, diff: quizDiffSel };
     if (quizCatSel === '내문제') o.custom = parseCustomQ(localStorage.getItem('ca_customq'));
@@ -3163,10 +3174,12 @@ GRASS_IMG.src = 'sprites/grass.jpg';
 GRASS_IMG.onload = () => { grassReady = true; };
 // 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
 const FLOORS = {};
-['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing', 'cray'].forEach(k => {
+['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing', 'cray', 'pull'].forEach(k => {
   const im = new Image();
-  im.src = 'sprites/floor-' + k + '.jpg';
+  // onload을 src보다 먼저 걸어야 캐시된 이미지도 등록된다
   im.onload = () => { FLOORS[k] = im; };
+  im.src = 'sprites/floor-' + k + '.jpg';
+  if (im.complete && im.naturalWidth) FLOORS[k] = im;
 });
 // 갤러그 우주 배경 (성운·행성 이미지 위에 코드로 별이 흐른다)
 const SPACE_IMG = new Image();
@@ -3275,9 +3288,9 @@ function initInput() {
     const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
       || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
       || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
-      || gameType === 'cray' || gameType === 'kart';
+      || gameType === 'cray' || gameType === 'kart' || gameType === 'pull';
     if (!usesStick) return;
-    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
+    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
     stickPid = e.pointerId;
@@ -3330,7 +3343,7 @@ function stopFire() {
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (isHost || phase !== 'playing') return;
-  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run' && gameType !== 'cray' && gameType !== 'kart') return;
+  if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run' && gameType !== 'cray' && gameType !== 'kart' && gameType !== 'pull') return;
   send({ type: 'action' });
   if (navigator.vibrate) navigator.vibrate(15);   // 진동으로 손맛 (소리는 기본 끔)
   // 소리 켠 학생: 버튼 손맛 — 부스터/집게/대시만 (갤러그 연사는 시끄러워서 제외)
@@ -3390,7 +3403,7 @@ function inputMoves() {
   return gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
     || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
-    || gameType === 'cray' || gameType === 'kart';
+    || gameType === 'cray' || gameType === 'kart' || gameType === 'pull';
 }
 function flushInput() {
   if (isHost || !inputMoves() || (phase !== 'playing' && phase !== 'countdown')) return;
@@ -3477,6 +3490,11 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   if (gameType === 'run') { drawRunGame(W, H, dpr); return; }   // 설원 러너는 유사 3D 전용 렌더
   if (gameType === 'kart') { drawKartGame(W, H, dpr); return; } // 카트는 운전석 시점 전용 렌더
+  // 줄다리기: 팀 고르는 동안은 일반 아레나(걸어다녀야 하니까), 당길 때부터 전용 화면
+  if (gameType === 'pull' && snaps.length) {
+    const lm = snaps[snaps.length - 1].m;
+    if (lm && lm.pl && lm.pl.ph !== 'pick') { drawPullGame(W, H, dpr, lm); return; }
+  }
 
   const pad = 8 * dpr, topPad = (isHost ? 64 : 48) * dpr;
   let scale = Math.min((W - pad * 2) / arena.w, (H - topPad - pad) / arena.h);
@@ -3522,6 +3540,37 @@ function draw() {
     const grid = 80 * scale;
     for (let x = ox + grid; x < ox + aw; x += grid) { ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + ah); ctx.stroke(); }
     for (let y = oy + grid; y < oy + ah; y += grid) { ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + aw, y); ctx.stroke(); }
+  }
+  // 줄다리기 팀 고르기: 가운데 선을 긋고 좌우를 팀 색으로 물들인다 (어디로 걸어가야 할지 바로 보이게)
+  // latest는 아래에서 선언된다 — 여기서 쓰면 TDZ로 draw가 통째로 죽는다(화면에 바닥만 남았다)
+  const pullPick = gameType === 'pull' && snaps.length ? snaps[snaps.length - 1].m : null;
+  if (pullPick && pullPick.pl && pullPick.pl.ph === 'pick') {
+    const midX = ox + aw / 2;
+    // 모래 위에 옅게 깔면 둘 다 회색으로 보인다 — 진하게, 가장자리는 더 진하게
+    ctx.fillStyle = 'rgba(46,120,230,.34)'; ctx.fillRect(ox, oy, aw / 2, ah);
+    ctx.fillStyle = 'rgba(255,255,255,.42)'; ctx.fillRect(midX, oy, aw / 2, ah);
+    const eg1 = ctx.createLinearGradient(ox, 0, ox + aw * 0.18, 0);
+    eg1.addColorStop(0, 'rgba(30,95,205,.55)'); eg1.addColorStop(1, 'rgba(30,95,205,0)');
+    ctx.fillStyle = eg1; ctx.fillRect(ox, oy, aw * 0.18, ah);
+    const eg2 = ctx.createLinearGradient(ox + aw, 0, ox + aw * 0.82, 0);
+    eg2.addColorStop(0, 'rgba(255,255,255,.75)'); eg2.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = eg2; ctx.fillRect(ox + aw * 0.82, oy, aw * 0.18, ah);
+    ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 4 * dpr;
+    ctx.setLineDash([12 * dpr, 10 * dpr]);
+    ctx.beginPath(); ctx.moveTo(midX, oy); ctx.lineTo(midX, oy + ah); ctx.stroke();
+    ctx.setLineDash([]);
+    const nA = pullPick.players.filter(r => !r[4] && r[6] === 0).length;
+    const nB = pullPick.players.filter(r => !r[4] && r[6] === 1).length;
+    ctx.textAlign = 'center';
+    ctx.font = `900 ${(isHost ? 46 : 26) * dpr}px Pretendard, sans-serif`;
+    ctx.strokeStyle = 'rgba(10,16,34,.7)'; ctx.lineWidth = 5 * dpr; ctx.lineJoin = 'round';
+    for (const [x, label, col] of [[ox + aw * 0.25, `🔵 청팀 ${nA}명`, '#9fd0ff'], [ox + aw * 0.75, `⚪ 백팀 ${nB}명`, '#ffffff']]) {
+      ctx.strokeText(label, x, oy + ah * 0.16); ctx.fillStyle = col; ctx.fillText(label, x, oy + ah * 0.16);
+    }
+    ctx.font = `800 ${(isHost ? 24 : 15) * dpr}px Pretendard, sans-serif`;
+    const sec = Math.ceil((pullPick.pl.left || 0) / 1000);
+    ctx.strokeText(`걸어가서 팀을 고르세요 · ${sec}초`, ox + aw / 2, oy + ah * 0.93);
+    ctx.fillStyle = '#ffd24a'; ctx.fillText(`걸어가서 팀을 고르세요 · ${sec}초`, ox + aw / 2, oy + ah * 0.93);
   }
   // 경기장 테두리 (아케이드 기계 느낌의 두꺼운 프레임)
   ctx.strokeStyle = '#3a4680'; ctx.lineWidth = 5 * dpr;
@@ -5498,6 +5547,216 @@ function kartCharImg(ci) {
 }
 function kartHash(i) { let h2 = i * 2654435761 >>> 0; h2 ^= h2 >>> 13; h2 = Math.imul(h2, 0x5bd1e995); h2 ^= h2 >>> 15; return (h2 >>> 0) / 4294967295; }
 // 행: [0id 1x 2y 3alive 4wait 5rank 6pos 7x100 8lap 9item 10boost 11spin 12fin 13itemFx]
+// ---------- 줄다리기 전용 화면 (팀 고르기 단계는 일반 아레나를 그대로 쓴다) ----------
+const PULL_ART = {};
+[['bg', 'pull-bg.jpg'], ['rope', 'pull-rope.png'], ['flag', 'pull-flag.png']].forEach(([k, f]) => {
+  const im = new Image();
+  im.onload = () => { PULL_ART[k] = im; };   // onload을 src보다 먼저 (캐시된 이미지 누락 방지)
+  im.src = 'sprites/' + f;
+  if (im.complete && im.naturalWidth) PULL_ART[k] = im;
+});
+// 행: [0id 1x 2y 3alive 4wait 5extra 6team 7ref 8hitFx]
+function drawPullGame(W, H, dpr, m) {
+  const pl = m.pl, now = performance.now();
+  const A = [], B = [];
+  for (const r of m.players) { if (r[4]) continue; (r[6] === 0 ? A : B).push(r); }
+  const meRow = m.players.find(r => r[0] === myId);
+  const iAmRef = meRow && meRow[7];
+  const myTeam = meRow ? meRow[6] : 0;
+  const COL = ['#4a9de8', '#e9edf7'], DARK = ['#2c72b5', '#b9c2d8'];
+  const NAME = ['청팀', '백팀'];
+
+  // 배경: 운동장 그림 (아직 안 실렸으면 하늘·모래 그라디언트로 대체 — 화면이 비지 않게)
+  if (PULL_ART.bg && PULL_ART.bg.complete && PULL_ART.bg.naturalWidth) {
+    const im = PULL_ART.bg, s = Math.max(W / im.width, H / im.height);
+    ctx.drawImage(im, (W - im.width * s) / 2, (H - im.height * s) / 2, im.width * s, im.height * s);
+  } else {
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#7fb5e6'); bg.addColorStop(0.42, '#a8d3f0'); bg.addColorStop(0.42, '#c8a86a'); bg.addColorStop(1, '#e0c48c');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(255,255,255,.30)'; ctx.lineWidth = 2 * dpr;
+    for (let i = 1; i < 5; i++) { const y = H * 0.42 + (H * 0.58) * (i / 5); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  }
+
+  const cy = H * 0.60;
+  const half = W * 0.30;
+  const off = (pl.rope / 100) * half;          // 밧줄이 끌려간 정도
+
+  // 승리선 두 개
+  for (const s of [-1, 1]) {
+    ctx.strokeStyle = s < 0 ? 'rgba(74,157,232,.75)' : 'rgba(255,255,255,.85)';
+    ctx.lineWidth = 4 * dpr; ctx.setLineDash([10 * dpr, 8 * dpr]);
+    ctx.beginPath(); ctx.moveTo(W / 2 + s * half, cy - 90 * dpr); ctx.lineTo(W / 2 + s * half, cy + 70 * dpr); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // 밧줄 — 그림을 가로로 이어 붙인다(늘리면 꼬임 무늬가 뭉개진다).
+  // 밧줄이 끌려간 만큼 무늬도 같이 흘러가야 "당겨지는" 느낌이 난다.
+  const ropeY = cy;
+  const rope = PULL_ART.rope;
+  const ropeH = 26 * dpr;
+  if (rope && rope.complete && rope.naturalWidth) {
+    const tileW = ropeH * (rope.width / rope.height);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, ropeY - ropeH, W, ropeH * 2); ctx.clip();
+    let x0 = (off % tileW) - tileW;
+    for (let x = x0; x < W + tileW; x += tileW) ctx.drawImage(rope, x, ropeY - ropeH / 2, tileW, ropeH);
+    ctx.restore();
+  } else {
+    const rg = ctx.createLinearGradient(0, ropeY - 8 * dpr, 0, ropeY + 8 * dpr);
+    rg.addColorStop(0, '#d9b477'); rg.addColorStop(0.5, '#a8763c'); rg.addColorStop(1, '#7a5228');
+    ctx.strokeStyle = rg; ctx.lineWidth = 13 * dpr; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, ropeY); ctx.lineTo(W, ropeY); ctx.stroke();
+    ctx.lineCap = 'butt';
+  }
+
+  // 가운데 손수건
+  const fx = W / 2 + off;
+  const flag = PULL_ART.flag;
+  if (flag && flag.complete && flag.naturalWidth) {
+    const fw = 74 * dpr;
+    ctx.drawImage(flag, fx - fw / 2, ropeY - fw * 0.34, fw, fw);
+  } else {
+    ctx.fillStyle = '#e8342f';
+    ctx.beginPath(); ctx.moveTo(fx, ropeY); ctx.lineTo(fx + 26 * dpr, ropeY + 9 * dpr); ctx.lineTo(fx, ropeY + 30 * dpr); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2 * dpr; ctx.stroke();
+  }
+
+  // 양 팀 캐릭터 — 손수건 옆에서부터 바깥쪽으로 나란히 서서 당긴다.
+  // 화면 폭을 인원수로 나눠 늘어놓으면 인원이 적은 팀만 휑하게 벌어진다(간격을 고정한다).
+  // 간격은 양 팀이 같아야 한다 — 팀마다 남은 공간으로 따로 계산하면 인원 적은 팀만 듬성듬성해진다
+  const fitStep = (rows, roomPx) => (roomPx - 46 * dpr) / Math.max(1, rows.length);
+  const stepAll = Math.max(26 * dpr, Math.min(78 * dpr,
+    Math.min(fitStep(A, fx - W * 0.03), fitStep(B, W * 0.97 - fx))));
+  const drawTeam = (rows, side) => {
+    const step = stepAll;
+    const size = Math.min(76 * dpr, step * 1.28);
+    rows.forEach((r, i) => {
+      const x = fx + side * (40 * dpr + step * (i + 0.5));
+      const hitFx = r[8];
+      const lean = (side < 0 ? 0.20 : -0.20) * (hitFx === 2 ? 1.5 : 1);
+      // 밧줄이 가슴께를 지나도록 — 발은 밧줄보다 조금 아래
+      const footY = ropeY + size * 0.34 + (hitFx === 2 ? -3 * dpr : 0);
+      const src = CHAR_IMG[((roster.get(r[0]) || {}).ci) || 0];
+      ctx.save();
+      ctx.translate(x, footY);
+      ctx.rotate(lean);
+      if (src && src.complete && src.naturalWidth) {
+        const hgt = size * (src.height / src.width);
+        ctx.drawImage(src, -size / 2, -hgt, size, hgt);
+      } else {
+        ctx.fillStyle = COL[r[6]];
+        ctx.beginPath(); ctx.arc(0, -size * 0.45, size * 0.3, 0, 7); ctx.fill();
+      }
+      ctx.restore();
+      // 발밑 먼지
+      ctx.fillStyle = 'rgba(150,115,60,.28)';
+      ctx.beginPath(); ctx.ellipse(x, footY + 2 * dpr, size * 0.32, size * 0.09, 0, 0, 7); ctx.fill();
+      if (r[0] === myId) {
+        ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 3 * dpr;
+        ctx.beginPath(); ctx.arc(x, footY - size * 0.5, size * 0.55, 0, 7); ctx.stroke();
+      }
+      if (hitFx === 2) {                         // 정타 — 힘이 들어갔다
+        ctx.fillStyle = 'rgba(255,214,74,.9)';
+        ctx.font = `900 ${Math.max(12, size * 0.34)}px Pretendard, sans-serif`;
+        ctx.textAlign = 'center'; ctx.fillText('!', x, footY - size * 1.15);
+      }
+    });
+  };
+  drawTeam(A, -1); drawTeam(B, 1);
+
+  // ── 상단 점수판 ────────────────────────────────────────────────
+  const topY = 16 * dpr, fs = (isHost ? 30 : 20) * dpr;
+  ctx.textAlign = 'center'; ctx.font = `900 ${fs}px Pretendard, sans-serif`;
+  for (const s of [0, 1]) {
+    const x = s === 0 ? W * 0.22 : W * 0.78;
+    ctx.fillStyle = COL[s];
+    ctx.strokeStyle = 'rgba(10,16,34,.7)'; ctx.lineWidth = 4 * dpr; ctx.lineJoin = 'round';
+    const label = `${NAME[s]} ${s === 0 ? A.length : B.length}명`;
+    ctx.strokeText(label, x, topY + fs); ctx.fillText(label, x, topY + fs);
+    // 승수
+    ctx.font = `900 ${fs * 0.9}px Pretendard, sans-serif`;
+    const w = '●'.repeat(pl.wins[s]) + '○'.repeat(Math.max(0, 2 - pl.wins[s]));
+    ctx.fillStyle = '#ffd24a'; ctx.fillText(w, x, topY + fs * 2.1);
+    ctx.font = `900 ${fs}px Pretendard, sans-serif`;
+  }
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(10,16,34,.7)';
+  ctx.strokeText(`${pl.rd}판`, W / 2, topY + fs); ctx.fillText(`${pl.rd}판`, W / 2, topY + fs);
+
+  // 팀별 호흡 게이지 — "우리 팀이 얼마나 잘 맞추고 있나"가 한눈에
+  const maxSync = pl.md === 'mash' ? 8 : 1;
+  for (const s of [0, 1]) {
+    const val = Math.max(0, Math.min(1, (s === 0 ? pl.sa : pl.sb) / maxSync));
+    const bw = W * 0.26, bx = s === 0 ? W * 0.09 : W * 0.65, by = topY + fs * 2.6;
+    ctx.fillStyle = 'rgba(10,16,34,.45)';
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw, 14 * dpr, 7 * dpr) : ctx.rect(bx, by, bw, 14 * dpr); ctx.fill();
+    ctx.fillStyle = COL[s];
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw * val, 14 * dpr, 7 * dpr) : ctx.rect(bx, by, bw * val, 14 * dpr); ctx.fill();
+    ctx.fillStyle = '#22304f'; ctx.font = `800 ${12 * dpr}px Pretendard, sans-serif`;
+    ctx.textAlign = s === 0 ? 'left' : 'right';
+    ctx.fillText(pl.md === 'mash' ? '힘' : '호흡', s === 0 ? bx : bx + bw, by + 30 * dpr);
+    ctx.textAlign = 'center';
+    ctx.font = `900 ${fs}px Pretendard, sans-serif`;
+  }
+
+  // ── 구호 ──────────────────────────────────────────────────────
+  if (pl.ph === 'round' && pl.md === 'beat' && pl.beat) {
+    const dt = pl.beat - serverNow();                     // 다음 구호까지 남은 시간
+    const near = Math.max(0, Math.min(1, 1 - Math.abs(dt) / (pl.bms || 900)));
+    const cyB = H * 0.30, R = (isHost ? 54 : 48) * dpr;
+    const gl = ctx.createRadialGradient(W / 2, cyB, 0, W / 2, cyB, R * 1.5);
+    gl.addColorStop(0, 'rgba(10,16,34,.30)'); gl.addColorStop(1, 'rgba(10,16,34,0)');
+    ctx.fillStyle = gl;                            // 하늘·건물 위에서도 읽히게 부드럽게 깔아 준다
+    ctx.beginPath(); ctx.arc(W / 2, cyB, R * 1.5, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 4 * dpr;
+    ctx.beginPath(); ctx.arc(W / 2, cyB, R, 0, 7); ctx.stroke();
+    // 줄어드는 원 — 안쪽 원과 겹치는 순간이 정타
+    const rr = R * (1 + Math.max(0, dt) / (pl.bms || 900) * 1.6);
+    ctx.strokeStyle = Math.abs(dt) <= (pl.hit || 200) ? '#ffd24a' : 'rgba(255,255,255,.75)';
+    ctx.lineWidth = 5 * dpr;
+    ctx.beginPath(); ctx.arc(W / 2, cyB, rr, 0, 7); ctx.stroke();
+    ctx.font = `900 ${(isHost ? 40 : 28) * dpr}px Pretendard, sans-serif`;
+    ctx.strokeStyle = 'rgba(10,16,34,.75)'; ctx.lineWidth = 5 * dpr; ctx.lineJoin = 'round';
+    ctx.strokeText('영차!', W / 2, cyB + 12 * dpr);
+    ctx.fillStyle = `rgba(255,222,110,${0.45 + near * 0.55})`;
+    ctx.fillText('영차!', W / 2, cyB + 12 * dpr);
+  }
+
+  // 판 사이 / 결과
+  if (pl.ph === 'break') {
+    ctx.fillStyle = 'rgba(8,12,28,.62)'; ctx.fillRect(0, 0, W, H);
+    ctx.font = `900 ${(isHost ? 54 : 32) * dpr}px Pretendard, sans-serif`;
+    ctx.fillStyle = pl.lw < 0 ? '#dbe3f5' : COL[pl.lw];
+    ctx.fillText(pl.lw < 0 ? '무승부!' : `${NAME[pl.lw]} 승리!`, W / 2, H * 0.46);
+    ctx.font = `800 ${(isHost ? 24 : 16) * dpr}px Pretendard, sans-serif`;
+    ctx.fillStyle = '#c8d0e8';
+    ctx.fillText(`${pl.wins[0]} : ${pl.wins[1]}`, W / 2, H * 0.56);
+  }
+
+  // 심판 안내 (내가 심판일 때)
+  if (iAmRef && !isHost) {
+    ctx.fillStyle = 'rgba(8,12,28,.55)'; ctx.fillRect(0, H * 0.80, W, H * 0.20);
+    ctx.fillStyle = '#ffd24a'; ctx.font = `900 ${22 * dpr}px Pretendard, sans-serif`;
+    ctx.fillText('🧑‍⚖️ 이번 판은 심판이에요', W / 2, H * 0.875);
+    ctx.fillStyle = '#c8d0e8'; ctx.font = `700 ${14 * dpr}px Pretendard, sans-serif`;
+    ctx.fillText('다음 판에는 다시 참가합니다', W / 2, H * 0.925);
+  } else if (!isHost && pl.ph === 'round') {
+    ctx.fillStyle = COL[myTeam]; ctx.font = `900 ${18 * dpr}px Pretendard, sans-serif`;
+    ctx.fillText(`나는 ${NAME[myTeam]}`, W / 2, H * 0.86);
+  }
+
+  // TV에서만 구호 소리 (폰 30대가 어긋나 울리면 박자가 무너진다)
+  if (isHost && pl.ph === 'round' && pl.md === 'beat' && pl.beat && sndPrev.pullBeat !== pl.beat) {
+    const d = pl.beat - serverNow();
+    if (d > -60 && d < 60) { sndPrev.pullBeat = pl.beat; SFX.count(); }
+  }
+  // 내 폰: 정타면 진동
+  if (!isHost && meRow && meRow[8] === 2 && sndPrev.pullHit !== pl.beat) {
+    sndPrev.pullHit = pl.beat;
+    if (navigator.vibrate) navigator.vibrate(28);
+  }
+}
+
 function drawKartGame(W, H, dpr) {
   kartLoadAssets();
   const now = performance.now();

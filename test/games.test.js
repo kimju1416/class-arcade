@@ -289,6 +289,72 @@ module.exports = async function run() {
     }
   }
 
+  // ---------- 줄다리기: 인원 차가 결과를 좌우하면 안 된다 ----------
+  {
+    const stOf = b => [...b.frames].reverse().find(f => f.type === 'state' && f.mode === 'pull');
+
+    // 홀수 학급 → 심판 한 명을 빼서 참가 인원을 짝수로 만든다
+    {
+      const r = await H.makeRoom(9);
+      H.send(r.host, { type: 'start_game', game: 'pull' });
+      await H.waitPlaying(r.code);
+      const iv = setInterval(() => r.bots.forEach((b, i) => H.send(b, { type: 'input', x: i < 5 ? -1 : 1, y: 0 })), 200);
+      await H.sleep(17000);
+      clearInterval(iv);
+      const s = stOf(r.bots[0]);
+      const inGame = (s.players || []).filter(p => !p[4]);
+      const refs = inGame.filter(p => p[7]).length;
+      const playing = inGame.length - refs;
+      t.ok(s.pl && s.pl.ph === 'round', '줄다리기: 선택 시간이 끝나면 당기기가 시작된다');
+      t.ok(refs === 1, `줄다리기: 홀수(9명)면 심판 1명 (${refs}명)`);
+      t.ok(playing % 2 === 0, `줄다리기: 심판을 빼면 참가 인원이 짝수 (${playing}명)`);
+      t.ok(inGame.filter(p => p[6] === 0).length > 0 && inGame.filter(p => p[6] === 1).length > 0,
+           '줄다리기: 걸어간 방향대로 양 팀이 나뉜다');
+      r.close();
+    }
+
+    // 7 대 3인데 양쪽 다 구호를 맞추면 밧줄은 거의 그대로여야 한다.
+    // 합계로 계산하면 7명 팀이 곧장 이겨서 이 값이 100에 붙는다.
+    {
+      const r = await H.makeRoom(10);
+      H.send(r.host, { type: 'start_game', game: 'pull' });
+      await H.waitPlaying(r.code);
+      const iv = setInterval(() => r.bots.forEach((b, i) => H.send(b, { type: 'input', x: i < 7 ? -1 : 1, y: 0 })), 200);
+      await H.sleep(16500);
+      clearInterval(iv);
+      let ropeMax = 0;
+      const t0 = Date.now();
+      while (Date.now() - t0 < 12000) {
+        const s = stOf(r.bots[0]);
+        if (s && s.pl && s.pl.ph === 'round' && s.pl.beat) {
+          const wait = s.pl.beat - Date.now();
+          if (wait > 0 && wait < 400) { await H.sleep(wait); r.bots.forEach(b => H.send(b, { type: 'action' })); }
+          ropeMax = Math.max(ropeMax, Math.abs(s.pl.rope));
+        }
+        await H.sleep(40);
+      }
+      t.ok(ropeMax < 25, `줄다리기: 7 대 3이어도 호흡이 같으면 밧줄이 안 끌린다 (최대 ${ropeMax.toFixed(1)}/100)`);
+      r.close();
+    }
+
+    // 연타 모드: 한 명이 초당 50번 눌러도 인정은 상한까지만
+    {
+      const r = await H.makeRoom(4);
+      H.send(r.host, { type: 'start_game', game: 'pull', opt: { mode: 'mash' } });
+      await H.waitPlaying(r.code);
+      const iv = setInterval(() => r.bots.forEach((b, i) => H.send(b, { type: 'input', x: i < 2 ? -1 : 1, y: 0 })), 200);
+      await H.sleep(16500);
+      clearInterval(iv);
+      const fast = setInterval(() => H.send(r.bots[0], { type: 'action' }), 20);
+      await H.sleep(4000);
+      clearInterval(fast);
+      const s = stOf(r.bots[0]);
+      // 청팀 2명 중 1명만 연타 → 1인당 평균은 상한(10)의 절반을 넘을 수 없다
+      t.ok(s.pl && s.pl.sa <= 5.2, `줄다리기: 연타기를 써도 상한에 막힌다 (1인당 ${s.pl && s.pl.sa})`);
+      r.close();
+    }
+  }
+
   t.ok(H.serverErrors().length === 0, '서버 예외 0건');
   return t;
 };

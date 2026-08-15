@@ -848,6 +848,22 @@ const CRAY_MAX_SPD = 4;          // 👟 최대 단계
 const CRAY_ITEM_CHANCE = 0.45;   // 상자 파괴 시 아이템 드랍 확률
 const CRAY_THEME_N = 4;          // 맵 테마 수 (빌리지·얼음나라·사막·사탕나라) — 클라이언트 CRAY_THEMES와 같아야 한다
 
+// ---------- 줄다리기 ----------
+const PULL_PICK_MS = 15000;      // 학생이 좌우로 걸어가 팀을 고르는 시간
+const PULL_ROUND_MS = 70000;     // 한 판 제한 시간 (넘으면 앞선 쪽 승)
+const PULL_WINS = 2;             // 3판 2선승
+const PULL_MAX_ROUNDS = 3;
+const PULL_ROPE_WIN = 100;       // 밧줄이 여기까지 끌려오면 그 판 승리
+const PULL_BREAK_MS = 4000;      // 판 사이 쉬는 시간
+const PULL_BEAT_START = 950;     // 구호 간격 시작값
+const PULL_BEAT_MIN = 620;       // 갈수록 빨라져 여기까지
+const PULL_BEAT_STEP = 25;
+const PULL_HIT_MS = 200;         // 구호 판정 폭 (±) — 서버 도착 시각 기준
+const PULL_OFF_CREDIT = 0.3;     // 박자를 놓쳐도 인정해 주는 비율
+const PULL_BEAT_GAIN = 9;        // 구호 한 번의 밧줄 이동량 계수
+const PULL_MASH_CAP = 10;        // 연타 모드: 초당 인정 탭 상한 (매크로 방지)
+const PULL_MASH_GAIN = 3;
+
 // 맵 생성: 고정 기둥(단단한 블록) + 랜덤 상자. 스폰 칸과 그 주변은 비워 갇힘 방지.
 function crayBuildMap(n) {
   // grid[cy][cx]: 0=빈칸 1=단단한블록(안부서짐) 2=상자(부서짐)
@@ -1105,7 +1121,7 @@ function drawSuggest() {
   return [...out];
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray', 'kart'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray', 'kart', 'pull'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -1575,6 +1591,22 @@ function startGame(room, type, opt) {
       p.crayTrapUntil = 0; p.crayInvUntil = 0; p.crayTrappedBy = 0;
       p.crayKills = 0; p.crayRescues = 0; p.crayItemAt = 0; p.crayRescuedAt = 0;
     });
+  } else if (type === 'pull') {
+    g.roundMs = 0;                       // 판 진행은 pullPhase가 관리한다
+    g.arenaW = 1200; g.arenaH = 700;
+    g.pullMode = (opt && opt.mode) === 'mash' ? 'mash' : 'beat';   // 구호(기본) / 연타
+    g.pullPhase = 'pick';
+    g.pickEndAt = Date.now() + PULL_PICK_MS;
+    g.rope = 0; g.wins = [0, 0]; g.round = 1; g.lastWin = -1;
+    g.syncA = 0; g.syncB = 0; g.beatIdx = 0; g.beatAt = 0; g.beatMs = PULL_BEAT_START; g.refId = 0;
+    // 팀 선택 화면: 가운데 선 양쪽에 흩어 놓는다 (아직 어느 편도 아님)
+    actives.forEach((p) => {
+      p.x = g.arenaW / 2 + (Math.random() - 0.5) * 220;
+      p.y = 120 + Math.random() * (g.arenaH - 240);
+      p.pullTeam = p.x < g.arenaW / 2 ? 0 : 1;
+      p.pullRef = false; p.pullScore = 0; p.pullHits = 0;
+      p.pullBeatIdx = -1; p.pullBeatW = 0; p.pullHitAt = 0; p.pullHitKind = 0; p.pullTapTimes = [];
+    });
   } else if (type === 'kart') {
     g.roundMs = KART_ROUND_MS;
     g.kBoxes = KART_BOXES.map(([s, x]) => ({ s, x, at: 0 }));  // at: 리스폰 가능 시각
@@ -1731,6 +1763,7 @@ function tick(room) {
   else if (room.gameType === 'draw') drawTick(room, now);
   else if (room.gameType === 'cray') crayTick(room, now, dt);
   else if (room.gameType === 'kart') kartTick(room, now, dt);
+  else if (room.gameType === 'pull') pullTick(room, now, dt);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -3031,6 +3064,164 @@ function endKart(room) {
     p => p.finishedAt ? String(p.finishedAt) : 'dnf' + Math.round(p.kTotal || 0));
 }
 
+// ---------- 줄다리기 ----------
+// 두 팀이 밧줄을 당긴다. 이기는 힘은 "팀 합계"가 아니라 "1인당 평균"이다 —
+// 합계로 하면 인원이 한 명만 많아도 그 팀이 무조건 이긴다(홀수 학급에서 늘 생긴다).
+function pullTeams(room) {
+  const a = [], b = [];
+  for (const p of room.players.values()) {
+    if (!p.connected || p.waiting || p.pullRef) continue;
+    (p.pullTeam === 0 ? a : b).push(p);
+  }
+  return [a, b];
+}
+// 심판 뽑기: 인원이 홀수면 많은 쪽에서 한 명을 빼 양팀을 짝수로 맞춘다.
+// 판마다 다시 뽑으므로 한 학생만 계속 구경하는 일은 없다.
+function pullPickRef(room) {
+  for (const p of room.players.values()) p.pullRef = false;
+  const inGame = [...room.players.values()].filter(p => p.connected && !p.waiting);
+  if (inGame.length % 2 === 0) return null;
+  const a = inGame.filter(p => p.pullTeam === 0), b = inGame.filter(p => p.pullTeam === 1);
+  const big = a.length >= b.length ? a : b;
+  if (!big.length) return null;
+  const ref = big[Math.floor(Math.random() * big.length)];
+  ref.pullRef = true;
+  return ref;
+}
+function pullStartRound(room, now) {
+  const g = room.game;
+  g.pullPhase = 'round';
+  g.rope = 0;
+  g.roundAt = now;
+  g.roundEndAt = now + PULL_ROUND_MS;
+  g.beatIdx = 0;
+  g.beatMs = PULL_BEAT_START;
+  g.beatAt = now + 2000;            // 첫 구호는 숨 고를 시간을 준다
+  g.refId = (pullPickRef(room) || {}).id || 0;
+  for (const p of room.players.values()) {
+    p.pullBeatIdx = -1; p.pullHitAt = 0; p.pullHitKind = 0;
+    p.pullTapTimes = [];
+  }
+}
+// 학생이 밧줄 버튼을 눌렀다. 판정 기준은 서버 도착 시각 — 폰 시계를 조작해도 소용없다.
+function pullTap(room, p, now) {
+  const g = room.game;
+  if (!g || room.state !== 'playing' || g.pullPhase !== 'round') return;
+  if (p.waiting || !p.connected || p.pullRef) return;
+  if (g.pullMode === 'mash') {
+    // 연타: 초당 인정 횟수를 막아 둔다. 매크로·연타기를 써도 손해만 본다.
+    p.pullTapTimes = (p.pullTapTimes || []).filter(t => now - t < 1000);
+    if (p.pullTapTimes.length >= PULL_MASH_CAP) return;
+    p.pullTapTimes.push(now);
+    p.pullScore = (p.pullScore || 0) + 1;
+    p.pullHitAt = now; p.pullHitKind = 1;
+    return;
+  }
+  // 구호(타이밍): 한 구호에 한 번만 인정한다 → 연타해도 이득이 없다
+  if (p.pullBeatIdx === g.beatIdx) return;
+  p.pullBeatIdx = g.beatIdx;
+  const off = Math.abs(now - g.beatAt);
+  const hit = off <= PULL_HIT_MS;
+  p.pullBeatW = hit ? 1 : PULL_OFF_CREDIT;   // 놓쳐도 조금은 인정 (아무도 무용지물이 되지 않게)
+  p.pullHitAt = now; p.pullHitKind = hit ? 2 : 1;
+  if (hit) p.pullHits = (p.pullHits || 0) + 1;
+  p.pullScore = (p.pullScore || 0) + (hit ? 1 : PULL_OFF_CREDIT);
+}
+function pullTick(room, now, dt) {
+  const g = room.game;
+  if (g.pullPhase === 'pick') {
+    // 학생이 직접 좌우로 걸어가 팀을 고른다. 가운데 선을 기준으로 팀이 정해진다.
+    movePlayers(room, dt);
+    for (const p of room.players.values()) {
+      if (p.waiting) continue;
+      p.pullTeam = p.x < g.arenaW / 2 ? 0 : 1;
+    }
+    if (now >= g.pickEndAt) {
+      // 한쪽이 비었으면 가운데에 가까운 학생부터 옮겨 최소한의 편을 만든다
+      const inGame = [...room.players.values()].filter(p => p.connected && !p.waiting);
+      for (const t of [0, 1]) {
+        if (inGame.some(p => p.pullTeam === t)) continue;
+        const from = inGame.filter(p => p.pullTeam !== t)
+          .sort((x, y) => Math.abs(x.x - g.arenaW / 2) - Math.abs(y.x - g.arenaW / 2));
+        for (let i = 0; i < Math.floor(from.length / 2); i++) from[i].pullTeam = t;
+      }
+      pullStartRound(room, now);
+    }
+    sendState(room, now);
+    return;
+  }
+
+  if (g.pullPhase === 'break') {
+    if (now >= g.breakEndAt) {
+      if (g.wins[0] >= PULL_WINS || g.wins[1] >= PULL_WINS || g.round >= PULL_MAX_ROUNDS) { endPull(room, now); return; }
+      g.round++;
+      pullStartRound(room, now);
+    }
+    sendState(room, now);
+    return;
+  }
+
+  // ── 당기기 ────────────────────────────────────────────────
+  const [A, B] = pullTeams(room);
+  if (g.pullMode === 'mash') {
+    const rate = (team) => {
+      if (!team.length) return 0;
+      let s = 0;
+      for (const p of team) { p.pullTapTimes = (p.pullTapTimes || []).filter(t => now - t < 1000); s += p.pullTapTimes.length; }
+      return s / team.length;                       // 1인당 초당 탭 수
+    };
+    g.syncA = rate(A); g.syncB = rate(B);
+    g.rope += (g.syncB - g.syncA) * PULL_MASH_GAIN * dt;
+  } else if (now >= g.beatAt + PULL_HIT_MS) {
+    // 구호 판정 창이 닫혔다 → 이번 구호를 결산하고 다음 구호를 잡는다
+    const pull = (team) => {
+      if (!team.length) return 0;
+      let s = 0;
+      for (const p of team) if (p.pullBeatIdx === g.beatIdx) s += (p.pullBeatW || 0);
+      return s / team.length;                       // 1인당 평균 (인원 수와 무관)
+    };
+    const pa = pull(A), pb = pull(B);
+    g.syncA = pa; g.syncB = pb;
+    g.rope += (pb - pa) * PULL_BEAT_GAIN;
+    g.beatIdx++;
+    g.beatMs = Math.max(PULL_BEAT_MIN, g.beatMs - PULL_BEAT_STEP);   // 갈수록 빨라진다
+    g.beatAt = now + g.beatMs;
+  }
+  g.rope = Math.max(-PULL_ROPE_WIN, Math.min(PULL_ROPE_WIN, g.rope));
+
+  const over = Math.abs(g.rope) >= PULL_ROPE_WIN || now >= g.roundEndAt;
+  if (over) {
+    const win = g.rope <= -PULL_ROPE_WIN ? 0 : g.rope >= PULL_ROPE_WIN ? 1 : (g.rope < 0 ? 0 : g.rope > 0 ? 1 : -1);
+    if (win >= 0) g.wins[win]++;
+    g.lastWin = win;
+    g.pullPhase = 'break';
+    g.breakEndAt = now + PULL_BREAK_MS;
+  }
+  sendState(room, now);
+}
+function endPull(room, now) {
+  const g = room.game;
+  const winTeam = g.wins[0] === g.wins[1] ? -1 : (g.wins[0] > g.wins[1] ? 0 : 1);
+  const name = t => t === 0 ? '🔵청팀' : '⚪백팀';
+  const parts = [...room.players.values()].filter(p => !p.waiting);
+  const sorted = parts.sort((a, b) => {
+    if (winTeam >= 0) {
+      const aw = a.pullTeam === winTeam ? 1 : 0, bw = b.pullTeam === winTeam ? 1 : 0;
+      if (aw !== bw) return bw - aw;
+    }
+    return (b.pullScore || 0) - (a.pullScore || 0);
+  });
+  finishGame(room, sorted, p => {
+    const tag = name(p.pullTeam) + ' · ';
+    const mine = g.pullMode === 'mash'
+      ? `${Math.round(p.pullScore || 0)}번 당김`
+      : `구호 ${p.pullHits || 0}번 맞춤`;
+    if (winTeam >= 0 && p.pullTeam === winTeam) return tag + `승리! 🏆 ${g.wins[0]}:${g.wins[1]} · ` + mine;
+    if (winTeam < 0) return tag + '무승부 · ' + mine;
+    return tag + `${g.wins[0]}:${g.wins[1]} · ` + mine;
+  }, p => (winTeam >= 0 && p.pullTeam === winTeam ? 'W' : 'L') + '-' + Math.round((p.pullScore || 0) * 10));
+}
+
 // ---------- 설원 러너 ----------
 function runTick(room, now, dt) {
   const g = room.game;
@@ -3781,6 +3972,12 @@ function sendState(room, now) {
                  now - (p.gotAt || 0) < 700 ? (p.clawGot || 0) : 0,
                  now - (p.missAt || 0) < 500 ? 1 : 0);
       }
+      // 줄다리기: [팀(0청/1백), 심판인가, 최근 입력 연출(0없음 1빗맞음 2정타)]
+      if (type === 'pull') {
+        row.push(p.pullTeam || 0,
+                 p.pullRef ? 1 : 0,
+                 now - (p.pullHitAt || 0) < 260 ? (p.pullHitKind || 0) : 0);
+      }
       // 카트: [트랙내 위치, 측면×100, 랩(1~), 아이템, 부스터, 스핀 연출, 완주, 아이템 획득 연출]
       if (type === 'kart') {
         row.push(Math.round(((p.kTotal || 0) % KART_TRACK + KART_TRACK) % KART_TRACK),
@@ -3842,6 +4039,19 @@ function sendState(room, now) {
     msg.elapsed = Math.round((now - g.startedAt) / 1000);
   }
   if (type === 'claw') msg.dolls = g.dolls.map(d => [Math.round(d.x), Math.round(d.y), d.v]);
+  if (type === 'pull') {
+    msg.pl = {
+      ph: g.pullPhase, md: g.pullMode, rope: Math.round(g.rope * 10) / 10,
+      wins: g.wins, rd: g.round, lw: g.lastWin, ref: g.refId || 0,
+      // 구호 시각은 서버 시각으로 준다 — 학생 폰은 serverNow()로 맞춰 원이 줄어드는 걸 그린다
+      beat: g.pullPhase === 'round' && g.pullMode === 'beat' ? g.beatAt : 0,
+      bms: g.beatMs, hit: PULL_HIT_MS,
+      sa: Math.round((g.syncA || 0) * 100) / 100, sb: Math.round((g.syncB || 0) * 100) / 100,
+      left: g.pullPhase === 'pick' ? Math.max(0, g.pickEndAt - now)
+          : g.pullPhase === 'break' ? Math.max(0, g.breakEndAt - now)
+          : Math.max(0, g.roundEndAt - now),
+    };
+  }
   if (type === 'cray') {
     // 맵은 바뀔 때 + 1.5초마다 재전송 (새로고침·재접속 복구용). 나머지는 매 틱.
     if (g.gridDirty || now - g.gridSentAt > 1500) {
@@ -4121,6 +4331,7 @@ wss.on('connection', (ws) => {
         if (!room || ws.playerId == null) return;
         const p = room.players.get(ws.playerId);
         if (!p) return;
+        if (room.gameType === 'pull') { pullTap(room, p, Date.now()); return; }
         if (room.gameType === 'claw') clawDrop(room, p);
         else if (room.gameType === 'gala' && room.state === 'playing' && p.alive) {
           const g2 = room.game, now2 = Date.now();
