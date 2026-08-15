@@ -195,6 +195,100 @@ module.exports = async function run() {
     r.close();
   }
 
+  // ---------- 카트 아이템 충돌: 고속에서 표적을 뛰어넘지 않는가 ----------
+  // 예전엔 "지금 이 순간의 한 점"만 봐서, 틱당 이동거리(72~125유닛)가
+  // 판정 폭(90~110유닛)보다 커지면 바나나·등껍질을 그대로 통과했다(실측 피격 0회).
+  // 서버가 다시 점 판정으로 돌아가면 여기서 걸린다.
+  {
+    const fs = require('fs');
+    const src = fs.readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+    const TRACK = 240 * 200;
+    const wrap = v => { const x = ((v % TRACK) + TRACK) % TRACK; return x > TRACK / 2 ? x - TRACK : x; };
+
+    t.ok(/kartWrap/.test(src) && /kPrevTotal/.test(src), '카트: 스윕 판정 코드가 살아 있다');
+    t.ok(/tgt\.kX - s\.x/.test(src), '카트: 등껍질이 표적 차선을 따라간다(유도)');
+
+    // 바나나를 0에 두고 카트가 뒤에서 다가와 지나간다. 출발 위상을 1유닛씩 바꿔가며
+    // 모든 경우를 돌려, 판정이 바나나를 건너뛰는 위상이 있는지 본다.
+    const sweep = (step, R) => {
+      let missPoint = 0, missSwept = 0;
+      for (let ph = 0; ph < step; ph++) {
+        let hitP = false, hitS = false;
+        for (let pos = ph - 400; pos < 400; pos += step) {
+          if (Math.abs(wrap(pos)) < R) hitP = true;                       // 옛 방식: 그 순간의 점만
+          const a = wrap(pos - step), b = wrap(pos);                      // 새 방식: 지나온 구간
+          if (Math.min(a, b) <= R && Math.max(a, b) >= -R) hitS = true;
+        }
+        if (!hitP) missPoint++;
+        if (!hitS) missSwept++;
+      }
+      return { missPoint, missSwept };
+    };
+    const boost = sweep(101, 45);    // 부스터 속도 = 틱당 101유닛 (판정 폭 90보다 크다)
+    t.ok(boost.missSwept === 0, `카트: 부스터 속도로도 바나나를 건너뛰지 않는다 (놓침 ${boost.missSwept}건)`);
+    t.ok(boost.missPoint > 0, `카트: 옛 점 판정은 부스터 구간에서 실제로 놓쳤다 (${boost.missPoint}/101 위상)`);
+    const cruise = sweep(72, 45);    // 기본 속도에서는 옛 방식도 놓치지 않았다 (정직하게 기록)
+    t.ok(cruise.missSwept === 0 && cruise.missPoint === 0, '카트: 기본 속도에서는 두 방식 모두 놓치지 않는다');
+  }
+
+  // ---------- 내 캐릭터 로컬 예측: 즉시 반응하고 고무줄처럼 튀지 않는가 ----------
+  // 클라이언트의 predictMe를 그대로 떼어내, 서버 반영이 155ms 늦는 상황을 재현한다.
+  {
+    const fs = require('fs'), path = require('path');
+    const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    const i0 = html.indexOf('function predictMe(');
+    let src = '';
+    if (i0 >= 0) {
+      let d = 0;
+      for (let k = html.indexOf('{', i0); k < html.length; k++) {
+        if (html[k] === '{') d++;
+        else if (html[k] === '}') { d--; if (!d) { src = html.slice(i0, k + 1); break; } }
+      }
+    }
+    t.ok(!!src, '예측: predictMe 함수가 존재한다');
+
+    if (src) {
+      let curDir = { x: 0, y: 0 }, pred = null, predAt = 0, inputLog = [], srvClock = 0, nowMs = 0;
+      const ctx = {
+        get pred() { return pred; }, set pred(v) { pred = v; },
+        get predAt() { return predAt; }, set predAt(v) { predAt = v; },
+        get curDir() { return curDir; },
+        get inputLog() { return inputLog; },
+        serverNow: () => srvClock, keyDir: () => null,
+        isHost: false, phase: 'playing', Math,
+        PRED_SPEED: 230, PRED_ZOMBIE_MULT: 1.08, PLAYER_R_CLIENT: 16,
+        PRED_GAMES: { bomb: 1, tag: 1, coin: 1, gala: 1, dodge: 1, ox: 1 },
+        performance: { now: () => nowMs },
+      };
+      const fn = new Function('ctx', `with (ctx) { return (${src.replace('function predictMe', 'function')}); }`)(ctx);
+
+      const SPEED = 230, DT = 1 / 60, LAG = 155, arena = { w: 900, h: 900 };
+      let truth = 450, maxErr = 0, firstMove = -1, flips = 0, prevSign = 0;
+      const hist = [], startX = truth;
+      for (let f = 0; f < 240; f++) {
+        nowMs = srvClock = f * DT * 1000;
+        if (f === 30) { curDir = { x: 1, y: 0 }; inputLog.push({ t: nowMs, x: 1, y: 0 }); }
+        if (f === 150) { curDir = { x: 0, y: 0 }; inputLog.push({ t: nowMs, x: 0, y: 0 }); }
+        truth = Math.max(16, Math.min(arena.w - 16, truth + curDir.x * SPEED * DT));
+        hist.push({ t: nowMs, x: truth });
+        const old = hist.find(h => h.t >= nowMs - LAG) || hist[0];
+        const p = fn({ mode: 'dodge', arena, st: old.t }, old.x, 450, false);
+        if (firstMove < 0 && f >= 30 && p && Math.abs(p.x - startX) > 1) firstMove = f - 30;
+        if (f > 40 && p) {
+          const err = p.x - truth;
+          maxErr = Math.max(maxErr, Math.abs(err));
+          const s = Math.sign(err);
+          if (s && prevSign && s !== prevSign) flips++;
+          prevSign = s;
+        }
+      }
+      t.ok(firstMove === 0, `예측: 조작 다음 프레임에 바로 움직인다 (${firstMove}프레임)`);
+      // 보정 없이 서버 좌표만 따라가면 지연 거리(≈36유닛)만큼 뒤처진다 → 피했는데 맞는 일이 생긴다
+      t.ok(maxErr < 12, `예측: 서버 실제 위치와의 오차가 작다 (${maxErr.toFixed(1)}유닛 < 12)`);
+      t.ok(flips <= 2, `예측: 고무줄처럼 앞뒤로 튀지 않는다 (부호 뒤집힘 ${flips}회)`);
+    }
+  }
+
   t.ok(H.serverErrors().length === 0, '서버 예외 0건');
   return t;
 };

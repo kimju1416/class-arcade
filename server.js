@@ -331,7 +331,7 @@ const KART_AFTER_FIRST_MS = 30000;
 const KART_MAX_SPEED = 1450;          // 유닛/초 (랩 ~33초, 실제로는 조향·잔디 때문에 ~48초)
 const KART_BOOST_MULT = 1.4;
 const KART_BOOST_MS = 1600;
-const KART_OFF_MULT = 0.45;           // 잔디 감속
+const KART_OFF_MULT = 0.32;           // 잔디 감속 (0.45 → 0.32: 코스 이탈 대가를 확실하게)
 const KART_SPIN_MS = 1200;            // 바나나·등껍질 맞으면 스핀
 const KART_BOX_RESPAWN_MS = 3000;
 // 아이템 박스: [세그, 측면x] — 4구역 × 3개
@@ -840,7 +840,7 @@ const CRAY_FUSE_MS = 2800;       // 물풍선 설치 → 폭발까지
 const CRAY_STREAM_MS = 550;      // 물줄기 지속 시간
 const CRAY_TRAP_MS = 7000;       // 물방울에 갇혀 버티는 시간 (안 구해지면 탈락)
 const CRAY_INV_MS = 1500;        // 구출·갇힘 직후 물줄기 무적 (연속으로 또 갇히는 것 방지)
-const CRAY_BASE_SPEED = 195;     // 기본 이동 속도
+const CRAY_BASE_SPEED = 250;     // 기본 이동 속도 (195 → 250: 시작부터 답답하지 않게)
 const CRAY_SPEED_STEP = 22;      // 👟 하나당 증가
 const CRAY_MAX_CAP = 6;          // 🎈 물풍선 최대 개수
 const CRAY_MAX_POW = 7;          // 💧 물줄기 최대 길이
@@ -2879,6 +2879,11 @@ function endRace(room) {
 }
 
 // ---------- 카트 그랑프리 ----------
+// 트랙은 원형이라 두 지점의 거리는 ±KART_TRACK/2 범위의 부호 있는 값으로 다룬다
+function kartWrap(v) {
+  const t = ((v % KART_TRACK) + KART_TRACK) % KART_TRACK;
+  return t > KART_TRACK / 2 ? t - KART_TRACK : t;
+}
 function kartCurveAt(total) {
   const seg = Math.floor(((total % KART_TRACK) + KART_TRACK) % KART_TRACK / KART_SEG) % KART_N;
   return KART_CURVES[seg];
@@ -2908,6 +2913,7 @@ function kartTick(room, now, dt) {
     p.kSpeed += (max - p.kSpeed) * Math.min(1, dt * (p.kSpeed < max ? 0.6 : 2.4));
     const prevTotal = p.kTotal;
     p.kTotal += p.kSpeed * dt;
+    p.kPrevTotal = prevTotal;          // 등껍질 스윕 판정에서 쓴다
 
     // 조향 + 커브 원심력 (클라 렌더 공식과 동일 감각)
     if (!spinning) p.kX += p.dirX * dt * 1.9 * (p.kSpeed / KART_MAX_SPEED);
@@ -2928,8 +2934,12 @@ function kartTick(room, now, dt) {
             // 순위 보정: 뒤처질수록 부스터 확률↑ (교실 배려)
             const rank = racers.filter(q => (q.kTotal || 0) > p.kTotal).length;
             const luck = rank / Math.max(1, racers.length - 1);
+            // 뒤처질수록 부스터가 잘 나오되(30~55%), 나머지는 바나나·등껍질 반반.
+            // 예전 식(r < 0.34+luck*0.4 ? 부스터 : r < 0.7 ? 바나나 : 등껍질)은 경계가 겹쳐서
+            // 꼴찌권(luck=1)이면 부스터 74%에 바나나가 아예 안 나왔다 — 공격 아이템이 실종된 주범.
+            const boostP = 0.30 + luck * 0.25;
             const r = Math.random();
-            p.kItem = r < 0.34 + luck * 0.4 ? 1 : r < 0.7 ? 2 : 3;
+            p.kItem = r < boostP ? 1 : r < boostP + (1 - boostP) * 0.5 ? 2 : 3;
             p.kItemAt = now;
             break;
           }
@@ -2938,15 +2948,22 @@ function kartTick(room, now, dt) {
       }
     }
 
-    // 바나나 밟기
-    if (!spinning) for (let i = g.kBananas.length - 1; i >= 0; i--) {
-      const b = g.kBananas[i];
-      const d = ((p.kTotal - b.pos) % KART_TRACK + KART_TRACK) % KART_TRACK;
-      const dd = Math.min(d, KART_TRACK - d);
-      if (dd < 45 && Math.abs(p.kX - b.x) < 0.38) {
-        p.kSpinUntil = now + KART_SPIN_MS; p.kSpinAt = now;
-        g.kBananas.splice(i, 1);
-        break;
+    // 바나나 밟기 — 이번 틱에 "지나간 구간" 전체로 판정한다.
+    // 한 점만 보면 놓친다: 1450유닛/초(부스터 2030)면 틱당 72~101유닛을 건너뛰는데
+    // 바나나 판정 폭은 90유닛뿐이라 그대로 통과해 버렸다(실측 스핀 0회).
+    if (!spinning) {
+      const step = p.kTotal - prevTotal;
+      for (let i = g.kBananas.length - 1; i >= 0; i--) {
+        const b = g.kBananas[i];
+        // 차선 허용폭 0.38은 너무 좁았다 — 계측상 바나나 근처를 지난 10번 중 8번이
+        // "거리는 맞는데 차선이 어긋나서" 그냥 지나갔다. 도로 반폭이 1.08인 걸 감안해 넓힌다.
+        if (Math.abs(p.kX - b.x) >= 0.55) continue;
+        const dNow = kartWrap(p.kTotal - b.pos), dPrev = dNow - step;
+        if (Math.min(dPrev, dNow) <= 45 && Math.max(dPrev, dNow) >= -45) {
+          p.kSpinUntil = now + KART_SPIN_MS; p.kSpinAt = now;
+          g.kBananas.splice(i, 1);
+          break;
+        }
       }
     }
 
@@ -2966,13 +2983,28 @@ function kartTick(room, now, dt) {
   for (let i = g.kShells.length - 1; i >= 0; i--) {
     const s = g.kShells[i];
     if (now > s.until) { g.kShells.splice(i, 1); continue; }
-    s.pos += 2500 * dt;
+    const sStep = 2500 * dt;
+    s.pos += sStep;
+    // 등껍질은 앞쪽 가장 가까운 카트의 차선을 따라간다. 예전엔 발사한 순간의 차선으로만
+    // 곧게 날아가서, 표적이 조금만 옆으로 가도 스쳐 지나갔다(계측상 12번 중 10번 헛방).
+    {
+      let tgt = null, best = Infinity;
+      for (const p of racers) {
+        if (p.id === s.owner || p.finishedAt) continue;
+        const ahead = kartWrap(p.kTotal - s.pos);
+        if (ahead > 0 && ahead < best) { best = ahead; tgt = p; }
+      }
+      if (tgt) s.x += Math.max(-1.6 * dt, Math.min(1.6 * dt, tgt.kX - s.x));
+    }
     let hit = false;
     for (const p of racers) {
       if (p.id === s.owner || p.finishedAt || now < p.kSpinUntil) continue;
-      const d = ((p.kTotal - s.pos) % KART_TRACK + KART_TRACK) % KART_TRACK;
-      const dd = Math.min(d, KART_TRACK - d);
-      if (dd < 55 && Math.abs(p.kX - s.x) < 0.42) {
+      if (Math.abs(p.kX - s.x) >= 0.55) continue;
+      // 등껍질은 틱당 125유닛을 날아가는데 판정 폭은 110유닛 — 점 판정으로는 표적을 뛰어넘는다.
+      // 카트와 등껍질의 "상대 이동 구간"이 판정 폭과 겹치는지로 본다.
+      const gNow = kartWrap(p.kTotal - s.pos);
+      const gPrev = gNow - ((p.kTotal - (p.kPrevTotal != null ? p.kPrevTotal : p.kTotal)) - sStep);
+      if (Math.min(gPrev, gNow) <= 55 && Math.max(gPrev, gNow) >= -55) {
         p.kSpinUntil = now + KART_SPIN_MS; p.kSpinAt = now;
         hit = true; break;
       }

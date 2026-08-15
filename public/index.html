@@ -2715,6 +2715,7 @@ function enterGameView(keepInput) {
   if (!keepInput) resetInputState();
   seenDeadAt = 0; seenInfectedAt = 0;
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
+  pred = null;                      // 로컬 예측 좌표도 초기화 (이전 판 위치가 새 판에 새면 한 번 튄다)
   crayGrid = null;                  // 물풍선 맵 캐시도 판마다 초기화
   crayTheme = CRAY_THEMES[0];       // 테마도 초기화 (다음 판 첫 grid가 오면 서버 값으로 덮인다)
   $('hudTime').textContent = '';
@@ -3314,6 +3315,7 @@ function initInput() {
     if (e && stickPid !== null && e.pointerId !== stickPid) return; // 다른 손가락 뗀 것은 무시
     stickActive = false; stickPid = null; curDir = { x: 0, y: 0 };
     $('stick').style.display = 'none';
+    flushInput();          // 손을 뗀 것도 즉시 알려야 딱 멈춘다
   };
 }
 
@@ -3364,11 +3366,12 @@ function moveStick(x, y) {
   curDir = { x: nx * (cl / max), y: ny * (cl / max) };
   $('stickBase').style.left = stickCx + 'px'; $('stickBase').style.top = stickCy + 'px';
   $('stickKnob').style.left = (stickCx + nx * cl) + 'px'; $('stickKnob').style.top = (stickCy + ny * cl) + 'px';
+  flushInput();          // 폴링을 기다리지 않고 즉시 반영
 }
 
 const keys = {};
-addEventListener('keydown', e => { if (e.target.tagName !== 'INPUT') keys[e.key.toLowerCase()] = true; });
-addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('keydown', e => { if (e.target.tagName !== 'INPUT') { keys[e.key.toLowerCase()] = true; flushInput(); } });
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; flushInput(); });
 function keyDir() {
   let x = 0, y = 0;
   if (keys['arrowleft'] || keys['a']) x -= 1;
@@ -3377,19 +3380,86 @@ function keyDir() {
   if (keys['arrowdown'] || keys['s']) y += 1;
   const l = Math.hypot(x, y); return l ? { x: x / l, y: y / l } : null;
 }
-setInterval(() => {
-  const moves = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
+// 조작을 서버로 보내는 경로. 예전에는 80ms 간격 폴링만 있어서 손가락을 움직이고도
+// 최대 80ms를 그냥 기다렸다(왕복·보간까지 합쳐 체감 200ms+). 이제는 조이스틱이
+// 움직인 그 순간 보내고, 폴링은 이벤트를 놓쳤을 때를 위한 안전망으로만 남긴다.
+const INPUT_MIN_MS = 40;     // 초당 25회 상한 (서버 MSG_LIMIT 60/초에 여유를 둔다)
+let inputSentAt = 0, inputPending = null;
+let inputLog = [];           // 예측 보정용 입력 기록 {서버시각, x, y}
+function inputMoves() {
+  return gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
     || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
     || gameType === 'cray' || gameType === 'kart';
-  if (isHost || !moves || (phase !== 'playing' && phase !== 'countdown')) return;
-  const kd = keyDir();
-  const d = kd || curDir;
-  if (d.x !== sentDir.x || d.y !== sentDir.y) {
-    sentDir = { ...d };
-    send({ type: 'input', x: d.x, y: d.y });
+}
+function flushInput() {
+  if (isHost || !inputMoves() || (phase !== 'playing' && phase !== 'countdown')) return;
+  const d = keyDir() || curDir;
+  if (d.x === sentDir.x && d.y === sentDir.y) return;
+  const t = performance.now(), wait = INPUT_MIN_MS - (t - inputSentAt);
+  if (wait > 0) {   // 너무 잦으면 묶되, 마지막 값은 반드시 나가도록 예약해 둔다
+    if (!inputPending) inputPending = setTimeout(() => { inputPending = null; flushInput(); }, wait);
+    return;
   }
-}, 80);
+  inputSentAt = t;
+  sentDir = { ...d };
+  send({ type: 'input', x: d.x, y: d.y });
+  // 예측에서 "서버 좌표 + 그 뒤 내가 누른 것"을 다시 계산할 수 있게 기록해 둔다
+  inputLog.push({ t: serverNow(), x: d.x, y: d.y });
+  if (inputLog.length > 40) inputLog.splice(0, inputLog.length - 40);
+}
+setInterval(flushInput, 60);
+
+// ── 내 캐릭터 로컬 예측 ──────────────────────────────────────────────
+// 남은 지연의 대부분은 보간 지연 120ms다. 남들은 그대로 부드럽게 보간하되,
+// "내 캐릭터"만 조이스틱 값으로 로컬에서 먼저 움직이고 서버 좌표로 부드럽게 수렴시킨다.
+// 판정은 여전히 서버가 한다 — 예측은 눈에 보이는 위치에만 쓴다.
+// 벽·넉백처럼 서버에서만 아는 힘이 있는 게임(물풍선·스모·의자)은 제외한다(예측이 어긋나 덜덜 떨린다).
+const PRED_SPEED = 230;          // 서버 SPEED와 같아야 한다
+const PRED_ZOMBIE_MULT = 1.08;   // 서버 ZOMBIE_SPEED_MULT
+const PRED_GAMES = { bomb: 1, tag: 1, coin: 1, gala: 1, dodge: 1, ox: 1 };
+let pred = null, predAt = 0;
+function predictMe(latest, sx, sy, infected) {
+  if (!PRED_GAMES[latest.mode] || isHost || phase !== 'playing') { pred = null; return null; }
+  const t = performance.now();
+  const dt = Math.min(0.05, pred ? (t - predAt) / 1000 : 0);
+  predAt = t;
+  const sp = PRED_SPEED * (infected ? PRED_ZOMBIE_MULT : 1);
+  if (!pred) { pred = { x: sx, y: sy }; return pred; }
+  const d = keyDir() || curDir;
+  pred.x += d.x * sp * dt;
+  pred.y += d.y * sp * dt;
+
+  // 수렴 목표 = "서버가 알려준 좌표" + "그 좌표 이후 내가 누른 조작을 다시 재생한 만큼".
+  // 그냥 서버 좌표로 당기면 화면이 늘 지연 거리(≈35유닛)만큼 뒤처져서,
+  // 탄막을 피한 것처럼 보여도 서버에서는 맞는 일이 생긴다.
+  let tx = sx, ty = sy;
+  const st = latest.st, nowS = serverNow();
+  if (st && nowS > st) {
+    let cur = { x: 0, y: 0 }, at = st;
+    for (const e of inputLog) {
+      if (e.t <= st) { cur = e; continue; }          // 스냅샷 시점에 유효했던 입력
+      const seg = Math.min(e.t, nowS) - at;
+      if (seg > 0) { tx += cur.x * sp * seg / 1000; ty += cur.y * sp * seg / 1000; }
+      at = e.t; cur = e;
+      if (at >= nowS) break;
+    }
+    if (at < nowS) { const seg = nowS - at; tx += cur.x * sp * seg / 1000; ty += cur.y * sp * seg / 1000; }
+  }
+  // 재생 결과로 수렴. 차이가 크면(부활·넉백·벽) 즉시 맞춘다.
+  const ex = tx - pred.x, ey = ty - pred.y;
+  if (Math.hypot(ex, ey) > 90) { pred.x = tx; pred.y = ty; }
+  else { const k = Math.min(1, dt * 9); pred.x += ex * k; pred.y += ey * k; }
+  // 아레나 밖으로는 못 나간다 — 서버 클램프와 같은 규칙이라야 벽에서 안 떤다.
+  // 갤러그는 함선 반경도, 세로로 움직일 수 있는 구간도 다르다(아래쪽 45%만).
+  const W2 = latest.arena ? latest.arena.w : 800, H2 = latest.arena ? latest.arena.h : 800;
+  const gala = latest.mode === 'gala';
+  const R = gala ? 15 : 16;                       // 서버 GALA_SHIP_R / PLAYER_R
+  pred.x = Math.max(R, Math.min(W2 - R, pred.x));
+  pred.y = gala ? Math.max(H2 * 0.55, Math.min(H2 - 30, pred.y))
+                : Math.max(R, Math.min(H2 - R, pred.y));
+  return pred;
+}
 
 // ---- 캔버스 렌더링 ----
 const cv = $('cv'), ctx = cv.getContext('2d');
@@ -4108,8 +4178,16 @@ function draw() {
     const [id, x2, y2, alive, waiting, extra] = pb;
     if (waiting) continue;
     const pa = posA.get(id) || pb;
-    const px = ox + lerp(pa[1], x2, t) * scale;
-    const py = oy + lerp(pa[2], y2, t) * scale;
+    let wx = lerp(pa[1], x2, t), wy = lerp(pa[2], y2, t);
+    if (id === myId && alive) {
+      // 내 캐릭터는 보간 대신 로컬 예측 — 조이스틱을 민 즉시 따라온다.
+      // 기준은 보간값이 아니라 "가장 최근 서버 좌표"여야 수렴이 뒤로 끌리지 않는다.
+      const sr = latest.players.find(q => q[0] === myId);
+      const lp = sr && predictMe(latest, sr[1], sr[2], latest.mode === 'tag' && extra === 1);
+      if (lp) { wx = lp.x; wy = lp.y; }
+    }
+    const px = ox + wx * scale;
+    const py = oy + wy * scale;
     const meta = roster.get(id) || { nick: '?', ci: 0 };
     const r = PLAYER_R_CLIENT * scale;
     const infected = latest.mode === 'tag' && extra === 1;
