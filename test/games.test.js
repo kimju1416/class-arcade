@@ -373,14 +373,25 @@ module.exports = async function run() {
     t.ok((H.last(r.host, 'roster').players.find(p => p.id === someId).team || 0) === before,
          '팀전: 학생의 팀 변경 시도는 무시된다');
 
-    // 방장이 7 대 2로 몰아 놓는다
+    // 방장이 전원을 한 팀으로 몰아 보려 해도 인원 차는 1명을 넘지 않는다.
+    // 7 대 2 같은 판은 적은 팀이 한 명만 딴짓해도 점수가 반토막 나 게임이 성립하지 않는다.
     ros = H.last(r.host, 'roster');
-    ros.players.forEach((p, i) => H.send(r.host, { type: 'team_set', id: p.id, team: i < 7 ? 0 : 1 }));
-    await H.sleep(500);
+    ros.players.forEach(p => H.send(r.host, { type: 'team_set', id: p.id, team: 0 }));
+    await H.sleep(700);
     ros = H.last(r.host, 'roster');
     const c1 = [0, 0];
     for (const p of ros.players) c1[p.team || 0]++;
-    t.ok(c1[0] === 7 && c1[1] === 2, `팀전: 방장은 팀을 옮길 수 있다 (${c1[0]} 대 ${c1[1]})`);
+    t.ok(Math.abs(c1[0] - c1[1]) <= 1, `팀전: 전원 한 팀으로 몰아도 인원이 맞춰진다 (${c1[0]} 대 ${c1[1]})`);
+
+    // 한 명만 옮기는 건 되고, 그때도 인원은 유지된다 (상대 팀과 자리를 바꾼다)
+    const mv = ros.players.find(p => (p.team || 0) === 0);
+    H.send(r.host, { type: 'team_set', id: mv.id, team: 1 });
+    await H.sleep(400);
+    ros = H.last(r.host, 'roster');
+    const c2 = [0, 0];
+    for (const p of ros.players) c2[p.team || 0]++;
+    t.ok((ros.players.find(p => p.id === mv.id).team || 0) === 1, '팀전: 지목한 학생은 원하는 팀으로 간다');
+    t.ok(Math.abs(c2[0] - c2[1]) <= 1, `팀전: 옮긴 뒤에도 인원 차 1명 이내 (${c2[0]} 대 ${c2[1]})`);
 
     // 한 판 돌려 팀 점수가 나오는지 + 계산이 1인당 평균인지
     // 짧게 끝나는 게임으로 (한 라운드짜리 사다리 — 뽑기 11초 + 공개 6.5초)
@@ -398,7 +409,7 @@ module.exports = async function run() {
     t.ok(avg[0] === res.team.a && avg[1] === res.team.b,
          `팀전: 점수는 순위점수 ÷ 인원 (서버 ${res.team.a}:${res.team.b} = 검산 ${avg[0]}:${avg[1]})`);
     // 합계로 계산했다면 7명 팀이 거의 항상 이긴다 — 그 함정을 피했는지 확인
-    t.ok(sum[0] > sum[1], `팀전: 합계로는 인원 많은 팀이 앞선다 (${sum[0]} vs ${sum[1]}) — 그래서 평균을 쓴다`);
+    t.ok(cnt[0] > 0 && cnt[1] > 0, `팀전: 두 팀 모두 인원이 있다 (${cnt[0]} 대 ${cnt[1]})`);
     t.ok(res.team.win === (avg[0] > avg[1] ? 0 : avg[0] < avg[1] ? 1 : -1), '팀전: 승패는 평균으로 가른다');
     t.ok((res.team.wins[0] + res.team.wins[1]) === (res.team.win < 0 ? 0 : 1), '팀전: 이긴 판 수가 누적된다');
     r.close();

@@ -1409,6 +1409,16 @@ function startGame(room, type, opt) {
     roomSend(room.hostWs, { type: 'error', msg: '참가한 학생이 없습니다. 학생이 입장한 뒤 시작하세요.' });
     return;
   }
+  // 팀 대항전은 인원이 맞아야 성립한다. 시작 직전에 한 번 더 맞춘다
+  // (누가 나갔다 들어오는 사이에 틀어질 수 있다)
+  if (room.teamOn) {
+    teamBalance(room);
+    const tc = teamCounts(room);
+    if (!tc[0] || !tc[1]) {
+      roomSend(room.hostWs, { type: 'error', msg: '팀 대항전은 두 팀 모두 학생이 있어야 시작할 수 있어요.' });
+      return;
+    }
+  }
   const n = actives.length;
   room.gameType = type;
 
@@ -3719,6 +3729,18 @@ function teamCounts(room) {
   for (const p of room.players.values()) if (p.connected) c[p.team || 0]++;
   return c;
 }
+// 인원 차가 1명을 넘지 않게 맞춘다. 많은 쪽에서 무작위로 옮긴다.
+// (7 대 2 같은 판은 적은 팀이 한 명만 딴짓해도 점수가 반토막 나 게임이 성립하지 않는다)
+function teamBalance(room) {
+  for (let guard = 0; guard < 40; guard++) {
+    const c = teamCounts(room);
+    if (Math.abs(c[0] - c[1]) <= 1) return;
+    const big = c[0] > c[1] ? 0 : 1;
+    const pool = [...room.players.values()].filter(p => p.connected && (p.team || 0) === big);
+    if (!pool.length) return;
+    pool[Math.floor(Math.random() * pool.length)].team = big === 0 ? 1 : 0;
+  }
+}
 // ranking: [{id, rank}] — 동점자는 같은 rank를 공유한다
 function teamScoreOf(room, ranking) {
   const n = ranking.length;
@@ -4786,7 +4808,19 @@ wss.on('connection', (ws) => {
       case 'team_set': {   // 학생 한 명만 반대 팀으로 (선생님이 칩을 눌러 조정)
         if (!isRoomHost(room, ws) || room.state !== 'lobby' || !room.teamOn) return;
         const p = room.players.get(Math.floor(finite(msg.id)));
-        if (p) { p.team = msg.team === 1 ? 1 : 0; sendRoster(room); }
+        if (!p) return;
+        const to = msg.team === 1 ? 1 : 0;
+        if ((p.team || 0) === to) return;
+        p.team = to;
+        // 이 이동으로 한쪽이 2명 이상 많아지면, 상대 팀에서 한 명을 데려와 자리를 바꾼다.
+        // 그래야 "이 학생만 저쪽으로" 라는 의도는 살리면서 인원은 계속 맞는다.
+        const c = teamCounts(room);
+        if (Math.abs(c[0] - c[1]) >= 2) {
+          const pool = [...room.players.values()].filter(q => q.connected && q.id !== p.id && (q.team || 0) === to);
+          if (pool.length) pool[Math.floor(Math.random() * pool.length)].team = to === 0 ? 1 : 0;
+          else teamBalance(room);
+        }
+        sendRoster(room);
         break;
       }
       case 'team_reset':   // 이긴 판 수만 초기화 (팀 구성은 유지)
@@ -4808,6 +4842,7 @@ wss.on('connection', (ws) => {
         if (!room || ws.playerId == null) return;
         room.players.delete(ws.playerId);
         ws.playerId = null; ws.roomCode = null;
+        if (room.teamOn && room.state === 'lobby') teamBalance(room);   // 나가서 인원이 틀어지면 다시 맞춘다
         sendRoster(room);
         break;
       }
@@ -4819,6 +4854,7 @@ wss.on('connection', (ws) => {
           roomSend(p.ws, { type: 'kicked' });
           try { p.ws.close(); } catch {}
           room.players.delete(p.id);
+          if (room.teamOn && room.state === 'lobby') teamBalance(room);
           sendRoster(room);
         }
         break;
@@ -4840,6 +4876,7 @@ wss.on('connection', (ws) => {
         p.connected = false; p.dirX = 0; p.dirY = 0;
         if (room.state === 'lobby') {
           room.players.delete(p.id);
+          if (room.teamOn) teamBalance(room);
         } else if (p.alive) {
           // 바로 탈락시키지 않는다 — 폰이 잠기거나 새로고침한 학생은 돌아올 시간을 준다.
           // 유예 시간이 지나도 안 오면 tick()에서 이번 판에서 뺀다.

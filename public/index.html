@@ -2948,7 +2948,8 @@ function renderTeamBar() {
        <span class="tb-vs" style="font-size:12px;width:100%">
          <b style="color:#ffd24a">채점</b> 어떤 게임이든 1위부터 순서대로 점수(1위 = 참가 인원 수 … 꼴찌 1점) →
          팀 <b>1인당 평균</b>이 높은 팀이 그 판 승리 → <b>많이 이긴 팀이 최종 우승</b><br>
-         이름칸에 팀 이름을 적을 수 있어요 · 학생 이름을 누르면 팀이 바뀝니다
+         이름칸에 팀 이름을 적을 수 있어요 · 학생 이름을 누르면 팀이 바뀌고,
+         <b>인원은 항상 1명 차이 안으로 자동 조정</b>됩니다 (상대 팀과 자리를 바꿔요)
        </span>`
     : `${sw}<span class="tb-vs" style="font-size:13px">팀 대항전을 켜면 모든 게임의 순위가 팀 점수로 바뀌고, 많이 이긴 팀이 최종 승리합니다</span>`;
   bar.querySelectorAll('button').forEach(b => b.onclick = () => {
