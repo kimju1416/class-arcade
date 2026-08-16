@@ -1833,7 +1833,7 @@ function handle(m) {
       $('wordFeedback').style.color = '#ff6b6b';
       $('wordInput').classList.remove('shake'); void $('wordInput').offsetWidth;
       $('wordInput').classList.add('shake');
-      $('wordInput').value = '';
+      clearInput($('wordInput'));
       if (document.activeElement !== $('wordInput')) $('wordInput').focus();
       break;
     }
@@ -2588,14 +2588,14 @@ $('btnDrawWord').onclick = () => {
   if (!t) return;
   send({ type: 'dword', text: t });
 };
-$('drawAnswerIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnDrawWord').click(); });
+onEnter($('drawAnswerIn'), () => $('btnDrawWord').click());
 $('btnDrawGuess').onclick = () => {
   const t = $('drawGuessIn').value.trim();
   if (!t || drawGuessLock) return;
   send({ type: 'dguess', text: t });
-  $('drawGuessIn').value = '';
+  clearInput($('drawGuessIn'));
 };
-$('drawGuessIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnDrawGuess').click(); });
+onEnter($('drawGuessIn'), () => $('btnDrawGuess').click());
 $('btnDrawRandom').onclick = () => {
   const st = window.__lastState;
   if (!st || st.mode !== 'draw') return;
@@ -2713,7 +2713,7 @@ function enterGameView(keepInput) {
     $('wordList').style.display = isHost ? 'flex' : 'none';
     if (!isHost) {
       $('wordInput').readOnly = false; $('btnWordSubmit').disabled = false;
-      $('wordInput').value = ''; $('wordFeedback').textContent = '';
+      clearInput($('wordInput')); $('wordFeedback').textContent = '';
     }
     $('choCat').style.display = 'none';
     $('choClaimed').innerHTML = '';
@@ -2782,7 +2782,7 @@ $('btnCreate').onclick = () => {
 $('btnGoJoin').onclick = () => { show('join'); $('inCode').focus(); };
 $('btnJoin').onclick = doJoin;
 $('btnJoinBack').onclick = () => show('home');
-$('inNick').addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
+onEnter($('inNick'), doJoin);
 
 function doJoin() {
   const code = $('inCode').value.trim();
@@ -2959,7 +2959,8 @@ function renderTeamBar() {
   });
   bar.querySelectorAll('.tb-name').forEach(inp => {
     // 입력 중에 roster가 오면 글자가 튄다 → 다 적고 나서(blur·엔터) 보낸다
-    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
+    imeWatch(inp);
+    inp.onkeydown = e => { if (e.key === 'Enter' && !isComposing(inp, e)) inp.blur(); };
     inp.onblur = () => send({ type: 'team_name', i: +inp.dataset.t, name: inp.value });
     inp.onfocus = () => { teamNameEditing = true; };
   });
@@ -3143,9 +3144,42 @@ function showResult(ranking, champArr, team) {
   }
 }
 
+// ---- 한글 입력(IME) 공용 처리 ----
+// 아이폰·안드로이드에서 한글을 칠 때는 글자가 "조합 중" 상태로 잠깐 머문다.
+// ① 조합 중에 엔터/보내기를 누르면 브라우저가 조합을 확정하려고 엔터를 한 번 더 보낸다.
+//    그걸 그냥 제출로 받으면 마지막 글자가 빠진 채 나간다("안 쳐진다").
+// ② 조합 중에 value=''로 지우면 화면 글자만 지워지고 조합 버퍼는 남는다.
+//    다음에 친 자음이 남은 버퍼에 붙어 글자가 겹쳐 보인다("겹쳐진다").
+function imeWatch(el) {
+  if (!el || el.__ime) return el;
+  el.__ime = true; el.__composing = false;
+  el.addEventListener('compositionstart', () => { el.__composing = true; });
+  el.addEventListener('compositionend', () => { el.__composing = false; });
+  return el;
+}
+const isComposing = (el, e) => (e && (e.isComposing || e.keyCode === 229)) || (el && el.__composing);
+// 조합 중이면 blur/focus로 조합 버퍼까지 확실히 비운다
+function clearInput(el) {
+  if (!el) return;
+  const wasFocused = document.activeElement === el;
+  if (el.__composing) {
+    el.blur(); el.value = ''; el.__composing = false;
+    if (wasFocused) { try { el.focus(); } catch (e) {} }
+  } else el.value = '';
+}
+// 엔터로 제출하되, 조합 확정용 엔터는 흘려보낸다
+function onEnter(el, fn) {
+  imeWatch(el);
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    if (isComposing(el, e)) return;
+    fn();
+  });
+}
+
 // ---- 낱말 빨리치기 렌더링 ----
 $('btnWordSubmit').onclick = submitWord;
-$('wordInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitWord(); });
+onEnter($('wordInput'), submitWord);
 // 아이폰 사파리 키보드 대응: 입력창이 키보드에 가려지지 않도록 위로 스크롤 + 위쪽 정렬 클래스
 (function () {
   const wi = $('wordInput');
@@ -3155,8 +3189,11 @@ $('wordInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitW
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (document.activeElement === wi) bringUp(); });
 })();
 function submitWord() {
-  if ($('wordInput').readOnly) return;   // 이미 맞힌 라운드
-  const t = $('wordInput').value;
+  const wi = $('wordInput');
+  if (wi.readOnly) return;   // 이미 맞힌 라운드
+  // 버튼을 눌러 제출할 때 아직 조합 중이면 마지막 글자가 빠진다 → blur로 확정시킨 뒤 읽는다
+  if (wi.__composing) { wi.blur(); wi.__composing = false; try { wi.focus(); } catch (e) {} }
+  const t = wi.value;
   if (!t.trim()) return;
   send({ type: 'word_submit', text: t });
 }
@@ -3174,7 +3211,7 @@ function renderWord(m) {
     sndPrev.done = 0;
     if (!isHost && m.wordPhase === 'show') {
       $('wordInput').readOnly = false; $('btnWordSubmit').disabled = false;
-      $('wordInput').value = ''; $('wordFeedback').textContent = '';
+      clearInput($('wordInput')); $('wordFeedback').textContent = '';
       // 포커스를 잃지 않았으면 키보드가 그대로 열려 있어 바로 칠 수 있다
       if (document.activeElement !== $('wordInput')) $('wordInput').focus();
     }

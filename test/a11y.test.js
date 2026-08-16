@@ -4,6 +4,24 @@ const fs = require('fs');
 const path = require('path');
 const H = require('./helpers');
 
+// 한글 입력(IME) 처리가 남아 있는지 — 아이폰에서 "글자가 겹치고 안 쳐진다"의 원인이었다
+function imeChecks(t, html) {
+  const inputs = ['wordInput', 'drawAnswerIn', 'drawGuessIn', 'inNick'];
+  for (const id of inputs) {
+    const re = new RegExp(`onEnter\\(\\$\\('${id}'\\)`);
+    t.ok(re.test(html), `IME: ${id}의 엔터가 조합 확정용인지 가려낸다`);
+  }
+  t.ok(/function clearInput\(el\)[\s\S]{0,400}__composing[\s\S]{0,200}blur\(\)/.test(html),
+       'IME: 입력창을 비울 때 조합 버퍼까지 지운다 (안 그러면 다음 글자가 겹친다)');
+  t.ok(/isComposing\s*=\s*\(el, e\)[\s\S]{0,160}keyCode === 229/.test(html),
+       'IME: keyCode 229(조합 중)도 조합으로 본다');
+  t.ok(/function submitWord\(\)[\s\S]{0,400}__composing[\s\S]{0,120}blur\(\)/.test(html),
+       'IME: 버튼 제출 때도 조합을 먼저 확정한다');
+  // 조합을 안 보고 그냥 엔터를 받는 옛 패턴이 되살아나면 잡는다
+  const bad = html.match(/addEventListener\('keydown', e => \{ if \(e\.key === 'Enter'\)/g) || [];
+  t.ok(bad.length === 0, `IME: 조합을 안 보는 엔터 핸들러가 없다 (${bad.length}곳)`);
+}
+
 module.exports = async function run() {
   const t = H.makeT('접근성');
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
@@ -33,6 +51,8 @@ module.exports = async function run() {
 
   // 감염 술래잡기: 좀비는 색이 아니라 별도 스프라이트로 구분
   t.ok(html.includes('SPR.zombie'), '술래잡기: 좀비는 색이 아닌 다른 그림으로 구분');
+
+  imeChecks(t, html);
 
   return t;
 };
