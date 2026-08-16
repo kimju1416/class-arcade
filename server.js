@@ -850,7 +850,7 @@ const CRAY_THEME_N = 4;          // 맵 테마 수 (빌리지·얼음나라·사
 
 // ---------- 줄다리기 ----------
 const PULL_PICK_MS = 15000;      // 학생이 좌우로 걸어가 팀을 고르는 시간
-const PULL_ROUND_MS = 70000;     // 한 판 제한 시간 (넘으면 앞선 쪽 승)
+const PULL_ROUND_MS = 40000;     // 한 판 제한 시간 (넘으면 앞선 쪽 승)
 const PULL_WINS = 2;             // 3판 2선승
 const PULL_MAX_ROUNDS = 3;
 const PULL_ROPE_WIN = 100;       // 밧줄이 여기까지 끌려오면 그 판 승리

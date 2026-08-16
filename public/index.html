@@ -5558,8 +5558,14 @@ const PULL_ART = {};
 // 행: [0id 1x 2y 3alive 4wait 5extra 6team 7ref 8hitFx]
 function drawPullGame(W, H, dpr, m) {
   const pl = m.pl, now = performance.now();
+  // 심판은 줄을 당기지 않는다 — 줄에 세우면 인원이 한 명 더 있는 것처럼 보인다
   const A = [], B = [];
-  for (const r of m.players) { if (r[4]) continue; (r[6] === 0 ? A : B).push(r); }
+  let refRow = null;
+  for (const r of m.players) {
+    if (r[4]) continue;
+    if (r[7]) { refRow = r; continue; }
+    (r[6] === 0 ? A : B).push(r);
+  }
   const meRow = m.players.find(r => r[0] === myId);
   const iAmRef = meRow && meRow[7];
   const myTeam = meRow ? meRow[6] : 0;
@@ -5576,6 +5582,18 @@ function drawPullGame(W, H, dpr, m) {
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     ctx.strokeStyle = 'rgba(255,255,255,.30)'; ctx.lineWidth = 2 * dpr;
     for (let i = 1; i < 5; i++) { const y = H * 0.42 + (H * 0.58) * (i / 5); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  }
+
+  // 이기고 있는 팀 쪽 가장자리를 은은하게 물들인다 — 교실 뒤에서도 판세가 보이게
+  const leadNow = pl.ph === 'round' ? (pl.rope < -3 ? 0 : pl.rope > 3 ? 1 : -1) : -1;
+  if (leadNow >= 0) {
+    const str = Math.min(0.5, 0.12 + Math.abs(pl.rope) / 100 * 0.42);
+    const gw = W * 0.3;
+    const g2 = leadNow === 0 ? ctx.createLinearGradient(0, 0, gw, 0) : ctx.createLinearGradient(W, 0, W - gw, 0);
+    const c = leadNow === 0 ? '46,120,230' : '255,255,255';
+    g2.addColorStop(0, `rgba(${c},${str})`); g2.addColorStop(1, `rgba(${c},0)`);
+    ctx.fillStyle = g2;
+    ctx.fillRect(leadNow === 0 ? 0 : W - gw, 0, gw, H);
   }
 
   const cy = H * 0.60;
@@ -5624,19 +5642,24 @@ function drawPullGame(W, H, dpr, m) {
 
   // 양 팀 캐릭터 — 손수건 옆에서부터 바깥쪽으로 나란히 서서 당긴다.
   // 화면 폭을 인원수로 나눠 늘어놓으면 인원이 적은 팀만 휑하게 벌어진다(간격을 고정한다).
-  // 간격은 양 팀이 같아야 한다 — 팀마다 남은 공간으로 따로 계산하면 인원 적은 팀만 듬성듬성해진다
-  const fitStep = (rows, roomPx) => (roomPx - 46 * dpr) / Math.max(1, rows.length);
-  const stepAll = Math.max(26 * dpr, Math.min(78 * dpr,
+  // 인원이 많으면 두 줄로 세운다 — 한 줄로 늘어놓으면 20명씩일 때 화면 밖으로 밀리고
+  // 캐릭터가 뭉개져 누가 누군지 안 보인다 (앞줄·뒷줄이라 줄다리기 그림으로도 자연스럽다)
+  const LINES = Math.max(A.length, B.length) > 12 ? 2 : 1;
+  const fitStep = (rows, roomPx) => (roomPx - 46 * dpr) / Math.max(1, Math.ceil(rows.length / LINES));
+  const stepAll = Math.max(30 * dpr, Math.min(78 * dpr,
     Math.min(fitStep(A, fx - W * 0.03), fitStep(B, W * 0.97 - fx))));
   const drawTeam = (rows, side) => {
     const step = stepAll;
     const size = Math.min(76 * dpr, step * 1.28);
-    rows.forEach((r, i) => {
-      const x = fx + side * (40 * dpr + step * (i + 0.5));
+    // 뒷줄부터 그려야 앞줄이 위에 겹친다
+    const order = rows.map((r, i) => ({ r, i })).sort((a, b) => (b.i % LINES) - (a.i % LINES));
+    order.forEach(({ r, i }) => {
+      const col = Math.floor(i / LINES), sub = i % LINES;
+      const x = fx + side * (40 * dpr + step * (col + 0.5) + sub * step * 0.45);
       const hitFx = r[8];
       const lean = (side < 0 ? 0.20 : -0.20) * (hitFx === 2 ? 1.5 : 1);
-      // 밧줄이 가슴께를 지나도록 — 발은 밧줄보다 조금 아래
-      const footY = ropeY + size * 0.34 + (hitFx === 2 ? -3 * dpr : 0);
+      // 밧줄이 가슴께를 지나도록 — 발은 밧줄보다 조금 아래. 뒷줄은 살짝 위(원근)
+      const footY = ropeY + size * 0.34 - sub * size * 0.30 + (hitFx === 2 ? -3 * dpr : 0);
       const src = CHAR_IMG[((roster.get(r[0]) || {}).ci) || 0];
       ctx.save();
       ctx.translate(x, footY);
@@ -5665,6 +5688,24 @@ function drawPullGame(W, H, dpr, m) {
   };
   drawTeam(A, -1); drawTeam(B, 1);
 
+  // 심판 — 손수건 바로 위, 줄 가운데 심판 자리에 선다
+  if (refRow) {
+    const rs = Math.min(70 * dpr, stepAll * 1.15);
+    const rx = fx, ry = ropeY - 52 * dpr;
+    const src = CHAR_IMG[((roster.get(refRow[0]) || {}).ci) || 0];
+    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.beginPath(); ctx.ellipse(rx, ry + 2 * dpr, rs * 0.3, rs * 0.08, 0, 0, 7); ctx.fill();
+    if (src && src.complete && src.naturalWidth) {
+      const hgt = rs * (src.height / src.width);
+      ctx.drawImage(src, rx - rs / 2, ry - hgt, rs, hgt);
+    }
+    ctx.textAlign = 'center';
+    ctx.font = `900 ${Math.max(13, rs * 0.30)}px Pretendard, sans-serif`;
+    ctx.strokeStyle = 'rgba(10,16,34,.75)'; ctx.lineWidth = 4 * dpr; ctx.lineJoin = 'round';
+    const rl = '🧑‍⚖️ 심판';
+    ctx.strokeText(rl, rx, ry - rs * 1.05); ctx.fillStyle = '#ffd24a'; ctx.fillText(rl, rx, ry - rs * 1.05);
+  }
+
   // ── 상단 점수판 ────────────────────────────────────────────────
   const topY = 16 * dpr, fs = (isHost ? 30 : 20) * dpr;
   ctx.textAlign = 'center'; ctx.font = `900 ${fs}px Pretendard, sans-serif`;
@@ -5680,8 +5721,46 @@ function drawPullGame(W, H, dpr, m) {
     ctx.fillStyle = '#ffd24a'; ctx.fillText(w, x, topY + fs * 2.1);
     ctx.font = `900 ${fs}px Pretendard, sans-serif`;
   }
+  // 가운데: 판 수 + 남은 시간 (없으면 무제한처럼 보인다)
+  const secLeft = Math.ceil((pl.left || 0) / 1000);
   ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(10,16,34,.7)';
   ctx.strokeText(`${pl.rd}판`, W / 2, topY + fs); ctx.fillText(`${pl.rd}판`, W / 2, topY + fs);
+  if (pl.ph === 'round') {
+    const urgent = secLeft <= 10;
+    ctx.font = `900 ${fs * (urgent ? 1.5 : 1.25)}px Pretendard, sans-serif`;
+    ctx.strokeStyle = 'rgba(10,16,34,.75)'; ctx.lineWidth = 5 * dpr;
+    const tl = `${secLeft}초`;
+    ctx.strokeText(tl, W / 2, topY + fs * 2.5);
+    ctx.fillStyle = urgent ? `rgba(255,90,80,${0.65 + 0.35 * Math.sin(now / 140)})` : '#ffd24a';
+    ctx.fillText(tl, W / 2, topY + fs * 2.5);
+    ctx.font = `900 ${fs}px Pretendard, sans-serif`;
+  }
+
+  // ── 지금 누가 이기고 있나 (실시간) ─────────────────────────────
+  if (pl.ph === 'round') {
+    const lead = pl.rope < -3 ? 0 : pl.rope > 3 ? 1 : -1;
+    const pct = Math.round(Math.abs(pl.rope));
+    const bw2 = Math.min(W * 0.52, 620 * dpr), bx2 = (W - bw2) / 2, by2 = topY + fs * 3.45, bh2 = 18 * dpr;
+    // 밧줄 위치 막대 (가운데가 0, 양 끝이 승리선)
+    ctx.fillStyle = 'rgba(10,16,34,.42)';
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx2, by2, bw2, bh2, bh2 / 2) : ctx.rect(bx2, by2, bw2, bh2); ctx.fill();
+    const midX2 = bx2 + bw2 / 2, fillW = (Math.abs(pl.rope) / 100) * (bw2 / 2);
+    ctx.fillStyle = lead < 0 ? 'rgba(255,255,255,.5)' : COL[lead];
+    ctx.beginPath();
+    const rx2 = lead === 0 ? midX2 - fillW : midX2;
+    ctx.roundRect ? ctx.roundRect(rx2, by2, Math.max(3 * dpr, fillW), bh2, bh2 / 2) : ctx.rect(rx2, by2, Math.max(3 * dpr, fillW), bh2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2 * dpr;   // 가운데 기준선
+    ctx.beginPath(); ctx.moveTo(midX2, by2 - 3 * dpr); ctx.lineTo(midX2, by2 + bh2 + 3 * dpr); ctx.stroke();
+    // 문구
+    ctx.font = `900 ${fs * 0.9}px Pretendard, sans-serif`;
+    ctx.strokeStyle = 'rgba(10,16,34,.75)'; ctx.lineWidth = 5 * dpr;
+    const msg = lead < 0 ? '팽팽해요!' : `${NAME[lead]}이 이기는 중! ${pct}%`;
+    ctx.strokeText(msg, W / 2, by2 + bh2 + fs * 1.15);
+    ctx.fillStyle = lead < 0 ? '#ffe08a' : COL[lead];
+    ctx.fillText(msg, W / 2, by2 + bh2 + fs * 1.15);
+    ctx.font = `900 ${fs}px Pretendard, sans-serif`;
+  }
 
   // 팀별 호흡 게이지 — "우리 팀이 얼마나 잘 맞추고 있나"가 한눈에
   const maxSync = pl.md === 'mash' ? 8 : 1;
@@ -5694,7 +5773,8 @@ function drawPullGame(W, H, dpr, m) {
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw * val, 14 * dpr, 7 * dpr) : ctx.rect(bx, by, bw * val, 14 * dpr); ctx.fill();
     ctx.fillStyle = '#22304f'; ctx.font = `800 ${12 * dpr}px Pretendard, sans-serif`;
     ctx.textAlign = s === 0 ? 'left' : 'right';
-    ctx.fillText(pl.md === 'mash' ? '힘' : '호흡', s === 0 ? bx : bx + bw, by + 30 * dpr);
+    // 라벨은 막대 위에 — 아래에 두면 우세 표시 막대와 겹친다
+    ctx.fillText(pl.md === 'mash' ? '힘' : '호흡', s === 0 ? bx : bx + bw, by - 5 * dpr);
     ctx.textAlign = 'center';
     ctx.font = `900 ${fs}px Pretendard, sans-serif`;
   }
