@@ -2945,7 +2945,11 @@ function renderTeamBar() {
   bar.innerHTML = teamOn
     ? `${sw}${side(0)}<span class="tb-vs">vs</span>${side(1)}
        <button data-a="shuffle">🔀 다시 섞기</button><button data-a="reset">↺ 승수 초기화</button>
-       <span class="tb-vs" style="font-size:12px">이름칸에 팀 이름을 적을 수 있어요 · 학생 이름을 누르면 팀이 바뀝니다</span>`
+       <span class="tb-vs" style="font-size:12px;width:100%">
+         <b style="color:#ffd24a">채점</b> 어떤 게임이든 1위부터 순서대로 점수(1위 = 참가 인원 수 … 꼴찌 1점) →
+         팀 <b>1인당 평균</b>이 높은 팀이 그 판 승리 → <b>많이 이긴 팀이 최종 우승</b><br>
+         이름칸에 팀 이름을 적을 수 있어요 · 학생 이름을 누르면 팀이 바뀝니다
+       </span>`
     : `${sw}<span class="tb-vs" style="font-size:13px">팀 대항전을 켜면 모든 게임의 순위가 팀 점수로 바뀌고, 많이 이긴 팀이 최종 승리합니다</span>`;
   bar.querySelectorAll('button').forEach(b => b.onclick = () => {
     if (b.dataset.m != null) send({ type: 'team_mode', on: b.dataset.m === '1' });
@@ -3084,11 +3088,14 @@ function showResult(ranking, champArr, team) {
       if (team.names) TEAM_NAME = team.names;
       const w = team.win;
       const side = t => `<span style="color:${TEAM_COL[t]}">${TEAM_NAME[t]} ${team[t === 0 ? 'a' : 'b']}점</span>`;
+      // 계산을 그대로 보여준다 — "왜 우리가 졌지?"에 답이 되어야 납득이 된다
+      const calc = t => `<span style="color:${TEAM_COL[t]}">${TEAM_NAME[t]}</span> ${team[t === 0 ? 'sa' : 'sb']}점 ÷ ${team[t === 0 ? 'na' : 'nb']}명 = <b>${team[t === 0 ? 'a' : 'b']}</b>`;
       tr.innerHTML =
         `<div class="tr-line">${side(0)}<span style="color:#93a0c4">:</span>${side(1)}</div>` +
         `<div class="tr-line" style="color:#ffd24a">${w < 0 ? '이 판은 무승부!' : `이 판은 ${TEAM_NAME[w]} 승리! 🏆`}</div>` +
-        `<div class="tr-sub">순위를 점수로 바꿔 1인당 평균으로 비교합니다 (인원이 달라도 공평)</div>` +
-        `<div class="tr-line" style="font-size:1em">지금까지 <b style="color:${TEAM_COL[0]}">${teamWins[0]}승</b> : <b style="color:${TEAM_COL[1]}">${teamWins[1]}승</b></div>`;
+        `<div class="tr-sub">1위 ${team.top || 0}점 · 2위 ${Math.max(0, (team.top || 0) - 1)}점 … 꼴찌 1점</div>` +
+        `<div class="tr-sub">${calc(0)} &nbsp;/&nbsp; ${calc(1)} &nbsp;— 인원이 달라도 공평하게 <b>1인당 평균</b>으로 겨룹니다</div>` +
+        `<div class="tr-line" style="font-size:1em">지금까지 <b style="color:${TEAM_COL[0]}">${teamWins[0]}승</b> : <b style="color:${TEAM_COL[1]}">${teamWins[1]}승</b> — 많이 이긴 팀이 최종 우승!</div>`;
       tr.style.display = 'flex';
     } else tr.style.display = 'none';
   }

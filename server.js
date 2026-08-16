@@ -3734,8 +3734,13 @@ function teamScoreOf(room, ranking) {
   return {
     a: Math.round(avg[0] * 10) / 10,
     b: Math.round(avg[1] * 10) / 10,
+    sa: sum[0], sb: sum[1],      // 계산 과정을 화면에 보여주려고 합계도 같이 보낸다
     na: cnt[0], nb: cnt[1],
-    win: Math.abs(avg[0] - avg[1]) < 0.05 ? -1 : (avg[0] > avg[1] ? 0 : 1),
+    top: n,                      // 1위가 받는 점수 (= 참가 인원)
+    // 한쪽 팀이 비어 있으면 비교가 성립하지 않는다 → 승수로 세지 않는다
+    // (선생님이 실수로 전원을 한 팀에 몰아 놓으면 공짜 승리가 쌓인다)
+    win: (!cnt[0] || !cnt[1]) ? -1
+       : Math.abs(avg[0] - avg[1]) < 0.05 ? -1 : (avg[0] > avg[1] ? 0 : 1),
   };
 }
 
