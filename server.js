@@ -1258,6 +1258,10 @@ function createRoom() {
     players: new Map(), state: 'lobby', gameType: null,
     nextId: 1, lastActive: Date.now(), game: null, timer: null, phaseEndAt: 0,
     champ: new Map(),   // 오늘의 챔피언 — 방이 사는 동안 게임별 순위 포인트 누적 (id → {nick,ci,pts,wins,games})
+    teamOn: false,      // 팀 대항전 모드 (모든 게임의 개인 순위를 팀 점수로 환산)
+    teamNames: ['청팀', '백팀'],   // 방장이 바꿀 수 있다
+    teamWins: [0, 0],   // 지금까지 이긴 판 수
+    teamLog: [],        // [{game, a, b, win}] 게임별 결과 기록
   };
   rooms.set(code, room);
   return room;
@@ -1288,9 +1292,14 @@ function sendRoster(room) {
     type: 'roster',
     players: [...room.players.values()].map(p => ({
       id: p.id, nick: p.nick, ci: p.ci, connected: p.connected, waiting: p.waiting,
+      team: p.team || 0,
     })),
     state: room.state,
     champ: champArr(room),   // 로비에서도 누적 순위를 — 빈 배열도 보내야 초기화가 클라에 반영된다
+    teamOn: room.teamOn ? 1 : 0,
+    teamWins: room.teamWins,
+    teamCnt: teamCounts(room),
+    teamNames: room.teamNames,
   });
 }
 
@@ -1595,7 +1604,9 @@ function startGame(room, type, opt) {
     g.roundMs = 0;                       // 판 진행은 pullPhase가 관리한다
     g.arenaW = 1200; g.arenaH = 700;
     g.pullMode = (opt && opt.mode) === 'mash' ? 'mash' : 'beat';   // 구호(기본) / 연타
-    g.pullPhase = 'pick';
+    // 팀 대항전 중이면 이미 정해진 팀을 그대로 쓴다 — 여기서 또 편을 가르면
+    // 학생이 "우리 팀이 뭐지?" 하고 헷갈리고, 판마다 팀이 달라져 승수가 뒤죽박죽된다
+    g.pullPhase = room.teamOn ? 'round' : 'pick';
     g.pickEndAt = Date.now() + PULL_PICK_MS;
     g.rope = 0; g.wins = [0, 0]; g.round = 1; g.lastWin = -1;
     g.syncA = 0; g.syncB = 0; g.beatIdx = 0; g.beatAt = 0; g.beatMs = PULL_BEAT_START; g.refId = 0;
@@ -1603,10 +1614,11 @@ function startGame(room, type, opt) {
     actives.forEach((p) => {
       p.x = g.arenaW / 2 + (Math.random() - 0.5) * 220;
       p.y = 120 + Math.random() * (g.arenaH - 240);
-      p.pullTeam = p.x < g.arenaW / 2 ? 0 : 1;
+      p.pullTeam = room.teamOn ? (p.team || 0) : (p.x < g.arenaW / 2 ? 0 : 1);
       p.pullRef = false; p.pullScore = 0; p.pullHits = 0;
       p.pullBeatIdx = -1; p.pullBeatW = 0; p.pullHitAt = 0; p.pullHitKind = 0; p.pullTapTimes = [];
     });
+    if (room.teamOn) pullStartRound(room, Date.now());   // 편 가르기를 건너뛰고 바로 시작
   } else if (type === 'kart') {
     g.roundMs = KART_ROUND_MS;
     g.kBoxes = KART_BOXES.map(([s, x]) => ({ s, x, at: 0 }));  // at: 리스폰 가능 시각
@@ -3693,6 +3705,40 @@ function champArr(room) {
     .map(([id, c]) => [id, c.nick, c.ci, c.pts, c.wins, c.games])
     .sort((a, b) => b[3] - a[3]);
 }
+// ---------- 팀 대항전 ----------
+// 게임을 새로 만들지 않고, 어느 게임이든 나온 "개인 순위"를 팀 점수로 환산한다.
+// 1위가 가장 높은 점수를 받고 꼴찌도 1점 — 상위 몇 명만 세면 나머지 학생이 할 이유가 없어진다.
+// 팀 점수는 반드시 1인당 평균으로 낸다. 합계로 하면 홀수 학급에서 인원 많은 팀이 늘 이긴다.
+function teamAssign(room, shuffle) {
+  const list = [...room.players.values()].filter(p => p.connected);
+  const order = shuffle ? [...list].sort(() => Math.random() - 0.5) : list;
+  order.forEach((p, i) => { p.team = i % 2; });
+}
+function teamCounts(room) {
+  const c = [0, 0];
+  for (const p of room.players.values()) if (p.connected) c[p.team || 0]++;
+  return c;
+}
+// ranking: [{id, rank}] — 동점자는 같은 rank를 공유한다
+function teamScoreOf(room, ranking) {
+  const n = ranking.length;
+  const sum = [0, 0], cnt = [0, 0];
+  for (const r of ranking) {
+    const p = room.players.get(r.id);
+    if (!p) continue;
+    const t = p.team || 0;
+    sum[t] += (n - r.rank + 1);      // 1위 n점 … 꼴찌 1점
+    cnt[t]++;
+  }
+  const avg = [cnt[0] ? sum[0] / cnt[0] : 0, cnt[1] ? sum[1] / cnt[1] : 0];
+  return {
+    a: Math.round(avg[0] * 10) / 10,
+    b: Math.round(avg[1] * 10) / 10,
+    na: cnt[0], nb: cnt[1],
+    win: Math.abs(avg[0] - avg[1]) < 0.05 ? -1 : (avg[0] > avg[1] ? 0 : 1),
+  };
+}
+
 function finishGame(room, sorted, labelOf, keyOf) {
   clearInterval(room.timer); room.timer = null;
   room.state = 'result';
@@ -3709,7 +3755,18 @@ function finishGame(room, sorted, labelOf, keyOf) {
     c.games++;
     room.champ.set(r.id, c);
   }
-  broadcast(room, { type: 'result', gameType: room.gameType, ranking, champ: champArr(room) });
+  // 팀 대항전이면 이 판의 팀 점수를 내고 누적한다
+  let team = null;
+  if (room.teamOn) {
+    team = teamScoreOf(room, ranking);
+    if (team.win >= 0) room.teamWins[team.win]++;
+    room.teamLog.push({ game: room.gameType, a: team.a, b: team.b, win: team.win });
+    if (room.teamLog.length > 30) room.teamLog.shift();
+    team.wins = room.teamWins;
+    team.log = room.teamLog.slice(-8);
+    team.names = room.teamNames;
+  }
+  broadcast(room, { type: 'result', gameType: room.gameType, ranking, champ: champArr(room), team });
   sendRoster(room);
 }
 
@@ -4203,6 +4260,7 @@ wss.on('connection', (ws) => {
           players: new Map(), state: 'lobby', gameType: null,
           nextId: 1, lastActive: Date.now(), game: null, timer: null, phaseEndAt: 0,
           champ: new Map(),
+          teamOn: false, teamWins: [0, 0], teamLog: [], teamNames: ['청팀', '백팀'],
         };
         // 챔피언 점수 복원 — 교사 자신의 화면이 보낸 값이라 신뢰하되, 형식·범위는 검증한다
         if (Array.isArray(msg.champ)) {
@@ -4285,8 +4343,11 @@ wss.on('connection', (ws) => {
           score: 0, wordDone: false,
           waiting: r.state !== 'lobby',
           connected: true,
+          // 팀 대항전 중에 늦게 들어온 학생은 인원이 적은 팀으로 (한쪽으로 쏠리지 않게)
+          team: 0,
         };
         r.players.set(p.id, p);
+        if (r.teamOn) { const c = teamCounts(r); p.team = c[0] <= c[1] ? 0 : 1; }
         ws.roomCode = r.code; ws.playerId = p.id;
         roomSend(ws, { type: 'join_ok', id: p.id, token: p.token, code: r.code, nick: p.nick, ci: p.ci, state: r.state, gameType: r.gameType });
         sendRoster(r);
@@ -4695,6 +4756,36 @@ wss.on('connection', (ws) => {
 
       case 'back_to_lobby':
         if (isRoomHost(room, ws)) backToLobby(room);
+        break;
+
+      // 팀 대항전 켜기/끄기 — 켜는 순간 자동으로 반을 반씩 나눈다
+      case 'team_mode': {
+        if (!isRoomHost(room, ws) || room.state !== 'lobby') return;
+        const on = !!msg.on;
+        if (on && !room.teamOn) { teamAssign(room, true); room.teamWins = [0, 0]; room.teamLog = []; }
+        room.teamOn = on;
+        sendRoster(room);
+        break;
+      }
+      case 'team_name': {   // 방장이 팀 이름을 직접 정한다 (1모둠/2모둠, 독수리/호랑이 …)
+        if (!isRoomHost(room, ws) || room.state !== 'lobby') return;
+        const i = msg.i === 1 ? 1 : 0;
+        let nm = String(msg.name || '').replace(/\s+/g, ' ').trim().slice(0, 8);
+        room.teamNames[i] = nm || (i === 0 ? '청팀' : '백팀');
+        sendRoster(room);
+        break;
+      }
+      case 'team_shuffle':
+        if (isRoomHost(room, ws) && room.state === 'lobby' && room.teamOn) { teamAssign(room, true); sendRoster(room); }
+        break;
+      case 'team_set': {   // 학생 한 명만 반대 팀으로 (선생님이 칩을 눌러 조정)
+        if (!isRoomHost(room, ws) || room.state !== 'lobby' || !room.teamOn) return;
+        const p = room.players.get(Math.floor(finite(msg.id)));
+        if (p) { p.team = msg.team === 1 ? 1 : 0; sendRoster(room); }
+        break;
+      }
+      case 'team_reset':   // 이긴 판 수만 초기화 (팀 구성은 유지)
+        if (isRoomHost(room, ws) && room.state === 'lobby') { room.teamWins = [0, 0]; room.teamLog = []; sendRoster(room); }
         break;
 
       case 'champ_reset':   // 오늘의 챔피언 초기화 (다음 반 수업 시작할 때)

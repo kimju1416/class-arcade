@@ -355,6 +355,55 @@ module.exports = async function run() {
     }
   }
 
+  // ---------- 팀 대항전: 개인 순위를 팀 점수로 (모든 게임 공용) ----------
+  {
+    const r = await H.makeRoom(9);                       // 홀수 학급
+    H.send(r.host, { type: 'team_mode', on: true });
+    await H.sleep(400);
+    let ros = H.last(r.host, 'roster');
+    const c0 = [0, 0];
+    for (const p of ros.players) c0[p.team || 0]++;
+    t.ok(ros.teamOn === 1, '팀전: 켜면 roster에 반영된다');
+    t.ok(Math.abs(c0[0] - c0[1]) <= 1, `팀전: 켜는 순간 반반 자동 배정 (${c0[0]} 대 ${c0[1]})`);
+
+    // 학생이 아니라 방장만 팀을 바꿀 수 있다
+    const someId = ros.players[0].id, before = ros.players[0].team || 0;
+    H.send(r.bots[0], { type: 'team_set', id: someId, team: before === 0 ? 1 : 0 });
+    await H.sleep(300);
+    t.ok((H.last(r.host, 'roster').players.find(p => p.id === someId).team || 0) === before,
+         '팀전: 학생의 팀 변경 시도는 무시된다');
+
+    // 방장이 7 대 2로 몰아 놓는다
+    ros = H.last(r.host, 'roster');
+    ros.players.forEach((p, i) => H.send(r.host, { type: 'team_set', id: p.id, team: i < 7 ? 0 : 1 }));
+    await H.sleep(500);
+    ros = H.last(r.host, 'roster');
+    const c1 = [0, 0];
+    for (const p of ros.players) c1[p.team || 0]++;
+    t.ok(c1[0] === 7 && c1[1] === 2, `팀전: 방장은 팀을 옮길 수 있다 (${c1[0]} 대 ${c1[1]})`);
+
+    // 한 판 돌려 팀 점수가 나오는지 + 계산이 1인당 평균인지
+    // 짧게 끝나는 게임으로 (한 라운드짜리 사다리 — 뽑기 11초 + 공개 6.5초)
+    H.send(r.host, { type: 'start_game', game: 'sadari' });
+    await H.waitPlaying(r.code);
+    const iv = setInterval(() => r.bots.forEach((b, i) => H.send(b, { type: 'pick', v: i % 8 })), 400);
+    const res = await H.waitFor(() => H.last(r.host, 'result'), 60000, '결과');
+    clearInterval(iv);
+
+    t.ok(res.team && typeof res.team.a === 'number', '팀전: 결과에 팀 점수가 실려 온다');
+    const teams = new Map(ros.players.map(p => [p.id, p.team || 0]));
+    const n = res.ranking.length, sum = [0, 0], cnt = [0, 0];
+    for (const x of res.ranking) { const tt = teams.get(x.id) || 0; sum[tt] += (n - x.rank + 1); cnt[tt]++; }
+    const avg = [Math.round(sum[0] / cnt[0] * 10) / 10, Math.round(sum[1] / cnt[1] * 10) / 10];
+    t.ok(avg[0] === res.team.a && avg[1] === res.team.b,
+         `팀전: 점수는 순위점수 ÷ 인원 (서버 ${res.team.a}:${res.team.b} = 검산 ${avg[0]}:${avg[1]})`);
+    // 합계로 계산했다면 7명 팀이 거의 항상 이긴다 — 그 함정을 피했는지 확인
+    t.ok(sum[0] > sum[1], `팀전: 합계로는 인원 많은 팀이 앞선다 (${sum[0]} vs ${sum[1]}) — 그래서 평균을 쓴다`);
+    t.ok(res.team.win === (avg[0] > avg[1] ? 0 : avg[0] < avg[1] ? 1 : -1), '팀전: 승패는 평균으로 가른다');
+    t.ok((res.team.wins[0] + res.team.wins[1]) === (res.team.win < 0 ? 0 : 1), '팀전: 이긴 판 수가 누적된다');
+    r.close();
+  }
+
   t.ok(H.serverErrors().length === 0, '서버 예외 0건');
   return t;
 };
