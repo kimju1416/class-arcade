@@ -4934,15 +4934,18 @@ process.on('SIGTERM', () => gracefulExit('SIGTERM'));
 process.on('SIGINT', () => gracefulExit('SIGINT'));
 
 // Render 무료 서버 자기 핑 — GitHub Actions 크론이 지연·결번돼도(실측 90분 공백 있었음)
-// 깨어 있는 동안은 스스로 inbound 트래픽을 만들어 잠들지 않는다. 수업시간(07~22시 KST)에만.
-// 밤에 잠들면 아침 크론(또는 첫 방문자)이 깨우는 순간 이 루프가 되살아난다.
+// 스스로 inbound 트래픽을 만들어 잠들지 않는다. 24시간 유지(저녁·새벽에도 바로 접속되게).
 // RENDER_EXTERNAL_URL은 Render가 자동 주입 — 로컬 실행에는 없어서 아무 일도 안 한다.
+// KEEPALIVE_HOURS 환경변수로 시간대를 좁힐 수 있다 (예: '7-22' → 07~21시 KST에만).
 const SELF_URL = process.env.RENDER_EXTERNAL_URL;
 if (SELF_URL) {
   const https = require('https');
+  const win = String(process.env.KEEPALIVE_HOURS || '').match(/^(\d{1,2})-(\d{1,2})$/);
   setInterval(() => {
-    const kstH = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
-    if (kstH < 7 || kstH >= 22) return;   // 심야엔 재워서 무료 시간(월 750h 공유)을 아낀다
+    if (win) {
+      const kstH = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
+      if (kstH < +win[1] || kstH >= +win[2]) return;
+    }
     https.get(SELF_URL + '/health', res => res.resume()).on('error', () => {});
   }, 8 * 60 * 1000);
 }
