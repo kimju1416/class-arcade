@@ -699,8 +699,11 @@ body.host #tetLogo { height: 72px; }
 .draw-size i { background: #fff; border-radius: 50%; display: block; }
 .draw-tool-btn { height: 34px; padding: 0 12px; border-radius: 8px; background: #1a2142; border: 2px solid #3a4470;
   color: #dfe8ff; font-weight: 700; font-size: 13px; cursor: pointer; }
-#drawGuessWrap { display: flex; gap: 8px; width: 100%; max-width: 460px; }
-#drawGuessIn { flex: 1; }
+/* 정답 입력 줄: .btn이 width:100%+flex-shrink:0이라 버튼이 340px를 다 먹고
+   입력칸이 32px로 찌부러졌다(아이폰 폭 390px 실측). 둘 다 명시적으로 잡아 준다. */
+#drawGuessWrap { display: flex; gap: 8px; width: 100%; max-width: 460px; align-items: stretch; }
+#drawGuessIn { flex: 1 1 auto; min-width: 0; width: auto; max-width: none; padding: 14px 12px; }
+#btnDrawGuess { flex: 0 0 auto; width: auto; max-width: none; padding: 14px 18px; font-size: 17px; }
 #drawTicker { min-height: 22px; font-size: 14px; color: #9fb2e8; text-align: center; max-width: 700px; }
 #drawTicker b { color: #ffd21f; }
 #drawInfo { font-weight: 800; color: #cfe0ff; text-align: center; }
@@ -1130,6 +1133,27 @@ let phaseEndAt = 0;
 let gameType = 'bomb';       // 현재 진행 중 게임
 let selectedGame = 'bomb';   // 호스트가 고른 게임
 let snaps = [];
+// ── 보간 지연 ────────────────────────────────────────────────────────
+// 화면을 부드럽게 하려고 일부러 과거를 그린다. 예전엔 120ms 고정이었는데,
+// 그만큼 조작이 늦게 보인다. 실제로 상태가 도착하는 간격을 재서 필요한 만큼만 늦춘다
+// (좋은 회선에선 짧게 → 반응이 빨라지고, 끊기는 회선에선 길게 → 덜 튄다).
+let snapGaps = [], snapPrevAt = 0, interpMs = 120;
+function noteSnapGap() {
+  const t = performance.now();
+  if (snapPrevAt) {
+    snapGaps.push(t - snapPrevAt);
+    if (snapGaps.length > 24) snapGaps.shift();
+    if (snapGaps.length >= 8) {
+      const s = [...snapGaps].sort((a, b) => a - b);
+      const p90 = s[Math.min(s.length - 1, Math.floor(s.length * 0.9))];
+      const want = p90 * 1.25;
+      interpMs += (Math.max(70, Math.min(220, want)) - interpMs) * 0.15;   // 급변 방지
+    }
+  }
+  snapPrevAt = t;
+}
+function resetInterp() { snapGaps = []; snapPrevAt = 0; interpMs = 120; }
+
 let crayGrid = null;   // 물풍선 대작전 맵 캐시 (grid는 바뀔 때만 서버가 보냄)
 // ── 물풍선 맵 테마 4종 ────────────────────────────────────────────────
 // 판마다 바닥·블록이 통째로 바뀐다. 어느 테마인지는 grid 문자열 해시로 정하므로
@@ -1719,6 +1743,7 @@ function handle(m) {
       if (m.mode === 'word' || m.mode === 'cho') { renderWord(m); break; }
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
+      noteSnapGap();
       arena = m.arena;
       // 물풍선 맵은 '받은 즉시' 캐시한다. 렌더 루프에서 최신 스냅샷만 보고 캐시하면,
       // 맵은 1.5초에 한 번만 오고 그 프레임이 최신인 시간은 50ms뿐이라
@@ -2750,6 +2775,7 @@ function enterGameView(keepInput) {
   seenDeadAt = 0; seenInfectedAt = 0;
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
   pred = null;                      // 로컬 예측 좌표도 초기화 (이전 판 위치가 새 판에 새면 한 번 튄다)
+  resetInterp();                    // 보간 지연 측정도 판마다 새로
   crayGrid = null;                  // 물풍선 맵 캐시도 판마다 초기화
   crayTheme = CRAY_THEMES[0];       // 테마도 초기화 (다음 판 첫 grid가 오면 서버 값으로 덮인다)
   $('hudTime').textContent = '';
@@ -3543,7 +3569,10 @@ function keyDir() {
 // 조작을 서버로 보내는 경로. 예전에는 80ms 간격 폴링만 있어서 손가락을 움직이고도
 // 최대 80ms를 그냥 기다렸다(왕복·보간까지 합쳐 체감 200ms+). 이제는 조이스틱이
 // 움직인 그 순간 보내고, 폴링은 이벤트를 놓쳤을 때를 위한 안전망으로만 남긴다.
-const INPUT_MIN_MS = 40;     // 초당 25회 상한 (서버 MSG_LIMIT 60/초에 여유를 둔다)
+// 손가락을 움직인 "첫 순간"은 지연 없이 바로 나간다. 이 값은 계속 밀고 있을 때의 상한일 뿐이다.
+// 40ms(초당 25회)로 뒀더니 30명 기준 서버 CPU가 3% → 5%로 올랐다(실측).
+// 내 캐릭터는 어차피 로컬 예측으로 즉시 움직이므로, 상한은 70ms면 충분하다.
+const INPUT_MIN_MS = 70;     // 초당 약 14회 상한
 let inputSentAt = 0, inputPending = null;
 let inputLog = [];           // 예측 보정용 입력 기록 {서버시각, x, y}
 function inputMoves() {
@@ -3727,7 +3756,7 @@ function draw() {
 
   // 아직 상태가 안 왔어도 카운트다운·안내는 보여야 한다 (학생이 규칙을 보는 유일한 화면)
   if (snaps.length === 0) { drawOverlay(null); return; }
-  const rt = performance.now() - 120;
+  const rt = performance.now() - interpMs;
   let a = snaps[0], b = snaps[snaps.length - 1];
   for (let i = 0; i < snaps.length - 1; i++) {
     if (snaps[i].rt <= rt && snaps[i + 1].rt >= rt) { a = snaps[i]; b = snaps[i + 1]; break; }
@@ -5991,7 +6020,7 @@ function drawKartGame(W, H, dpr) {
   const now = performance.now();
   let latest = null; const lerped = new Map();
   if (snaps.length) {
-    const rt = now - 120;
+    const rt = now - interpMs;
     let a = snaps[0], b = snaps[snaps.length - 1];
     for (let i = 0; i < snaps.length - 1; i++)
       if (snaps[i].rt <= rt && snaps[i + 1].rt >= rt) { a = snaps[i]; b = snaps[i + 1]; break; }
@@ -6530,7 +6559,7 @@ function drawRunGame(W, H, dpr) {
   let latest = null;
   const lerped = new Map();   // id → [dist, laneF, jumpY] 보간값
   if (snaps.length) {
-    const rt = now - 120;
+    const rt = now - interpMs;
     let a = snaps[0], b = snaps[snaps.length - 1];
     for (let i = 0; i < snaps.length - 1; i++) {
       if (snaps[i].rt <= rt && snaps[i + 1].rt >= rt) { a = snaps[i]; b = snaps[i + 1]; break; }
