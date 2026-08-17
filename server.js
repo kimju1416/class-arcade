@@ -1241,7 +1241,14 @@ const server = http.createServer((req, res) => {
       'Cache-Control': cache,
       'ETag': etag,
     };
-    if (req.headers['if-none-match'] === etag) { res.writeHead(304, head); res.end(); return; }
+    // Cloudflare는 응답을 압축하면서 ETag를 약한 형식(W/"...")으로 바꿔 내보낸다.
+    // 브라우저는 받은 그대로 돌려주므로 문자열을 그냥 비교하면 304가 영영 안 나고
+    // html 405KB를 매번 다시 보내게 된다. W/ 를 떼고 비교한다.
+    const inm = req.headers['if-none-match'];
+    const bare = (v) => v.trim().replace(/^W\//, '');
+    if (inm && (inm === '*' || inm.split(',').some(v => bare(v) === etag))) {
+      res.writeHead(304, head); res.end(); return;
+    }
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404); res.end('not found'); return; }
       res.writeHead(200, { ...head, 'Content-Length': data.length });
