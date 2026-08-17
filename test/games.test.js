@@ -415,6 +415,67 @@ module.exports = async function run() {
     r.close();
   }
 
+  // ---------- 전송량 절약: 안 바뀌는 건 빼고 보낸다 ----------
+  // 아레나 크기·퀴즈 점수를 매 틱 보내고 있었다(퀴즈는 전송량의 절반).
+  // 빼고 보내되, 중간에 들어온 학생은 반드시 한 번 받아야 한다 — 그게 유일한 위험 지점.
+  {
+    const r = await H.makeRoom(4);
+    H.send(r.host, { type: 'start_game', game: 'bomb' });
+    await H.waitPlaying(r.code);
+    await H.sleep(2500);
+    // 판 도중 새 학생
+    const late = await H.mkClient('지각');
+    H.send(late, { type: 'join', code: r.code, nick: '지각생' });
+    await H.sleep(1500);
+    t.ok(!![...late.frames].reverse().find(f => f.type === 'state' && f.arena),
+         '절약: 판 도중 들어온 학생도 아레나 크기를 받는다');
+    // 계속 보내지는 않는다 (절약이 실제로 되는지)
+    H.clearFrames(late);
+    await H.sleep(1200);
+    const withArena = late.frames.filter(f => f.type === 'state' && f.arena).length;
+    const allSt = late.frames.filter(f => f.type === 'state').length;
+    t.ok(allSt > 5 && withArena === 0, `절약: 그 뒤로는 아레나를 안 보낸다 (state ${allSt}개 중 ${withArena}개)`);
+    try { late.close(); } catch {}
+    r.close();
+  }
+  {
+    const r = await H.makeRoom(4);
+    H.send(r.host, { type: 'start_game', game: 'quiz' });
+    await H.waitPlaying(r.code);
+    r.bots.forEach((b, i) => H.send(b, { type: 'answer', a: i % 4 }));
+    await H.sleep(2500);
+    const late = await H.mkClient('지각2');
+    H.send(late, { type: 'join', code: r.code, nick: '지각생2' });
+    await H.sleep(1500);
+    t.ok(!![...late.frames].reverse().find(f => f.type === 'state' && f.scores),
+         '절약: 퀴즈 도중 들어온 학생도 점수판을 받는다');
+    H.clearFrames(late);
+    await H.sleep(1300);
+    const withScores = late.frames.filter(f => f.type === 'state' && f.scores).length;
+    const allSt2 = late.frames.filter(f => f.type === 'state').length;
+    // 문제가 공개(reveal)로 넘어가는 순간에는 점수 내용이 실제로 바뀌므로 한두 번은 정상이다.
+    // 매 틱 보내던 것에서 크게 줄었는지만 본다.
+    t.ok(allSt2 > 5 && withScores <= allSt2 * 0.2,
+         `절약: 점수는 바뀔 때만 보낸다 (state ${allSt2}개 중 ${withScores}개)`);
+    // 바뀌면 다시 온다
+    H.clearFrames(late);
+    H.send(r.bots[0], { type: 'answer', a: 2 });
+    await H.sleep(1200);
+    t.ok(!![...late.frames].reverse().find(f => f.type === 'state' && f.scores),
+         '절약: 점수가 바뀌면 다시 보낸다');
+    try { late.close(); } catch {}
+    r.close();
+  }
+  // 클라이언트가 빠진 필드를 캐시로 메우는지 (안 하면 화면이 죽는다)
+  {
+    const fs = require('fs'), path = require('path');
+    const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    t.ok(/if \(m\.arena\) arena = m\.arena; else m\.arena = arena;/.test(html),
+         '절약: 아레나가 안 오면 클라가 캐시값을 스냅샷에 채운다');
+    t.ok(/if \(m\.scores\) lastQScores = m\.scores; else if \(lastQScores\) m\.scores = lastQScores;/.test(html),
+         '절약: 점수가 안 오면 클라가 직전 값을 쓴다');
+  }
+
   t.ok(H.serverErrors().length === 0, '서버 예외 0건');
   return t;
 };

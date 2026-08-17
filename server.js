@@ -3800,9 +3800,16 @@ function finishGame(room, sorted, labelOf, keyOf) {
 function sendState(room, now) {
   const g = room.game;
   const type = room.gameType;
+  // 아레나 크기를 한 번 보냈다고 표시. 재접속자는 sendCurrentPhase가 따로 챙긴다.
+  const arenaKey = g.arenaW * 100000 + g.arenaH;
+  const arenaWasSent = g.arenaSent === arenaKey;
+  g.arenaSent = arenaKey;
   if (type === 'quiz') {
     const Q = g.questions[g.qIdx];
     const parts = [...room.players.values()].filter(p => !p.waiting);
+    const qScores = JSON.stringify(parts.map(p => [p.id, p.score, p.qAnswer >= 0 ? 1 : 0,
+      g.qPhase === 'reveal' ? (p.qGain || 0) : 0,
+      g.qPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]));
     broadcast(room, {
       type: 'state', mode: 'quiz', st: now,
       qPhase: g.qPhase || 'idle', qIdx: g.qIdx, qTotal: g.questions.length, cat: g.quizCat,
@@ -3818,9 +3825,9 @@ function sendState(room, now) {
       counts: g.qPhase === 'reveal' && Q
         ? [0, 1, 2, 3].map(i => parts.filter(p => p.qAnswer === i).length) : undefined,
       // [id, 총점, 답했나, 이번 문제 득점(공개 때만), 내가 고른 번호(공개 때만)]
-      scores: parts.map(p => [p.id, p.score, p.qAnswer >= 0 ? 1 : 0,
-        g.qPhase === 'reveal' ? (p.qGain || 0) : 0,
-        g.qPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]),
+      // 점수는 문제당 한 번만 바뀌는데 초당 20번 보내고 있었다(전송량의 절반).
+      // 내용이 그대로면 빼고 보낸다 — 클라는 안 오면 직전 값을 그대로 쓴다.
+      scores: qScores === g.qScoresSent ? undefined : (g.qScoresSent = qScores, JSON.parse(qScores)),
     });
     return;
   }
@@ -3843,7 +3850,8 @@ function sendState(room, now) {
     broadcast(room, {
       type: 'state', mode: 'chimp', st: now,
       chPhase: g.chPhase || 'idle', round: g.chRound || 0, totalRounds: CHIMP_ROUNDS, n: g.chN || 0,
-      arena: { w: g.arenaW, h: g.arenaH },
+      // 아레나 크기는 판 내내 안 바뀐다 → 바뀔 때만 보낸다 (매 틱 보내면 순수 낭비)
+      arena: arenaWasSent ? undefined : { w: g.arenaW, h: g.arenaH },
       cells: g.cells || [],
       nums: g.chPhase === 'reveal' ? g.nums : undefined,   // 숫자는 공개 시점에만 전원 전송
       memoEndAt: g.memoEndAt || 0, inputEndAt: g.inputEndAt || 0, revealEndAt: g.revealEndAt || 0,
@@ -4003,7 +4011,7 @@ function sendState(room, now) {
   }
   const msg = {
     type: 'state', mode: type, st: now,
-    arena: { w: g.arenaW, h: g.arenaH },
+    arena: arenaWasSent ? undefined : { w: g.arenaW, h: g.arenaH },
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
@@ -4375,6 +4383,7 @@ wss.on('connection', (ws) => {
         };
         r.players.set(p.id, p);
         if (r.teamOn) { const c = teamCounts(r); p.team = c[0] <= c[1] ? 0 : 1; }
+        if (r.game) { r.game.arenaSent = 0; r.game.qScoresSent = ''; }   // 새 접속자에게 한 번 다시 보낸다
         ws.roomCode = r.code; ws.playerId = p.id;
         roomSend(ws, { type: 'join_ok', id: p.id, token: p.token, code: r.code, nick: p.nick, ci: p.ci, state: r.state, gameType: r.gameType });
         sendRoster(r);

@@ -1744,7 +1744,9 @@ function handle(m) {
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
       noteSnapGap();
-      arena = m.arena;
+      // 아레나는 바뀔 때만 온다. 안 왔으면 캐시값을 스냅샷에 채워 넣는다
+      // (predictMe·줄다리기 렌더가 스냅샷의 arena를 직접 읽는다)
+      if (m.arena) arena = m.arena; else m.arena = arena;
       // 물풍선 맵은 '받은 즉시' 캐시한다. 렌더 루프에서 최신 스냅샷만 보고 캐시하면,
       // 맵은 1.5초에 한 번만 오고 그 프레임이 최신인 시간은 50ms뿐이라
       // 프레임이 떨어지는 기기(배경 탭·저사양 TV)에서는 그 순간을 놓쳐 맵이 통째로 안 그려진다.
@@ -1891,7 +1893,10 @@ function handle(m) {
 // ---- 퀴즈쇼 렌더링 (카훗 스타일) ----
 const QUIZ_COLORS = ['c0', 'c1', 'c2', 'c3'];
 const QUIZ_SHAPES = ['▲', '◆', '●', '■'];
+let lastQScores = null;
 function renderQuiz(m) {
+  // 점수는 바뀔 때만 온다 → 안 오면 직전 값을 그대로 쓴다
+  if (m.scores) lastQScores = m.scores; else if (lastQScores) m.scores = lastQScores;
   // 타이머 바는 매 수신마다 갱신
   $('quizTimerBar').style.width = m.qPhase === 'show'
     ? Math.max(0, m.timeLeft / m.timeTotal * 100) + '%'
@@ -1976,6 +1981,7 @@ function renderQuiz(m) {
 // ---- 순간 포착 렌더링 (퀴즈쇼 DOM 재사용 — 암기 장면은 교사 화면에만) ----
 let flashScene = null, flashSceneShown = -1;
 function renderFlash(m) {
+  if (m.scores) lastQScores = m.scores; else if (lastQScores) m.scores = lastQScores;
   $('quizTimerBar').style.width = m.fPhase === 'show'
     ? Math.max(0, m.timeLeft / m.timeTotal * 100) + '%'
     : (m.fPhase === 'reveal' ? '0%' : '100%');
@@ -2776,6 +2782,7 @@ function enterGameView(keepInput) {
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
   pred = null;                      // 로컬 예측 좌표도 초기화 (이전 판 위치가 새 판에 새면 한 번 튄다)
   resetInterp();                    // 보간 지연 측정도 판마다 새로
+  lastQScores = null;               // 퀴즈 점수 캐시도 판마다 비운다
   crayGrid = null;                  // 물풍선 맵 캐시도 판마다 초기화
   crayTheme = CRAY_THEMES[0];       // 테마도 초기화 (다음 판 첫 grid가 오면 서버 값으로 덮인다)
   $('hudTime').textContent = '';
