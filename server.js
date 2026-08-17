@@ -1224,10 +1224,29 @@ const server = http.createServer((req, res) => {
   const root = path.join(__dirname, 'public');
   const file = path.join(root, safe);
   if (file !== root && !file.startsWith(root + path.sep)) { res.writeHead(403); res.end(); return; }
-  fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404); res.end('not found'); return; }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
-    res.end(data);
+  // 캐시 정책. 예전엔 아무 헤더도 안 보내서 브라우저도 Cloudflare도 캐싱을 못 했고,
+  // 새로고침 한 번에 스프라이트 7MB를 미국 원점에서 통째로 다시 받아왔다.
+  //  - html/json : 항상 재검증(no-cache). ETag가 같으면 304라 본문은 안 나간다 → 배포 즉시 반영.
+  //  - 그 외(이미지·소리) : 하루 캐시 + 일주일 SWR. 만료돼도 캐시본을 바로 쓰고 갱신은 뒤에서 한다.
+  //    파일을 교체하면 mtime이 바뀌어 ETag가 달라지므로 만료 후 자동으로 새로 받는다.
+  const ext = path.extname(file);
+  const cache = (ext === '.html' || ext === '.json')
+    ? 'no-cache'
+    : 'public, max-age=86400, stale-while-revalidate=604800';
+  fs.stat(file, (er, st) => {
+    if (er || !st.isFile()) { res.writeHead(404); res.end('not found'); return; }
+    const etag = `"${st.size.toString(36)}-${st.mtimeMs.toString(36)}"`;
+    const head = {
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': cache,
+      'ETag': etag,
+    };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, head); res.end(); return; }
+    fs.readFile(file, (err, data) => {
+      if (err) { res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200, { ...head, 'Content-Length': data.length });
+      res.end(data);
+    });
   });
 });
 

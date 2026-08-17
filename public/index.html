@@ -3310,7 +3310,22 @@ let curDir = { x: 0, y: 0 }, sentDir = { x: 0, y: 0 };
 // ---- 픽셀 아트 스프라이트 ----
 // 흰 몸통 하나를 색만 바꿔 30명에게 쓴다(이미지 30장을 받을 필요가 없다).
 // 이미지가 아직 안 왔거나 실패하면 예전 원형 그리기로 자동 대체된다.
+// ---- 나중에 받아도 되는 것은 첫 화면 뒤로 ----
+// 예전엔 페이지가 뜨자마자 스프라이트 100여 장(9MB)을 한꺼번에 요청해서, 그동안
+// 방 참가·캐릭터 그림 같은 급한 요청이 전부 그 뒤에 줄을 섰다. 첫 화면이 그려진
+// 다음 한가할 때 받는다. 아직 안 온 그림은 지금처럼 도형으로 폴백된다.
+let warmQ = [];
+function warmup(fn) { warmQ ? warmQ.push(fn) : fn(); }
+function warmStart() {
+  if (!warmQ) return;
+  const q = warmQ; warmQ = null;
+  q.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+}
+addEventListener('load', () => (window.requestIdleCallback || (f => setTimeout(f, 1)))(warmStart, { timeout: 2000 }));
+setTimeout(warmStart, 5000);   // 백그라운드 탭 등 load/idle이 안 오는 경우 대비
+
 const SPR = {};
+warmup(() =>
 ['player', 'player2', 'player3', 'player4', 'player5', 'player6',
  'zombie', 'bomb', 'coin', 'mos', 'doll', 'doll2', 'doll3',
  'swatter', 'claw', 'boom', 'mascot', 'car', 'start', 'puddle', 'oil',
@@ -3327,50 +3342,54 @@ const SPR = {};
   im.onload = () => { SPR[name] = im; };
   im.src = 'sprites/' + name + '.png';
   if (im.complete && im.naturalWidth) SPR[name] = im;   // 이미 디코딩까지 끝난 경우
-});
+}));
 // 캐릭터 아바타(최대 30종) — manifest.json의 순서가 곧 ci 번호. 이미지가 아직 없으면 색 블롭으로 폴백.
 const CHAR_IMG = [];       // ci -> Image
 let CHAR_LIST = [];        // [{slug,name}] — 선택 화면·매니페스트
 fetch('sprites/chars/manifest.json').then(r => r.ok ? r.json() : []).then(list => {
   CHAR_LIST = Array.isArray(list) ? list : [];
-  CHAR_LIST.forEach((c, i) => {
+  // 캔버스용 미리받기. 선택 화면의 <img>는 화면이 뜰 때 알아서 받으므로 급하지 않다.
+  warmup(() => CHAR_LIST.forEach((c, i) => {
     const im = new Image();
     im.onload = () => { CHAR_IMG[i] = im; };      // src보다 먼저 (캐시된 이미지 누락 방지)
     im.src = 'sprites/chars/' + c.slug + '.png';
     if (im.complete && im.naturalWidth) CHAR_IMG[i] = im;
-  });
+  }));
   // 선택 화면이 이미 떠 있으면(목록 늦게 도착) 다시 그린다
   if ($('charSelect') && $('charSelect').classList.contains('on')) renderCharSelect();
 }).catch(() => {});
 function charSprite(ci) { return CHAR_IMG[(ci || 0)] || null; }   // 캔버스용: 로드된 캐릭터 Image 또는 null
 function charSrc(ci) { const c = CHAR_LIST[(ci || 0)]; return c ? 'sprites/chars/' + c.slug + '.png' : ''; }  // <img> 용
+// 배경들은 해당 게임이 시작돼야 쓰인다. onload를 반드시 src보다 먼저 건다 —
+// 캐시가 켜진 뒤로는 캐시 적중이 기본이라 순서가 뒤집히면 영영 안 불릴 수 있다.
 const FLOOR_IMG = new Image();
 let floorReady = false;
-FLOOR_IMG.src = 'sprites/floor.jpg';
 FLOOR_IMG.onload = () => { floorReady = true; };
+warmup(() => { FLOOR_IMG.src = 'sprites/floor.jpg'; });
 const GRASS_IMG = new Image();
 let grassReady = false;
-GRASS_IMG.src = 'sprites/grass.jpg';
 GRASS_IMG.onload = () => { grassReady = true; };
+warmup(() => { GRASS_IMG.src = 'sprites/grass.jpg'; });
 // 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
 const FLOORS = {};
+warmup(() =>
 ['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing', 'cray', 'pull'].forEach(k => {
   const im = new Image();
   // onload을 src보다 먼저 걸어야 캐시된 이미지도 등록된다
   im.onload = () => { FLOORS[k] = im; };
   im.src = 'sprites/floor-' + k + '.jpg';
   if (im.complete && im.naturalWidth) FLOORS[k] = im;
-});
+}));
 // 갤러그 우주 배경 (성운·행성 이미지 위에 코드로 별이 흐른다)
 const SPACE_IMG = new Image();
 let spaceReady = false;
-SPACE_IMG.src = 'sprites/space.jpg';
 SPACE_IMG.onload = () => { spaceReady = true; };
+warmup(() => { SPACE_IMG.src = 'sprites/space.jpg'; });
 // 설원 러너 하늘 배경 (지평선 위에만 깔린다)
 const RUNBG_IMG = new Image();
 let runbgReady = false;
-RUNBG_IMG.src = 'sprites/runbg.jpg';
 RUNBG_IMG.onload = () => { runbgReady = true; };
+warmup(() => { RUNBG_IMG.src = 'sprites/runbg.jpg'; });
 
 const tintCache = new Map();
 function tintSprite(name, color) {
@@ -5734,12 +5753,13 @@ function kartHash(i) { let h2 = i * 2654435761 >>> 0; h2 ^= h2 >>> 13; h2 = Math
 // 행: [0id 1x 2y 3alive 4wait 5rank 6pos 7x100 8lap 9item 10boost 11spin 12fin 13itemFx]
 // ---------- 줄다리기 전용 화면 (팀 고르기 단계는 일반 아레나를 그대로 쓴다) ----------
 const PULL_ART = {};
+warmup(() =>
 [['bg', 'pull-bg.jpg'], ['rope', 'pull-rope.png'], ['flag', 'pull-flag.png']].forEach(([k, f]) => {
   const im = new Image();
   im.onload = () => { PULL_ART[k] = im; };   // onload을 src보다 먼저 (캐시된 이미지 누락 방지)
   im.src = 'sprites/' + f;
   if (im.complete && im.naturalWidth) PULL_ART[k] = im;
-});
+}));
 // 행: [0id 1x 2y 3alive 4wait 5extra 6team 7ref 8hitFx]
 function drawPullGame(W, H, dpr, m) {
   const pl = m.pl, now = performance.now();
