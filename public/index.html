@@ -1041,6 +1041,13 @@ body.host #teamResult .tr-line { font-size: 30px; }
 const $ = id => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 
+// iOS Safari는 maximum-scale/user-scalable=no를 두 손가락 핀치줌엔 적용 안 함(접근성 예외) —
+// 게임 중 손가락 두 개가 겹쳐 닿으면 화면이 확대되며 좌표가 어긋나 조작 불가 상태가 됨.
+// gesturestart는 Safari 전용 이벤트로 핀치/회전 제스처 자체를 막고, 멀티터치 touchmove도 별도 차단.
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
 const GAMES_META = {
   bomb: { icon: '💣', name: '폭탄 피하기', desc: '떨어지는 폭탄을 피해 최후의 1인이 되자! 빨간 원은 1초 뒤 폭발.', badge: '최대 90초', rule: '조이스틱으로 폭탄을 피하세요!' },
   tag:  { icon: '🧟', name: '감염 술래잡기', desc: '좀비(술래)에게 닿으면 나도 좀비! 60초 동안 도망 다니며 살아남자.', badge: '60초', rule: '초록 좀비를 피해 도망가세요!\n잡히면 나도 좀비가 되어 친구를 잡으세요' },
@@ -2925,7 +2932,7 @@ function renderGameOptions(key, opt) {
       const ta = document.createElement('textarea');
       ta.placeholder = '한 줄에 한 문제씩: 문제 / 정답 / 오답1 / 오답2 / 오답3';
       ta.value = localStorage.getItem('ca_customq') || '';
-      ta.style.cssText = 'width:100%;min-width:280px;height:78px;background:#141a35;border:1.5px solid #3a4680;border-radius:10px;color:#e8ecf8;font-size:13px;padding:8px 10px;font-family:inherit;resize:vertical;line-height:1.5';
+      ta.style.cssText = 'width:100%;min-width:280px;height:78px;background:#141a35;border:1.5px solid #3a4680;border-radius:10px;color:#e8ecf8;font-size:16px;padding:8px 10px;font-family:inherit;resize:vertical;line-height:1.5';
       const cnt = document.createElement('div');
       const refresh = () => {
         const n = parseCustomQ(ta.value).length;
