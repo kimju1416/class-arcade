@@ -1448,6 +1448,10 @@ const SFX = (() => {
       }
       return this.off;
     },
+    // 소리가 꺼져 있는가. 버튼 아이콘(🔇/🔊) 세 군데와 toggle()의 반환값이 이걸 기대하는데
+    // 정작 없어서 늘 undefined였다 → 음소거를 해도 아이콘이 🔊 그대로였다.
+    // audible()을 뒤집어 쓰므로 실제 재생 게이트와 절대 어긋나지 않는다.
+    get off() { return !audible(); },
   };
 })();
 // 사운드 트리거 감지용 상태
@@ -1744,13 +1748,13 @@ function handle(m) {
       break;
     }
     case 'state':
-      if (m.mode === 'quiz') { renderQuiz(m); break; }
+      if (m.mode === 'quiz') { window.__lastState = m; window.__myId = myId; renderQuiz(m); break; }
       if (m.mode === 'flash') { window.__lastState = m; window.__myId = myId; renderFlash(m); break; }
       if (m.mode === 'simon') { window.__lastState = m; window.__myId = myId; renderSimon(m); break; }
       if (m.mode === 'pairs') { window.__lastState = m; window.__myId = myId; renderPairs(m); break; }
       if (m.mode === 'tetris') { window.__lastState = m; window.__myId = myId; renderTetris(m); break; }
       if (m.mode === 'draw') { window.__lastState = m; window.__myId = myId; renderDraw(m); break; }
-      if (m.mode === 'word' || m.mode === 'cho') { renderWord(m); break; }
+      if (m.mode === 'word' || m.mode === 'cho') { window.__lastState = m; window.__myId = myId; renderWord(m); break; }
       snaps.push({ rt: performance.now(), m });
       if (snaps.length > 30) snaps.shift();
       noteSnapGap();
@@ -6411,7 +6415,9 @@ function drawPullGame(W, H, dpr, m) {
   // TV에서만 구호 소리 (폰 30대가 어긋나 울리면 박자가 무너진다)
   if (isHost && pl.ph === 'round' && pl.md === 'beat' && pl.beat && sndPrev.pullBeat !== pl.beat) {
     const d = pl.beat - serverNow();
-    if (d > -60 && d < 60) { sndPrev.pullBeat = pl.beat; SFX.count(); }
+    // SFX에 count는 없다(countBeep이다). 예전엔 SFX.count()를 불러 매 구호마다 예외가 났고,
+    // drawPullGame 안이라 그 뒤 렌더가 통째로 건너뛰어졌다.
+    if (d > -60 && d < 60) { sndPrev.pullBeat = pl.beat; SFX.countBeep(); }
   }
   // 내 폰: 정타면 진동
   if (!isHost && meRow && meRow[8] === 2 && sndPrev.pullHit !== pl.beat) {
