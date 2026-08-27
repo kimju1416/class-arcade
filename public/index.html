@@ -253,6 +253,8 @@
   }
   #btnAction:active { transform: translateY(4px); box-shadow: 0 2px 0 #c9871f, 0 5px 12px rgba(0,0,0,.35); }
   #btnAction.wait { background: #3b4670; color: #93a0c4; box-shadow: 0 6px 0 #2a3253; }
+  /* 꼬리별 부스터: 누르고 있는 동안 켜져 있다는 걸 보여준다 */
+  #btnAction.on { background: #ff8fc4; box-shadow: 0 2px 0 #c9871f, 0 0 22px rgba(255,143,196,.7); transform: translateY(4px); }
   /* 설원 러너 부스터 버튼 (점프 버튼 위에) */
   #btnBoost {
     position: absolute; right: 30px; bottom: 162px; z-index: 6; display: none;
@@ -1075,6 +1077,7 @@ const GAMES_META = {
   draw: { icon: '🎨', name: '그림 퀴즈', desc: '선생님이 지목한 친구가 몰래 답을 정하고 그림으로만 설명! 그림이 TV에 실시간으로 — 빨리 맞힐수록 고득점.', badge: '캐치마인드', rule: '출제자: 답을 정하고 그림으로 표현!\n나머지: 그림을 보고 폰에 정답 입력!' },
   cray: { icon: '💧', name: '물풍선 대작전', desc: '물풍선을 놓아 십자 물줄기로 친구를 물방울에 가두고, 갇힌 친구를 톡 치면 탈락! 상자를 부숴 🎈💧👟 아이템을 모아라. 개인전·팀전 선택!', badge: '최후 1인', rule: '조이스틱: 이동 · 버튼: 물풍선 설치!\n물줄기에 맞으면 물방울에 갇혀요 — 팀전은 아군이 터치해 구출!' },
   kart: { icon: '🏁', name: '카트 그랑프리', desc: '내 캐릭터가 카트를 타고 달린다! 운전석 시점으로 2바퀴 레이스. ? 박스에서 🚀부스터·🍌바나나·🐢등껍질을 얻어 역전하라!', badge: '2랩', rule: '왼손: 핸들 · 오른손: 아이템 사용!\n가속은 자동 — 방향만 잡으면 돼요. ? 박스를 밟아 아이템 획득!' },
+  comet: { icon: '☄️', name: '꼬리별', desc: '먹이를 먹어 몸집을 키우고, 나보다 작은 친구를 꿀꺽! 큰 꼬리별은 느리니까 작을 땐 도망치며 키우자. 먹혀도 3초 뒤 부활 — 가장 크게 자란 사람이 우승!', badge: '3분', rule: '왼손: 조이스틱 · 오른손: ⚡부스터\n내가 1.25배 이상 크면 상대를 잡아먹어요!\n🔴빨간 테두리 = 나를 먹을 수 있는 상대 (도망!)\n🟢초록 테두리 = 내가 먹을 수 있는 상대 (사냥!)' },
   pull: { icon: '🪢', name: '줄다리기', desc: '반을 둘로 갈라 밧줄을 당긴다! 시작 전에 직접 좌우로 걸어가 청팀·백팀을 고르고, "영차!" 구호에 맞춰 힘을 모아라. 3판 2선승!', badge: '3판 2선승', rule: '① 좌우로 걸어가 우리 팀을 고르세요\n② 구호에 맞춰 버튼을 누르세요 — 연타는 소용없어요!\n인원이 홀수면 한 명이 심판을 맡아요 (판마다 바뀜)' },
 };
 // 게임 분류 탭 (게임 하나가 여러 분류에 속할 수 있음 — 예: OX = 서바이벌 + 퀴즈)
@@ -1093,7 +1096,7 @@ const GAME_CAT_OF = {
   // ⚔️ 서바이벌: 탈락이 있고 최후 생존을 다투는 게임
   bomb: ['sur'], tag: ['sur'], dodge: ['sur'], sumo: ['sur'], chair: ['sur'], gala: ['sur'], tetris: ['sur'],
   // 🏆 점수 경쟁: 탈락 없이 점수·기록으로 겨루는 게임
-  coin: ['score'], mos: ['score'], claw: ['score'], race: ['score'], run: ['score'], timing: ['score'], kart: ['score'],
+  coin: ['score'], mos: ['score'], claw: ['score'], race: ['score'], run: ['score'], timing: ['score'], kart: ['score'], comet: ['score'],
   // 🧠 퀴즈·두뇌: 문제를 풀거나 맞히는 게임
   word: ['quiz'], cho: ['quiz'], quiz: ['quiz'], ox: ['quiz'], draw: ['quiz'],
   // 🧩 기억력
@@ -1758,7 +1761,14 @@ function handle(m) {
       // 맵은 1.5초에 한 번만 오고 그 프레임이 최신인 시간은 50ms뿐이라
       // 프레임이 떨어지는 기기(배경 탭·저사양 TV)에서는 그 순간을 놓쳐 맵이 통째로 안 그려진다.
       if (m.mode === 'cray' && m.grid) { crayGrid = m.grid; crayTheme = crayThemeOf(m.theme); }
+      // 꼬리별 먹이는 델타로 온다 — 받은 즉시 반영(렌더 루프에서 최신 스냅샷만 보면 놓친다)
+      if (m.mode === 'comet') cometApplyFood(m);
       window.__lastState = m; window.__myId = myId;  // 자동 검증용 훅
+      break;
+    // 꼬리별: 재접속·중간 입장자에게 오는 먹이 전체 목록
+    case 'comet_full':
+      cometFoods.clear();
+      cometApplyFood({ fa: m.fall });
       break;
     // 사이먼: 패턴은 교사 화면에만 온다 — 서버 시각 기준으로 발광·멜로디 예약
     case 'simon_seq':
@@ -2762,7 +2772,7 @@ function enterGameView(keepInput) {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기·사다리·통) / 버튼(인형뽑기·부스터·발사·대시)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull');
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet');
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
@@ -2770,7 +2780,8 @@ function enterGameView(keepInput) {
       : gameType === 'run' ? '점프<br>⬆️'
       : gameType === 'cray' ? '물풍선<br>💧'
       : gameType === 'kart' ? '아이템<br>🎁'
-      : gameType === 'pull' ? '당겨!<br>🪢' : '집게<br>내리기';
+      : gameType === 'pull' ? '당겨!<br>🪢'
+      : gameType === 'comet' ? '부스터<br>⚡' : '집게<br>내리기';
     // 설원 러너 전용 부스터 버튼 (점프와 별개)
     $('btnBoost').style.display = (!isHost && gameType === 'run') ? 'block' : 'none';
     $('btnBoost').classList.add('wait'); $('btnBoost').classList.remove('ready'); $('btnBoost').__label = '';
@@ -2787,6 +2798,9 @@ function enterGameView(keepInput) {
   if (!keepInput) resetInputState();
   seenDeadAt = 0; seenInfectedAt = 0;
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
+  // 꼬리별: 이전 판의 먹이·자취가 남으면 유령이 되고 몸이 엉뚱하게 이어진다
+  cometFoods.clear(); cometPaths.clear(); cometParts = []; cometFeed = []; cometCam = null;
+  cometBoostPid = null;
   pred = null;                      // 로컬 예측 좌표도 초기화 (이전 판 위치가 새 판에 새면 한 번 튄다)
   resetInterp();                    // 보간 지연 측정도 판마다 새로
   lastQScores = null;               // 퀴즈 점수 캐시도 판마다 비운다
@@ -3380,7 +3394,7 @@ warmup(() => { GRASS_IMG.src = 'sprites/grass.jpg'; });
 // 게임별 전용 바닥 (없는 게임은 기본 바닥으로)
 const FLOORS = {};
 warmup(() =>
-['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing', 'cray', 'pull'].forEach(k => {
+['bomb', 'tag', 'coin', 'mos', 'claw', 'dodge', 'sumo', 'chair', 'pirate', 'sadari', 'chimp', 'ox', 'timing', 'cray', 'pull', 'comet'].forEach(k => {
   const im = new Image();
   // onload을 src보다 먼저 걸어야 캐시된 이미지도 등록된다
   im.onload = () => { FLOORS[k] = im; };
@@ -3494,9 +3508,9 @@ function initInput() {
     const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
       || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
       || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
-      || gameType === 'cray' || gameType === 'kart' || gameType === 'pull';
+      || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet';
     if (!usesStick) return;
-    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
+    if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
     stickPid = e.pointerId;
@@ -3546,9 +3560,26 @@ function stopFire() {
   clearInterval(window.__fireIv); window.__fireIv = null;
   firePid = null;
 }
+// 꼬리별 부스터는 "누르고 있는 동안" 켜진다 (탭이 아니라 홀드)
+let cometBoostPid = null;
+function cometBoostOff() {
+  if (cometBoostPid === null) return;
+  cometBoostPid = null;
+  send({ type: 'cboost', v: 0 });
+  $('btnAction').classList.remove('on');
+}
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (isHost || phase !== 'playing') return;
+  if (gameType === 'comet') {
+    if (cometBoostPid !== null) return;
+    cometBoostPid = e.pointerId;
+    try { $('btnAction').setPointerCapture(e.pointerId); } catch {}
+    send({ type: 'cboost', v: 1 });
+    $('btnAction').classList.add('on');
+    if (navigator.vibrate) navigator.vibrate(12);
+    return;
+  }
   if (gameType !== 'claw' && gameType !== 'race' && gameType !== 'gala' && gameType !== 'sumo' && gameType !== 'run' && gameType !== 'cray' && gameType !== 'kart' && gameType !== 'pull') return;
   send({ type: 'action' });
   if (navigator.vibrate) navigator.vibrate(15);   // 진동으로 손맛 (소리는 기본 끔)
@@ -3565,9 +3596,9 @@ $('btnAction').addEventListener('pointerdown', e => {
     }, 270);
   }
 });
-$('btnAction').addEventListener('pointerup', e => { if (e.pointerId === firePid) stopFire(); });
-$('btnAction').addEventListener('pointercancel', e => { if (e.pointerId === firePid) stopFire(); });
-$('btnAction').addEventListener('lostpointercapture', e => { if (e.pointerId === firePid) stopFire(); });
+$('btnAction').addEventListener('pointerup', e => { if (e.pointerId === firePid) stopFire(); if (e.pointerId === cometBoostPid) cometBoostOff(); });
+$('btnAction').addEventListener('pointercancel', e => { if (e.pointerId === firePid) stopFire(); if (e.pointerId === cometBoostPid) cometBoostOff(); });
+$('btnAction').addEventListener('lostpointercapture', e => { if (e.pointerId === firePid) stopFire(); if (e.pointerId === cometBoostPid) cometBoostOff(); });
 // 설원 러너 부스터: 게이지 꽉 찼을 때 한 번 탭 → 피버
 $('btnBoost').addEventListener('pointerdown', e => {
   e.preventDefault();
@@ -3612,7 +3643,7 @@ function inputMoves() {
   return gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
     || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
-    || gameType === 'cray' || gameType === 'kart' || gameType === 'pull';
+    || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet';
 }
 function flushInput() {
   if (isHost || !inputMoves() || (phase !== 'playing' && phase !== 'countdown')) return;
@@ -3691,6 +3722,345 @@ addEventListener('resize', resize); resize();
 function lerp(a, b, t) { return a + (b - a) * t; }
 function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
 
+// ============================================================
+// 꼬리별 (comet) — 전용 렌더러
+// 서버는 머리 위치만 보낸다. 몸통은 클라가 머리 자취를 쌓아 만든다(대역폭 절약).
+// 행 구조: [id,x,y,alive,waiting,최고몸집, 각도°,몸집,부스터,부활대기,무적,방금먹음,잡아먹은수]
+// ============================================================
+const cometFoods = new Map();       // id → {x,y,v,h,ph}
+const cometPaths = new Map();       // playerId → {pts:[{x,y}], buf, sbuf, tailX, tailY, dash}
+let cometParts = [];                // 파티클
+let cometFeed = [];                 // 킬 피드 {txt, at}
+let cometCam = null;                // 학생 폰 추적 카메라 {x,y,z}
+const COMET_EAT_RATIO = 1.25, COMET_BOOST_MIN = 14;
+function cometGirth(m) { return Math.min(38, 11 + Math.sqrt(Math.max(0, m)) * 0.95); }
+function cometBodyLen(m) { return Math.min(2200, 90 + Math.max(0, m) * 3.2); }
+
+function cometApplyFood(m) {
+  if (m.fall) { for (const f of m.fall) cometFoods.set(f[0], { x: f[1], y: f[2], v: f[3], h: f[4], ph: Math.random() * 6.28 }); }
+  if (m.fa) for (const f of m.fa) {
+    const old = cometFoods.get(f[0]);
+    cometFoods.set(f[0], { x: f[1], y: f[2], v: f[3], h: f[4], ph: old ? old.ph : Math.random() * 6.28 });
+  }
+  if (m.fd) for (const id of m.fd) {
+    const f = cometFoods.get(id);
+    if (f) {
+      cometFoods.delete(id);
+      // 내가 먹었으면 소리 (전역음은 TV만, 개인음은 내 것만 — 이 저장소의 사운드 정책)
+      const me = m.players && m.players.find(r => r[0] === myId);
+      if (me && !isHost && Math.hypot(f.x - me[1], f.y - me[2]) < 70) SFX.coin();
+    }
+  }
+  if (m.cbm) for (const [x, y, mass, ci] of m.cbm) {
+    cometBoom(x, y, mass, ci);
+    if (isHost) SFX.boom();          // 전역음은 교사 TV에서만 (40대가 동시에 울리면 아수라장)
+  }
+  if (m.cfd) for (const [a, b] of m.cfd) {
+    cometFeed.unshift({ txt: `${a} 🌟 ${b}`, at: performance.now() });
+    if (cometFeed.length > 4) cometFeed.pop();
+    if (!isHost && a === myNick) SFX.grab();   // 내가 잡아먹었을 때만 (내 이벤트)
+    else if (!isHost && b === myNick) SFX.miss();
+  }
+}
+function cometBoom(x, y, mass, ci) {
+  if (cometParts.length > 420) return;
+  const hue = (ci * 137.5) % 360;
+  cometParts.push({ t: 'ring', x, y, life: .65, max: .65, r: 24 + Math.min(150, mass * .5), h: hue });
+  const n = Math.min(34, 12 + mass * .08);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.28, sp = 70 + Math.random() * 230;
+    cometParts.push({ t: 'sp', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .45 + Math.random() * .45, max: .9, r: 2 + Math.random() * 3, h: hue });
+  }
+}
+function cometStepParts(dt) {
+  for (let i = cometParts.length - 1; i >= 0; i--) {
+    const p = cometParts[i];
+    p.life -= dt;
+    if (p.life <= 0) { cometParts.splice(i, 1); continue; }
+    if (p.t === 'sp') { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .93; p.vy *= .93; }
+  }
+}
+// 머리 자취를 쌓는다. 앵커를 끌고 다니면 경로가 영원히 안 쌓여 몸이 직선이 된다.
+function cometAppend(pa, x, y) {
+  const pts = pa.pts;
+  const last = pts[pts.length - 1];
+  if (!last) { pts.push({ x, y }); return; }
+  const dx = x - last.x, dy = y - last.y;
+  if (dx * dx + dy * dy < 36) return;
+  pts.push({ x, y });
+  const cap = Math.ceil((cometBodyLen(pa.mass || 20) + 200) / 6) + 8;
+  if (pts.length > cap) pts.splice(0, pts.length - cap);
+}
+// 머리→꼬리 방향으로 일정 간격 샘플링. 매 프레임 객체를 새로 만들지 않으려고 버퍼 재사용.
+function cometSample(pa, hx, hy, spacing, maxLen) {
+  const cap = Math.ceil(maxLen / spacing) + 6;
+  if (!pa.buf || pa.buf.length < cap * 2) { const n = Math.max(192, cap * 2); pa.buf = new Float64Array(n); }
+  const buf = pa.buf, lim = buf.length, pts = pa.pts;
+  let k = 0; buf[k++] = hx; buf[k++] = hy;
+  let need = spacing, total = 0, px = hx, py = hy;
+  for (let i = pts.length - 1; i >= 0 && total < maxLen && k + 2 <= lim; i--) {
+    const qx = pts[i].x, qy = pts[i].y;
+    let seg = Math.hypot(px - qx, py - qy);
+    while (seg >= need && total < maxLen && k + 2 <= lim) {
+      const t = need / seg;
+      px += (qx - px) * t; py += (qy - py) * t;
+      buf[k++] = px; buf[k++] = py;
+      total += need; seg -= need; need = spacing;
+    }
+    need -= seg; px = qx; py = qy;
+  }
+  pa.tailX = buf[k - 2]; pa.tailY = buf[k - 1];
+  return k >> 1;
+}
+
+function drawCometGame(W, H, dpr) {
+  const topPad = (isHost ? 64 : 48) * dpr, pad = 8 * dpr;
+  if (!snaps.length) {
+    ctx.fillStyle = '#070a1e'; ctx.fillRect(0, 0, W, H);
+    drawOverlay(null); return;
+  }
+  const rt = performance.now() - interpMs;
+  let a = snaps[0], b = snaps[snaps.length - 1];
+  for (let i = 0; i < snaps.length - 1; i++) {
+    if (snaps[i].rt <= rt && snaps[i + 1].rt >= rt) { a = snaps[i]; b = snaps[i + 1]; break; }
+  }
+  const t = (b.rt === a.rt) ? 1 : Math.max(0, Math.min(1, (rt - a.rt) / (b.rt - a.rt)));
+  const posA = new Map(a.m.players.map(p => [p[0], p]));
+  const latest = snaps[snaps.length - 1].m;
+  const AW = arena.w, AH = arena.h;
+
+  // ----- 카메라: TV는 전체 아레나, 학생 폰은 내 뱀 추적 + 몸집에 따른 줌아웃 -----
+  let scale = Math.min((W - pad * 2) / AW, (H - topPad - pad) / AH);
+  let ox = (W - AW * scale) / 2;
+  let oy = topPad + (H - topPad - pad - AH * scale) / 2;
+  const meRow = latest.players.find(r => r[0] === myId);
+  if (!isHost && meRow) {
+    const myMass = meRow[7] || 20;
+    // 몸집이 클수록 넓게 본다 (내 몸 전체 + 주변이 보이게)
+    const viewUnits = 620 + Math.sqrt(myMass) * 26;
+    scale = Math.min(W, H) / viewUnits;
+    const mb = latest.players.find(r => r[0] === myId);
+    const ma = posA.get(myId) || mb;
+    const mx = ma[1] + (mb[1] - ma[1]) * t, my = ma[2] + (mb[2] - ma[2]) * t;
+    if (!cometCam) cometCam = { x: mx, y: my };
+    cometCam.x += (mx - cometCam.x) * .18;
+    cometCam.y += (my - cometCam.y) * .18;
+    const aw2 = AW * scale, ah2 = AH * scale;
+    ox = W / 2 - cometCam.x * scale;
+    oy = H / 2 - cometCam.y * scale;
+    ox = aw2 <= W ? (W - aw2) / 2 : Math.max(W - aw2, Math.min(0, ox));
+    oy = ah2 <= H ? (H - ah2) / 2 : Math.max(H - ah2, Math.min(0, oy));
+  }
+  view = { ox, oy, scale };
+  window.__view = view;
+  const X = wx => ox + wx * scale, Y = wy => oy + wy * scale;
+
+  // ----- 배경 -----
+  // 세로 폰에서는 가로로 넓은 아레나가 화면을 다 못 채운다. 남는 자리를 검게 두면
+  // 화면이 잘린 것처럼 보이므로, 바깥도 우주로 이어 그려 "경계 밖"으로 읽히게 한다.
+  ctx.fillStyle = '#04050c'; ctx.fillRect(0, 0, W, H);
+  const aw = AW * scale, ah = AH * scale;
+  // 화면 밖 별밭 (결정적 해시 — 매 프레임 같은 자리). 아레나 안은 바닥 그림이 담당한다.
+  const cell = 130;
+  const wx0 = (0 - ox) / scale, wx1 = (W - ox) / scale;
+  const wy0 = (0 - oy) / scale, wy1 = (H - oy) / scale;
+  ctx.fillStyle = 'rgba(190,205,255,.45)';
+  for (let gx = Math.floor(wx0 / cell); gx <= Math.ceil(wx1 / cell); gx++) {
+    for (let gy = Math.floor(wy0 / cell); gy <= Math.ceil(wy1 / cell); gy++) {
+      let h = Math.imul(gx + 7, 374761393) + Math.imul(gy + 13, 668265263);
+      h = Math.imul(h ^ (h >>> 13), 1274126177); h = (h ^ (h >>> 16)) >>> 0;
+      if (h % 100 > 42) continue;
+      const wxs = gx * cell + (h % cell), wys = gy * cell + ((h >>> 8) % cell);
+      const inside = wxs >= 0 && wxs <= AW && wys >= 0 && wys <= AH;
+      if (inside && FLOORS.comet) continue;          // 바닥 그림에 이미 별이 있다
+      ctx.globalAlpha = (inside ? .5 : .3) * (.5 + .5 * Math.sin(performance.now() / 800 + h % 10));
+      ctx.fillRect(X(wxs), Y(wys), 1.6 * dpr, 1.6 * dpr);
+    }
+  }
+  ctx.globalAlpha = 1;
+  // 아레나 바닥
+  if (FLOORS.comet) ctx.drawImage(FLOORS.comet, ox, oy, aw, ah);
+  else {
+    const bg = ctx.createRadialGradient(ox + aw / 2, oy + ah / 2, 20, ox + aw / 2, oy + ah / 2, Math.max(aw, ah) * .7);
+    bg.addColorStop(0, '#101740'); bg.addColorStop(.6, '#0a0e26'); bg.addColorStop(1, '#05070f');
+    ctx.fillStyle = bg; ctx.fillRect(ox, oy, aw, ah);
+  }
+  // 경기장 테두리 — 밖은 못 나가는 벽이라는 게 보이게 안쪽으로 은은한 발광
+  ctx.strokeStyle = '#3a4680'; ctx.lineWidth = 5 * dpr;
+  ctx.strokeRect(ox - 2 * dpr, oy - 2 * dpr, aw + 4 * dpr, ah + 4 * dpr);
+  ctx.strokeStyle = 'rgba(125,211,252,.20)'; ctx.lineWidth = 10 * dpr;
+  ctx.strokeRect(ox + 5 * dpr, oy + 5 * dpr, aw - 10 * dpr, ah - 10 * dpr);
+
+  // ----- 먹이 -----
+  ctx.globalCompositeOperation = 'lighter';
+  const halfW = W / 2 / scale + 80, halfH = H / 2 / scale + 80;
+  const ccx = (W / 2 - ox) / scale, ccy = (H / 2 - oy) / scale;
+  const now = performance.now();
+  for (const f of cometFoods.values()) {
+    if (Math.abs(f.x - ccx) > halfW || Math.abs(f.y - ccy) > halfH) continue;
+    const pu = .8 + .2 * Math.sin(now / 250 + f.ph);
+    // 반지름은 월드 단위 → scale만 곱한다. dpr을 또 곱하면 폰(dpr 3)에서 3배로 커진다.
+    const r = Math.max(2.2 * dpr, (5.5 + f.v * 1.5) * pu * scale);
+    const gr = ctx.createRadialGradient(X(f.x), Y(f.y), 0, X(f.x), Y(f.y), r);
+    gr.addColorStop(0, `hsla(${f.h},100%,88%,1)`);
+    gr.addColorStop(.3, `hsla(${f.h},95%,65%,.75)`);
+    gr.addColorStop(1, `hsla(${f.h},95%,55%,0)`);
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(X(f.x), Y(f.y), r, 0, 6.29); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // ----- 뱀들 (작은 것부터 → 큰 뱀이 위에) -----
+  const rows = latest.players.filter(r => !r[4]).slice().sort((p, q) => (p[7] || 0) - (q[7] || 0));
+  const liveIds = new Set();
+  for (const r of rows) {
+    const id = r[0];
+    const down = r[9] || 0;
+    const pa0 = cometPaths.get(id);
+    if (down) {           // 부활 대기 — 자취를 비우고 자리 표시만
+      if (pa0) pa0.pts.length = 0;
+      if (isHost || id === myId) {
+        const ra = posA.get(id) || r;
+        ctx.globalAlpha = .5;
+        ctx.fillStyle = '#8b9bd8';
+        ctx.font = `700 ${(isHost ? 15 : 13) * dpr}px Pretendard, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`${(down / 10).toFixed(1)}초 뒤 부활`, X(ra[1]), Y(ra[2]));
+        ctx.globalAlpha = 1;
+      }
+      continue;
+    }
+    liveIds.add(id);
+    const ra = posA.get(id) || r;
+    const hx = ra[1] + (r[1] - ra[1]) * t, hy = ra[2] + (r[2] - ra[2]) * t;
+    const mass = r[7] || 20, ang = (r[6] || 0) * Math.PI / 180;
+    const boosting = r[8] === 1, inv = r[10] === 1;
+    let pa = cometPaths.get(id);
+    if (!pa) { pa = { pts: [], dash: 0 }; cometPaths.set(id, pa); }
+    pa.mass = mass;
+    cometAppend(pa, hx, hy);
+
+    const g = cometGirth(mass);
+    const spacing = Math.max(6, g * .8);
+    const n = cometSample(pa, hx, hy, spacing, cometBodyLen(mass));
+    const meta = roster.get(id) || { nick: '?', ci: 0 };
+    const col = COLORS[meta.ci % COLORS.length];
+    const dark = `hsl(${(meta.ci * 137.5) % 360} 70% 38%)`;
+    const gw = Math.max(2, g * 2 * scale);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    const buf = pa.buf;
+    const path = () => {
+      ctx.beginPath(); ctx.moveTo(X(buf[0]), Y(buf[1]));
+      for (let i = 1; i < n; i++) ctx.lineTo(X(buf[i * 2]), Y(buf[i * 2 + 1]));
+    };
+    if (inv) ctx.globalAlpha = .55;                       // 부활 직후 무적은 반투명
+    if (n > 1) {
+      if (boosting) {                                     // 부스터 글로우
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = .3; ctx.strokeStyle = col; ctx.lineWidth = gw * 2;
+        path(); ctx.stroke(); ctx.restore();
+      }
+      ctx.globalAlpha = (inv ? .55 : 1) * .18;
+      ctx.strokeStyle = col; ctx.lineWidth = gw * 1.8; path(); ctx.stroke();
+      ctx.globalAlpha = inv ? .55 : 1;
+      ctx.strokeStyle = dark; ctx.lineWidth = gw; path(); ctx.stroke();
+      pa.dash -= (boosting ? 4.2 : 2.4) * scale;
+      ctx.strokeStyle = col; ctx.lineWidth = gw * .7;
+      ctx.setLineDash([gw * .95, gw * .8]); ctx.lineDashOffset = pa.dash;
+      path(); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    }
+    // 머리
+    const HX = X(hx), HY = Y(hy), hr = Math.max(3, g * 1.05 * scale);
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(HX, HY, hr, 0, 6.29); ctx.fill();
+    // 눈
+    const off = hr * .5, er = Math.max(1.6, hr * .33);
+    for (const s of [1.25, -1.25]) {
+      const ex = HX + Math.cos(ang + s) * off, ey = HY + Math.sin(ang + s) * off;
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, er, 0, 6.29); ctx.fill();
+      ctx.fillStyle = '#10131f';
+      ctx.beginPath(); ctx.arc(ex + Math.cos(ang) * er * .4, ey + Math.sin(ang) * er * .4, er * .5, 0, 6.29); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // 이름 + 몸집 (화면상 머리 크기 기준 — 축소돼도 내 것은 항상 보이게)
+    if (hr > 4 * dpr * .6 || id === myId) {
+      const fs = Math.max(10 * dpr, Math.min(20 * dpr, hr * 1.5));
+      ctx.font = `700 ${fs}px Pretendard, sans-serif`;
+      ctx.textAlign = 'center';
+      const label = `${meta.nick} ${Math.round(mass)}`;
+      ctx.lineWidth = 3 * dpr; ctx.strokeStyle = 'rgba(5,8,20,.85)'; ctx.lineJoin = 'round';
+      ctx.strokeText(label, HX, HY - hr - 5 * dpr);
+      ctx.fillStyle = id === myId ? '#ffd24a' : 'rgba(235,240,255,.94)';
+      ctx.fillText(label, HX, HY - hr - 5 * dpr);
+    }
+    // 내가 사냥할 수 있는/나를 사냥하는 상대 표시 — 이 게임의 핵심 정보
+    if (!isHost && meRow && id !== myId) {
+      const myMass = meRow[7] || 20;
+      const canEatMe = mass >= myMass * COMET_EAT_RATIO;
+      const iCanEat = myMass >= mass * COMET_EAT_RATIO;
+      if (canEatMe || iCanEat) {
+        ctx.strokeStyle = canEatMe ? 'rgba(255,80,90,.85)' : 'rgba(110,231,183,.8)';
+        ctx.lineWidth = 2.5 * dpr;
+        ctx.beginPath(); ctx.arc(HX, HY, hr + 6 * dpr, 0, 6.29); ctx.stroke();
+      }
+    }
+  }
+  // 안 보이는 뱀의 자취는 버린다 (메모리 누수 방지)
+  for (const id of [...cometPaths.keys()]) if (!liveIds.has(id)) cometPaths.delete(id);
+
+  // ----- 파티클 -----
+  cometStepParts(Math.min(.05, 1 / 60));
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of cometParts) {
+    const k = p.life / p.max;
+    ctx.globalAlpha = k;
+    if (p.t === 'sp') {
+      ctx.fillStyle = `hsl(${p.h},95%,70%)`;
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), Math.max(1 * dpr, p.r * 1.6 * scale), 0, 6.29); ctx.fill();
+    } else {
+      ctx.strokeStyle = `hsl(${p.h},95%,72%)`; ctx.lineWidth = 3 * dpr;
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), (p.r * (1 - k) + 8) * scale, 0, 6.29); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+
+  // ----- 킬 피드 -----
+  cometFeed = cometFeed.filter(f => now - f.at < 4000);
+  if (cometFeed.length) {
+    ctx.textAlign = 'left';
+    ctx.font = `700 ${(isHost ? 17 : 12) * dpr}px Pretendard, sans-serif`;
+    cometFeed.forEach((f, i) => {
+      ctx.globalAlpha = Math.max(0, Math.min(1, (4000 - (now - f.at)) / 700));
+      ctx.fillStyle = 'rgba(8,11,26,.6)';
+      const w = ctx.measureText(f.txt).width + 16 * dpr, hgt = (isHost ? 26 : 19) * dpr;
+      const fy = topPad + 6 * dpr + i * (hgt + 4 * dpr);
+      ctx.fillRect(pad, fy, w, hgt);
+      ctx.fillStyle = '#ffd24a';
+      ctx.fillText(f.txt, pad + 8 * dpr, fy + hgt * .72);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // ----- 내 상태 (학생) -----
+  if (!isHost && meRow) {
+    const mass = Math.round(meRow[7] || 0), best = Math.round(meRow[5] || 0);
+    ctx.textAlign = 'left';
+    ctx.font = `800 ${20 * dpr}px Pretendard, sans-serif`;
+    ctx.fillStyle = '#7dd3fc';
+    ctx.fillText(`${mass}`, pad + 4 * dpr, H - 16 * dpr);
+    ctx.font = `600 ${11 * dpr}px Pretendard, sans-serif`;
+    ctx.fillStyle = '#7284c0';
+    ctx.fillText(`최고 ${best}${meRow[12] ? ' · ' + meRow[12] + '마리 꿀꺽' : ''}`, pad + 4 * dpr, H - 4 * dpr);
+    if ((meRow[7] || 0) <= COMET_BOOST_MIN) {
+      ctx.font = `700 ${11 * dpr}px Pretendard, sans-serif`;
+      ctx.fillStyle = '#f9a8d4';
+      ctx.textAlign = 'right';
+      ctx.fillText('너무 작아 부스터 불가', W - pad, H - 4 * dpr);
+    }
+  }
+  drawOverlay(latest);
+}
+
 function draw() {
   requestAnimationFrame(draw);
   if (!$('game').classList.contains('on')) return;
@@ -3699,6 +4069,7 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   if (gameType === 'run') { drawRunGame(W, H, dpr); return; }   // 설원 러너는 유사 3D 전용 렌더
   if (gameType === 'kart') { drawKartGame(W, H, dpr); return; } // 카트는 운전석 시점 전용 렌더
+  if (gameType === 'comet') { drawCometGame(W, H, dpr); return; } // 꼬리별은 몸통 경로 렌더가 따로다
   // 줄다리기: 팀 고르는 동안은 일반 아레나(걸어다녀야 하니까), 당길 때부터 전용 화면
   if (gameType === 'pull' && snaps.length) {
     const lm = snaps[snaps.length - 1].m;

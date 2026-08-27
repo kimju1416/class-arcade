@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const comet = require('./comet');   // 꼬리별 — 로직이 커서 별도 모듈로 뺐다
 
 const PORT = process.env.PORT || 3000;
 
@@ -1121,7 +1122,7 @@ function drawSuggest() {
   return [...out];
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray', 'kart', 'pull'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray', 'kart', 'pull', 'comet'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -1167,6 +1168,13 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
         : undefined,
       sumo: r.gameType === 'sumo' && r.game ? { ring: Math.round(r.game.ringR) } : undefined,
+      comet: r.gameType === 'comet' && r.game && r.game.foods
+        ? { foods: r.game.foods.size, arena: [r.game.arenaW, r.game.arenaH],
+            snakes: [...r.players.values()].filter(p => !p.waiting).map(p =>
+              ({ nick: p.nick, mass: Math.round((p.cMass || 0) * 10) / 10, max: Math.round(p.cMax || 0),
+                 eats: p.cEats || 0, down: p.cDownUntil > Date.now() ? p.cDownUntil - Date.now() : 0,
+                 boost: !!p.cBoost, pts: p.cPts ? p.cPts.length : 0 })) }
+        : undefined,
       kart: r.gameType === 'kart' && r.game && r.game.kBoxes
         ? { bananas: r.game.kBananas.length, shells: r.game.kShells.length,
             racers: [...r.players.values()].filter(p => !p.waiting).map(p =>
@@ -1342,6 +1350,9 @@ function sendCurrentPhase(room, ws) {
   // 그림 퀴즈: 재접속·새로고침 시 지금까지 그린 선을 통째로 복원
   if (room.gameType === 'draw' && room.game && room.state === 'playing' && room.game.strokes.length)
     roomSend(ws, { type: 'dfull', strokes: room.game.strokes });
+  // 꼬리별: 먹이는 평소 델타로만 나가므로 재접속·중간 입장자에겐 전체 목록을 준다
+  if (room.gameType === 'comet' && room.game && room.game.foods)
+    roomSend(ws, Object.assign({ type: 'comet_full' }, comet.payload(room.game, true)));
   // 교사 화면 전용 라운드 페이로드 재전송 — TV를 새로고침해도 진행 중 라운드가 깨지지 않게.
   // 정답 유출 방지를 위해 반드시 호스트 소켓에만 보낸다.
   if (ws === room.hostWs && room.game && room.state === 'playing') {
@@ -1636,6 +1647,8 @@ function startGame(room, type, opt) {
       p.crayTrapUntil = 0; p.crayInvUntil = 0; p.crayTrappedBy = 0;
       p.crayKills = 0; p.crayRescues = 0; p.crayItemAt = 0; p.crayRescuedAt = 0;
     });
+  } else if (type === 'comet') {
+    comet.start(room, opt);
   } else if (type === 'pull') {
     g.roundMs = 0;                       // 판 진행은 pullPhase가 관리한다
     g.arenaW = 1200; g.arenaH = 700;
@@ -1812,6 +1825,18 @@ function tick(room) {
   else if (room.gameType === 'cray') crayTick(room, now, dt);
   else if (room.gameType === 'kart') kartTick(room, now, dt);
   else if (room.gameType === 'pull') pullTick(room, now, dt);
+  else if (room.gameType === 'comet') cometTick(room, now, dt);
+}
+
+// ---------- 꼬리별 ----------
+function cometTick(room, now, dt) {
+  comet.tick(room, now, dt);
+  if (now >= room.phaseEndAt) { endComet(room); return; }
+  sendState(room, now);
+}
+function endComet(room) {
+  const sorted = comet.sortForRank([...room.players.values()]);
+  finishGame(room, sorted, comet.labelOf, comet.keyOf);
 }
 
 function movePlayers(room, dt, speedOf) {
@@ -4043,6 +4068,7 @@ function sendState(room, now) {
       const extra = type === 'tag' ? (p.infected ? 1 : 0)
         : type === 'sadari' ? (p.sadariCaught || 0)   // 점수 대신 걸린 횟수
         : type === 'cray' ? (p.crayKills || 0)
+        : type === 'comet' ? Math.round(p.cMax || 0)
         : (type === 'coin' || type === 'mos' || type === 'claw' || type === 'gala' || type === 'timing' || type === 'run') ? p.score
         : type === 'race' ? (raceOrder ? raceOrder.get(p.id) || 0 : 0)
         : type === 'kart' ? (kartOrder ? kartOrder.get(p.id) || 0 : 0) : 0;
@@ -4075,6 +4101,8 @@ function sendState(room, now) {
                  p.crayPow || 1, p.craySpd || 0,
                  now - (p.crayItemAt || 0) < 600 ? 1 : now - (p.crayRescuedAt || 0) < 800 ? 2 : 0);
       }
+      // 꼬리별: [방향각, 몸집, 부스터, 부활대기(0.1초), 무적, 방금먹음, 잡아먹은수]
+      if (type === 'comet') row.push(...comet.row(p, now));
       // 폭탄 밟은 직후 1초간 "0원!" 연출
       if (type === 'coin') row.push(now - (p.lostAt || 0) < 1000 ? 1 : 0);
       // 파리채 위치·최근 명중 표시
@@ -4186,6 +4214,12 @@ function sendState(room, now) {
     for (const s of g.streams) for (const [cx, cy] of s.cells) sc.push(cx, cy);
     msg.streams = sc;
     msg.items = g.items.map(it => [it.cx, it.cy, it.t]);
+  }
+  if (type === 'comet') {
+    // 먹이는 델타로만 보낸다(매 틱 전체 목록은 600개×20Hz라 과하다).
+    // 재접속·중간 입장자는 sendCurrentPhase가 전체 목록을 따로 챙긴다.
+    Object.assign(msg, comet.payload(g, false));
+    comet.clearDeltas(g);
   }
   if (type === 'sumo') msg.ring = Math.round(g.ringR);
   if (type === 'chair') {
@@ -4435,6 +4469,15 @@ wss.on('connection', (ws) => {
         const len = Math.hypot(x, y);
         if (len > 1) { x /= len; y /= len; }
         p.dirX = finite(x); p.dirY = finite(y);
+        break;
+      }
+
+      // 꼬리별: 부스터 버튼 누름/뗌 (몸을 태워 가속)
+      case 'cboost': {
+        if (!room || ws.playerId == null || room.gameType !== 'comet') return;
+        const p = room.players.get(ws.playerId);
+        if (!p || !room.game || p.waiting) return;
+        p.cBoost = msg.v === 1 || msg.v === true;
         break;
       }
 

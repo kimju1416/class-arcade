@@ -14,6 +14,7 @@ const GAMES = [
   ['chimp', '침팬지 테스트'], ['flash', '순간 포착'], ['pairs', '같은 그림 찾기'],
   ['tetris', '블록 배틀'], ['draw', '그림 퀴즈'],
   ['cray', '물풍선 대작전'], ['kart', '카트 그랑프리'], ['pull', '줄다리기'],
+  ['comet', '꼬리별'],
 ];
 
 module.exports = async function run() {
