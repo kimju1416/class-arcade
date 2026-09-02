@@ -4168,6 +4168,7 @@ function predictMe(latest, sx, sy, infected) {
 // ---- 캔버스 렌더링 ----
 const cv = $('cv'), ctx = cv.getContext('2d');
 const PLAYER_R_CLIENT = 16;
+const PLAYER_VIS = 1.3;   // v3: 화면에서만 캐릭터를 키운다 (판정 반지름은 서버 그대로)
 function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; }
 addEventListener('resize', resize); resize();
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -4667,6 +4668,119 @@ function fxDiff(latest) {
 }
 
 
+// ============================================================
+// v3 그래픽 층 (2026-09-03) — 아레나 게임 공용 "조명 + 분위기 파티클"
+// 바닥은 그대로 두고 그 위에 어둠을 깔아 플레이어·폭탄·동전 주변만 밝히고(destination-out),
+// 색 글로우(lighter)를 얹는다. 게임별 그림을 새로 그리지 않고도 화면에 깊이가 생긴다.
+// ============================================================
+const LIGHT_CV = document.createElement('canvas'), LCTX = LIGHT_CV.getContext('2d');
+// 어둠 농도 — 밝은 바닥(물풍선 눈·사탕, 레이싱 잔디)은 제외. 0이면 글로우만.
+const LIGHT_DARK = { bomb: .36, tag: .4, coin: .28, mos: .22, claw: .26, dodge: .28, sumo: .22, chair: .3, ox: .2, gala: 0 };
+// 광원 목록 [x, y, 구멍반지름, 글로우색, 글로우세기, 글로우반지름] (아레나 좌표)
+function lightObjs(latest) {
+  const now = performance.now(), out = [];
+  const flick = 0.85 + 0.15 * Math.sin(now / 70);
+  if (latest.mode === 'bomb' && latest.bombs) for (const [x, y, r, boom, prog] of latest.bombs)
+    out.push(boom ? [x, y, r * 2.4, '#ffd27a', .7 * (1 - prog / 130), r * 2.2] : [x, y, r * 1.35, '#ff7a2a', .42 * flick + prog / 300, r * 1.15]);
+  if (latest.mode === 'coin') {
+    for (const [x, y, v] of (latest.coins || [])) out.push([x, y, v === 3 ? 70 : 44, '#ffd24a', v === 3 ? .34 : .22, v === 3 ? 44 : 28]);
+    for (const [x, y, live] of (latest.mines || [])) out.push([x, y, 60, '#ff4a4a', live ? .3 * flick : .18 * (0.5 + 0.5 * Math.sin(now / 90)), 40]);
+  }
+  if (latest.mode === 'mos') for (const [x, y, gold] of (latest.mos || [])) out.push(gold ? [x, y, 60, '#ffd700', .32, 36] : [x, y, 44, '#d8ffb0', .07, 22]);   // 모기는 보여야 잡는다
+  if (latest.mode === 'claw') for (const [x, y, v] of (latest.dolls || [])) out.push([x, y, v === 5 ? 72 : v === 3 ? 56 : 44, v === 5 ? '#ff8fab' : v === 3 ? '#8ecae6' : '#c7d0e8', v === 5 ? .3 : .18, v === 5 ? 46 : 32]);
+  if (latest.mode === 'chair') for (const [x, y, owned] of (latest.chairs || [])) out.push([x, y, 70, owned ? '#9ad8ff' : '#ffd24a', owned ? .16 : .3 * (0.7 + 0.3 * Math.sin(now / 160)), 40]);
+  if (latest.mode === 'gala') for (const [x, y, elite] of (latest.enemies || [])) out.push([x, y, 0, elite ? '#c78bff' : '#6cf06c', .16, 30]);
+  if (latest.mode === 'sumo' && latest.ring) out.push([arena.w / 2, arena.h / 2, latest.ring * 1.08, '#ffd8a0', .08, latest.ring]);
+  if (latest.mode === 'ox') { out.push([arena.w * .25, arena.h * .5, arena.w * .3, '#3ddc84', .06, arena.w * .25]); out.push([arena.w * .75, arena.h * .5, arena.w * .3, '#ff5d5d', .06, arena.w * .25]); }
+  return out;
+}
+function drawLighting(latest, pts, ox, oy, scale, dpr) {
+  const dark = LIGHT_DARK[latest.mode];
+  if (dark == null) return false;
+  const aw = Math.round(arena.w * scale), ah = Math.round(arena.h * scale);
+  if (aw <= 0 || ah <= 0) return false;
+  const objs = lightObjs(latest);
+  if (dark > 0) {
+    if (LIGHT_CV.width !== aw || LIGHT_CV.height !== ah) { LIGHT_CV.width = aw; LIGHT_CV.height = ah; }
+    LCTX.globalCompositeOperation = 'source-over';
+    LCTX.clearRect(0, 0, aw, ah);
+    LCTX.fillStyle = `rgba(3,6,20,${dark})`; LCTX.fillRect(0, 0, aw, ah);
+    LCTX.globalCompositeOperation = 'destination-out';
+    const hole = (x, y, r, a) => {
+      if (r <= 0) return;
+      const g = LCTX.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(.5, `rgba(0,0,0,${a * .6})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+      LCTX.fillStyle = g; LCTX.beginPath(); LCTX.arc(x, y, r, 0, 7); LCTX.fill();
+    };
+    for (const p of pts) hole(p.x - ox, p.y - oy, (p.alive ? 240 : 90) * scale, p.alive ? 1 : .55);
+    for (const o of objs) hole(o[0] * scale, o[1] * scale, o[2] * scale, .95);
+    ctx.drawImage(LIGHT_CV, ox, oy);
+  }
+  // 색 글로우 — 더하기 합성이라 겹칠수록 밝아진다 (플레이어는 자기 색으로 바닥을 물들인다)
+  ctx.save();
+  ctx.beginPath(); ctx.rect(ox, oy, aw, ah); ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = (x, y, r, col, a) => {
+    if (r <= 0 || a <= 0) return;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = Math.min(1, a); ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  };
+  for (const p of pts) if (p.alive) glow(p.x, p.y + 6 * scale, 84 * scale, p.infected ? '#8ED11F' : p.col, .3);
+  for (const o of objs) glow(ox + o[0] * scale, oy + o[1] * scale, o[5] * scale, o[3], o[4]);
+  ctx.restore();
+  return dark > 0;
+}
+
+// 분위기 파티클 — 게임마다 다른 공기감 (불씨·반딧불·반짝이·먼지·음표·유성)
+const AMBIENT = {
+  bomb:  { n: 28, col: ['#ff9b4a', '#ffd27a', '#ff6a3a'], vy: -26, size: 2.4, sway: 1.2, a: .75, blink: 1 },
+  tag:   { n: 24, col: ['#b6ff5c', '#8ED11F', '#e8ffb0'], vy: -9, size: 2.2, sway: 2.2, a: .6, blink: 1 },
+  coin:  { n: 22, col: ['#ffe27a', '#ffffff', '#ffd24a'], vy: -13, size: 1.8, sway: 1, a: .65, blink: 1 },
+  mos:   { n: 18, col: ['#d8ffa0', '#ffffb0'], vy: -7, size: 2, sway: 2.6, a: .5, blink: 1 },
+  claw:  { n: 18, col: ['#ff8fc4', '#9ad8ff', '#ffe27a'], vy: -10, size: 2.2, sway: 1.5, a: .55, blink: 1 },
+  dodge: { n: 34, col: ['#ff64c8', '#8ab4ff', '#ffffff'], vy: 110, size: 1.5, sway: 0, a: .32, streak: 1 },
+  gala:  { n: 26, col: ['#ffffff', '#9ad8ff'], vy: 160, size: 1.3, sway: 0, a: .4, streak: 1 },
+  sumo:  { n: 16, col: ['#d8c2a0', '#f0e0c0'], vy: -11, size: 3.2, sway: 1.2, a: .26 },
+  chair: { n: 12, col: ['#ffd27a', '#ff8fc4', '#9ad8ff'], vy: -18, size: 0, sway: 1.4, a: .8, note: 1 },
+  ox:    { n: 14, col: ['#ffffff'], vy: -12, size: 2, sway: 1, a: .3 },
+  cray:  { n: 12, col: ['#ffffff', '#d8f4ff'], vy: 16, size: 2.2, sway: 1.6, a: .45 },
+};
+let ambParts = [], ambMode = '';
+function drawAmbient(latest, ox, oy, scale, dpr) {
+  const pre = AMBIENT[latest.mode]; if (!pre) return;
+  const now = performance.now();
+  if (ambMode !== latest.mode) {   // 게임이 바뀌면 새로 뿌린다
+    ambMode = latest.mode; ambParts = [];
+    for (let i = 0; i < pre.n; i++) ambParts.push({ x: Math.random() * arena.w, y: Math.random() * arena.h, ph: Math.random() * 6.28, sp: .6 + Math.random() * .8, col: pre.col[i % pre.col.length], note: pre.note ? ['♪', '♫', '♩'][i % 3] : '' });
+  }
+  const dt = Math.min(0.05, ambDrawAt ? (now - ambDrawAt) / 1000 : 0.016); ambDrawAt = now;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(ox, oy, arena.w * scale, arena.h * scale); ctx.clip();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const p of ambParts) {
+    p.y += pre.vy * p.sp * dt; p.ph += dt * .9 * p.sp;
+    p.x += Math.sin(p.ph) * pre.sway * 18 * dt;
+    if (p.y < -20) { p.y = arena.h + 20; p.x = Math.random() * arena.w; }
+    if (p.y > arena.h + 20) { p.y = -20; p.x = Math.random() * arena.w; }
+    if (p.x < -20) p.x = arena.w + 20; if (p.x > arena.w + 20) p.x = -20;
+    const a = pre.a * (pre.blink ? .45 + .55 * Math.abs(Math.sin(p.ph * 2.1)) : 1);
+    ctx.globalAlpha = a; ctx.fillStyle = p.col;
+    const x = ox + p.x * scale, y = oy + p.y * scale;
+    if (pre.note) { ctx.font = `700 ${(isHost ? 22 : 13) * dpr}px Pretendard, sans-serif`; ctx.fillText(p.note, x, y); }
+    else if (pre.streak) { ctx.fillRect(x - .7 * dpr, y - pre.vy * p.sp * .05 * scale, 1.4 * dpr, pre.vy * p.sp * .1 * scale); }
+    else { ctx.beginPath(); ctx.arc(x, y, pre.size * p.sp * dpr, 0, 7); ctx.fill(); }
+  }
+  ctx.restore(); ctx.textBaseline = 'alphabetic';
+}
+let ambDrawAt = 0;
+// 작은 불티/반짝이 한 알 (폭탄 도화선·동전 광택용)
+FX.spark = function (x, y, col, { rise = 60, life = 420, size = 2.2 } = {}) {
+  if (this.parts.length > 500) return;
+  this.parts.push({ x, y, vx: (Math.random() - .5) * 40, vy: -rise * (0.6 + Math.random() * 0.8), col, size, grav: -20, life, t: life });
+};
+
 function draw() {
   requestAnimationFrame(draw);
   FX.step();
@@ -4792,6 +4906,7 @@ function draw() {
         if (SPR.bomb) {
           const puff = 1 + Math.sin(performance.now() / 90) * 0.06;   // 도화선 타는 느낌
           drawSpr(SPR.bomb, x, y, r * 0.95 * puff);
+          if (Math.random() < 0.45) FX.spark(bx + br * 0.28, by - br * 0.62, Math.random() < .5 ? '#ffd27a' : '#ff8a3a', { rise: 70, life: 380, size: 2 });   // 도화선 불티
         }
       } else if (SPR.boom) {
         // 폭발 스프라이트: 커지면서 옅어지고 살짝 회전
@@ -4831,6 +4946,7 @@ function draw() {
         ctx.beginPath(); ctx.arc(x, y + float, r * 1.5, 0, 7); ctx.stroke();
       }
       if (SPR.coin) drawSpr(SPR.coin, x, y + float, r * 2.4);
+      if (Math.random() < (v === 3 ? 0.06 : 0.012)) FX.spark(cx2 + (Math.random() - .5) * 20, cy2 - 6, '#ffffff', { rise: 24, life: 360, size: 1.8 });   // 광택 반짝
       else { ctx.fillStyle = v === 3 ? '#ffd700' : '#f5c542'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
     }
     // 동전 줍기의 폭탄: 깜빡이는 경고 → 활성
@@ -5336,6 +5452,7 @@ function draw() {
 
   // 플레이어
   let aliveCount = 0, humanCount = 0, myScore = 0, myAlive = null, tapHud = null;
+  const lightPts = [];   // v3 조명: 플레이어 위치(화면 좌표)
 
   // 모기 잡기·인형 뽑기는 캐릭터가 돌아다니지 않으므로 따로 그린다
   const tapMode = latest.mode === 'mos' || latest.mode === 'claw';
@@ -5426,9 +5543,10 @@ function draw() {
     const infected = latest.mode === 'tag' && extra === 1;
     if (alive) { aliveCount++; if (!infected) humanCount++; }
     if (id === myId) { myScore = extra; myAlive = { alive, infected }; }
+    lightPts.push({ x: px, y: py, col: COLORS[meta.ci % COLORS.length], alive: !!alive, infected });
 
     ctx.globalAlpha = alive ? 1 : 0.25;
-    const rr = infected ? r * 1.4 : r;
+    const rr = (infected ? r * 1.4 : r) * PLAYER_VIS;
     // 발밑 그림자 — 우주(갤러그)에서는 생략
     if (latest.mode !== 'gala') {
       ctx.fillStyle = 'rgba(0,0,0,.28)';
@@ -5477,7 +5595,7 @@ function draw() {
       ctx.strokeStyle = `rgba(255,210,74,${0.55 + pulse * 0.45})`; ctx.lineWidth = (2.5 + pulse * 1.5) * dpr;
       ctx.beginPath(); ctx.arc(px, py, rr + (4 + pulse * 3) * dpr, 0, 7); ctx.stroke();
       // 머리 위 화살표 — 30명 사이에서 내 캐릭터를 잃어버리지 않게
-      const ay = py - rr - 36 * dpr - Math.sin(performance.now() / 220) * 4 * dpr;
+      const ay = py - rr - 48 * dpr - Math.sin(performance.now() / 220) * 4 * dpr;
       ctx.fillStyle = '#ffd24a';
       ctx.beginPath(); ctx.moveTo(px, ay + 9 * dpr); ctx.lineTo(px - 7 * dpr, ay - 3 * dpr); ctx.lineTo(px + 7 * dpr, ay - 3 * dpr); ctx.closePath(); ctx.fill();
     } else if (id === myId) {
@@ -5553,25 +5671,30 @@ function draw() {
       ctx.fillText(label, px, by + h / 2 + 1 * dpr);
       ctx.textBaseline = 'alphabetic';
     } else {
-      ctx.font = `${(id === myId ? 800 : 600)} ${(isHost ? 21 : 14) * dpr}px Pretendard, sans-serif`;
-      // 어두운 테두리를 먼저 깐다. 물풍선 맵의 눈·모래·사탕 바닥처럼 밝은 배경에서는
-      // 옅은 글자색만으로는 이름이 그대로 묻힌다(어두운 아레나에서는 티가 안 난다).
-      ctx.strokeStyle = 'rgba(12,18,38,.72)';
-      ctx.lineWidth = Math.max(2, (isHost ? 4 : 3) * dpr);
-      ctx.lineJoin = 'round';
-      ctx.strokeText(name, px, py - rr - 8 * dpr);
-      // 팀 대항전이면 이름을 팀 색으로 — 게임 중에 누가 우리 편인지 보여야 응원이 된다
-      const tcol = teamOn ? TEAM_COL[(roster.get(id) || {}).team || 0] : null;
-      ctx.fillStyle = id === myId ? '#ffc74a' : (tcol || '#eef2ff');
-      ctx.fillText(name, px, py - rr - 8 * dpr);
+      // v3 이름표: 반투명 알약 + 플레이어 색 테두리 (밝은 바닥·어두운 바닥 어디서든 읽힌다)
+      const fs = (isHost ? 20 : 13) * dpr;
+      ctx.font = `${(id === myId ? 800 : 700)} ${fs}px Pretendard, sans-serif`;
+      const tw = ctx.measureText(name).width + 14 * dpr, th = fs + 8 * dpr;
+      const bx = px - tw / 2, by = py - rr - 12 * dpr - th;
+      const tcol = teamOn ? TEAM_COL[(roster.get(id) || {}).team || 0] : null;   // 팀전이면 팀 색
+      const pcol = tcol || COLORS[meta.ci % COLORS.length];
+      ctx.fillStyle = id === myId ? 'rgba(255,176,58,.92)' : 'rgba(10,14,32,.66)';
+      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, by, tw, th, th / 2); else ctx.rect(bx, by, tw, th); ctx.fill();
+      if (id !== myId) { ctx.strokeStyle = pcol; ctx.lineWidth = 1.5 * dpr; ctx.globalAlpha = (alive ? 1 : .25) * .85; ctx.stroke(); ctx.globalAlpha = alive ? 1 : 0.25; }
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = id === myId ? '#241a05' : '#f4f6ff';
+      ctx.fillText(name, px, by + th / 2 + 1 * dpr);
+      ctx.textBaseline = 'alphabetic';
     }
     ctx.globalAlpha = 1;
   }
 
-  // v2 연출: 상태 diff → 파티클·팝업·배너, 그 위에 비네트
+  // v3 그래픽: 분위기 파티클 + 동적 조명 (아레나 게임만)
+  const lit = (!boardMode && !chimpMode && !raceMode) ? (drawAmbient(latest, ox, oy, scale, dpr), drawLighting(latest, lightPts, ox, oy, scale, dpr)) : false;
+  // v2 연출: 상태 diff → 파티클·팝업·배너, 그 위에 비네트 (조명이 어둠을 깔았으면 비네트는 생략)
   fxDiff(latest);
   FX.draw(ox, oy, scale, dpr);
-  if (!tapMode && !boardMode) FX.vignette(ox, oy, arena.w * scale, arena.h * scale);
+  if (!tapMode && !boardMode && !lit) FX.vignette(ox, oy, arena.w * scale, arena.h * scale);
 
   // 효과음 트리거 (교사 화면): 폭발·동전·감염 변화 감지
   if (isHost && phase === 'playing') {

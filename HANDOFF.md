@@ -89,6 +89,7 @@ node server.js         # http://localhost:3000
 - **보간**: draw()가 스냅샷 2개(a→b) 사이를 t로 보간. **커스텀 렌더러 추가 시 반드시 b.m 기준으로 그릴 것**(latest 섞으면 위치 튐 — 레이싱에서 실제 겪음).
 - **v2 연출 층 `FX` (2026-09-03)**: 전 게임 공용. `FX.burst/ring/pop/shake/flash/banner/feedAdd`. **게임별 코드를 고치지 않고 `fxDiff(latest)`가 서버 상태 diff(탈락·감염·득점·폭탄)를 감지해 자동 발화**한다 — 행 구조 `[id,x,y,alive,waiting,extra]`를 쓰는 아레나 게임(`FX_ARENA`)만 위치 연출, 나머지는 배너·피드만. 흔들림은 `#cv`의 CSS transform, 번쩍임은 `#fxFlash` DOM이라 전용 렌더러 게임(러너·카트·꼬리별)에서도 먹는다. 새 게임을 추가하면 `enterGameView`가 `FX.reset()`을 부르니 별도 처리 불필요. 배경 캔버스 `#bgfx`(BG 모듈)는 게임 캔버스가 뜨면 스스로 쉰다.
 - **이모지 반응**: 학생 폰 로비·결과 화면의 `react-bar` → 서버 `react {e:0~7}` → **TV에게만** 중계(`#reactLayer`에 떠오름). 서버가 로비·결과 상태에서만 받고 학생당 0.6초 간격(`REACT_MIN_MS`)으로 제한. 종류를 늘리면 클라 `REACTS`와 서버 `REACT_MAX`를 같이 바꿀 것.
+- **v3 그래픽 층 (2026-09-03)**: `drawLighting`(오프스크린 캔버스에 어둠을 깔고 플레이어·폭탄·동전·의자 주변을 destination-out으로 뚫은 뒤 lighter 합성으로 색 글로우) + `drawAmbient`(게임별 분위기 파티클 `AMBIENT` — 불씨·반딧불·반짝이·먼지·음표·유성). 어둠 농도는 `LIGHT_DARK`(없는 게임은 조명 자체를 건너뜀 — 물풍선·레이싱처럼 바닥이 밝은 게임은 넣지 말 것). 광원 목록은 `lightObjs(latest)`에 게임별로 추가. **어둠은 0.2~0.4가 한계** — 0.5로 하니 교실 TV에서 모기가 안 보였다. 캐릭터는 `PLAYER_VIS`(1.3)로 화면에서만 키운다(판정은 서버). 이름표는 알약(내 것은 앰버, 남은 플레이어 색 테두리).
 - **로비 🎲 랜덤 뽑기**: `spinRoulette()` — 보이는 카드(`.game-card[data-key]`)만 대상. 카드에 `data-key`가 있으니 테스트는 인덱스 말고 키로 클릭할 것.
 
 ### 함정 (실제로 당했던 것들)
