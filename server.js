@@ -4299,6 +4299,8 @@ server.on('error', (e) => console.error('[http 오류]', e.message));
 process.on('uncaughtException', (e) => console.error('[치명적 예외 - 계속 실행]', e && e.stack || e));
 process.on('unhandledRejection', (e) => console.error('[처리 안 된 거부]', e));
 
+const REACT_MAX = 8;         // 이모지 반응 종류 수 (클라 REACTS와 같아야 한다)
+const REACT_MIN_MS = 600;    // 한 학생의 반응 간격 하한 — 연타로 TV를 도배하지 못하게
 const MSG_LIMIT = 60;        // 소켓당 초당 허용 메시지 수
 const MSG_WINDOW_MS = 1000;
 
@@ -4911,6 +4913,21 @@ wss.on('connection', (ws) => {
           sendRoster(room);
         }
         break;
+
+      // 이모지 반응: 학생 폰 → 교사 TV로만 중계 (로비·결과 화면에서만, 학생당 0.6초 간격)
+      case 'react': {
+        if (!room || ws.playerId == null) return;
+        if (room.state !== 'lobby' && room.state !== 'result') return;
+        const p = room.players.get(ws.playerId);
+        if (!p) return;
+        const e = Math.floor(finite(msg.e, -1));
+        if (e < 0 || e >= REACT_MAX) return;
+        const nowR = Date.now();
+        if (nowR - (p.reactAt || 0) < REACT_MIN_MS) return;
+        p.reactAt = nowR;
+        if (room.hostWs && room.hostWs.readyState === 1) room.hostWs.send(JSON.stringify({ type: 'react', e, id: p.id }));
+        break;
+      }
 
       case 'close_room':
         if (isRoomHost(room, ws)) closeRoom(room, '선생님이 방을 닫았습니다.');

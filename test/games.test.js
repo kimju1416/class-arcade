@@ -476,6 +476,36 @@ module.exports = async function run() {
          '절약: 점수가 안 오면 클라가 직전 값을 쓴다');
   }
 
+  // ---------- 이모지 반응 (학생 → TV) ----------
+  {
+    const r = await H.makeRoom(2);
+    H.clearFrames(r.host, ...r.bots);
+    H.send(r.bots[0], { type: 'react', e: 1 });
+    await H.sleep(250);
+    const got = H.last(r.host, 'react');
+    t.ok(got && got.e === 1 && got.id === r.ids[0], '반응: 로비에서 TV로 중계 (번호·보낸 사람)');
+    t.ok(!H.last(r.bots[1], 'react') && !H.last(r.bots[0], 'react'), '반응: 학생 폰에는 안 간다 (TV 전용)');
+    H.clearFrames(r.host);
+    H.send(r.bots[0], { type: 'react', e: 2 });          // 0.6초 안의 연타 → 무시
+    H.send(r.bots[0], { type: 'react', e: 99 });         // 범위 밖
+    H.send(r.bots[0], { type: 'react', e: -1 });
+    H.sendRaw(r.bots[0], '{"type":"react","e":1e400}');   // Infinity
+    await H.sleep(250);
+    t.ok(r.host.frames.filter(f => f.type === 'react').length === 0, '반응: 연타·범위 밖·Infinity 전부 무시');
+    await H.sleep(700);
+    H.send(r.bots[1], { type: 'react', e: 7 });
+    await H.sleep(250);
+    t.ok(!!H.last(r.host, 'react'), '반응: 다른 학생은 독립적으로 통과');
+    H.send(r.host, { type: 'start_game', game: 'bomb' });
+    await H.waitPlaying(r.code);
+    H.clearFrames(r.host);
+    await H.sleep(700);
+    H.send(r.bots[1], { type: 'react', e: 3 });
+    await H.sleep(250);
+    t.ok(r.host.frames.filter(f => f.type === 'react').length === 0, '반응: 게임 중에는 막힌다 (화면 방해 방지)');
+    r.close();
+  }
+
   t.ok(H.serverErrors().length === 0, '서버 예외 0건');
   return t;
 };
