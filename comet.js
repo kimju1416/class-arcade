@@ -235,7 +235,9 @@ function tick(room, now, dt) {
   const done = new Set();
   for (const [hunter, prey] of eaten) {
     if (done.has(prey.id) || done.has(hunter.id)) continue;
-    if (now < prey.cDownUntil) continue;
+    // 아직 쓰러져 있으면 못 먹는다. 부활 시각이 이미 지난 상대도 제외한다 —
+    // 부활 처리는 아래(4)에서 하므로, 여기서 먹으면 "부활하자마자 그 자리에서 다시 먹히는" 창이 생긴다.
+    if (prey.cDownUntil) continue;
     done.add(prey.id);
     const gained = prey.cMass * ABSORB;
     hunter.cMass = Math.min(MASS_CAP, hunter.cMass + gained);

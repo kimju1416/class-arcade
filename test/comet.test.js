@@ -167,9 +167,19 @@ module.exports = async function run() {
     A.cMass = 300; A.cBoost = true; A.cInvUntil = 0;
     A.x = room.game.arenaW / 2; A.y = room.game.arenaH / 2;
     const before = A.cMass;
-    for (let i = 0; i < 10; i++) comet.tick(room, Date.now() + i * 50, 0.05);
+    // 연소만 본다 — 달리는 동안 먹이를 먹으면 질량이 늘어 상쇄된다(6회 중 1회 실패했다).
+    // 그래서 이 방에서는 매 틱 먹이를 비운다. 펠릿을 흘리는지는 아래에서 따로 본다.
+    const t0 = Date.now();
+    room.game.foods.clear();
+    for (let i = 0; i < 10; i++) { comet.tick(room, t0 + i * 50, 0.05); room.game.foods.clear(); }
     t.ok(A.cMass < before, `부스터는 질량을 태운다 (${before} → ${Math.round(A.cMass)})`);
-    t.ok(room.game.foods.size > 40, '태운 만큼 펠릿을 흘린다');
+    // 펠릿은 먹이를 그대로 둔 방에서 센다 (위에서 비웠으니 같은 방으로는 못 센다)
+    const room2 = fakeRoom(1);
+    const A2 = [...room2.players.values()][0];
+    A2.cMass = 300; A2.cBoost = true; A2.cInvUntil = 0;
+    A2.x = room2.game.arenaW / 2; A2.y = room2.game.arenaH / 2;
+    for (let i = 0; i < 10; i++) comet.tick(room2, t0 + i * 50, 0.05);
+    t.ok(room2.game.foods.size > 40, `태운 만큼 펠릿을 흘린다 (${room2.game.foods.size}개)`);
     // 너무 작으면 더 깎이지 않는다
     A.cMass = comet.BOOST_MIN - 1;
     const tiny = A.cMass;

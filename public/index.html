@@ -1528,6 +1528,7 @@ function noteSnapGap() {
 function resetInterp() { snapGaps = []; snapPrevAt = 0; interpMs = 120; }
 
 let crayGrid = null;   // 물풍선 대작전 맵 캐시 (grid는 바뀔 때만 서버가 보냄)
+let crayMapCv = null, crayMapKey = '';   // 맵을 그려 둔 오프스크린 캔버스 (내용이 같으면 재사용)
 // ── 물풍선 맵 테마 4종 ────────────────────────────────────────────────
 // 판마다 바닥·블록이 통째로 바뀐다. 어느 테마인지는 grid 문자열 해시로 정하므로
 // TV와 학생 폰이 서로 약속하지 않아도 반드시 같은 맵을 그린다(프로토콜 변경 불필요).
@@ -3179,6 +3180,7 @@ function enterGameView(keepInput) {
   resetInterp();                    // 보간 지연 측정도 판마다 새로
   lastQScores = null;               // 퀴즈 점수 캐시도 판마다 비운다
   crayGrid = null;                  // 물풍선 맵 캐시도 판마다 초기화
+  crayMapKey = '';                  // 그려 둔 맵도 다시 그리게 (테마·맵이 바뀐다)
   crayTheme = CRAY_THEMES[0];       // 테마도 초기화 (다음 판 첫 grid가 오면 서버 값으로 덮인다)
   $('hudTime').textContent = '';
   $('hudLeft').textContent = '';
@@ -3945,7 +3947,12 @@ function drawSpr(img, x, y, size) {
 }
 
 // 화면 좌표 → 아레나 좌표 (draw()가 매 프레임 갱신하는 view 사용)
-function canvasDpr() { return Math.min(2, devicePixelRatio || 1); }   // 게임 캔버스 해상도 상한 — 3x 폰은 픽셀이 2.25배라 느리다
+// 게임 캔버스 해상도. 3x 폰은 픽셀이 2.25배라 느려서 2배로 자른다.
+// 가벼운 모드에서는 0.7배로 더 낮춘다 — 느린 기기의 진짜 병목은 우리 그리기 코드(27ms)가 아니라
+// 1920x1080 캔버스를 매 프레임 화면에 합성하는 비용(200ms+)이었다(실측). 픽셀 수를 절반으로 줄이는 게 가장 크게 듣는다.
+// GFX(const)는 아래에서 선언된다 — 로드 시 resize()가 먼저 도는데 const는 선언 전 접근이 예외이고
+// typeof로도 못 막는다(TDZ). 그래서 플래그는 호이스팅되는 var에 둔다.
+function canvasDpr() { const d = Math.min(2, devicePixelRatio || 1); return GFX_LITE ? d * 0.7 : d; }
 function toArena(clientX, clientY) {
   const dpr = canvasDpr();
   return { x: (clientX * dpr - view.ox) / view.scale, y: (clientY * dpr - view.oy) / view.scale };
@@ -4876,8 +4883,10 @@ let ambDrawAt = 0;
 
 // 그래픽 품질 자동 조절 — 프레임이 2초 넘게 25fps 아래면 조명·분위기 파티클을 끈다(한 번 내려가면 세션 동안 유지).
 // 교실 구형 PC·저사양 폰에서 "버벅임"보다 "밋밋함"이 낫다. 수동 고정: localStorage ca_gfx = 'high' | 'lite'
+var GFX_LITE = localStorage.getItem('ca_gfx') === 'lite';   // var: 위쪽 canvasDpr()이 선언 전에 읽어도 안전
 const GFX = {
-  lite: localStorage.getItem('ca_gfx') === 'lite', forced: !!localStorage.getItem('ca_gfx'),
+  get lite() { return GFX_LITE; }, set lite(v) { GFX_LITE = v; },
+  forced: !!localStorage.getItem('ca_gfx'),
   get level() { return this.lite ? 'lite' : 'high'; },
   _last: 0, _slow: 0, _acc: 0, _n: 0,
   tick() {
@@ -4887,7 +4896,7 @@ const GFX = {
       if (dt < 500) { this._acc += dt; this._n++; }
       if (this._n >= 30) {   // 30프레임마다 평균 판정
         const avg = this._acc / this._n; this._acc = 0; this._n = 0;
-        if (!this.forced && !this.lite) { this._slow = avg > 40 ? this._slow + avg * 30 : 0; if (this._slow > 2000) { this.lite = true; console.info('[GFX] 프레임이 느려 가벼운 모드로 전환'); } }
+        if (!this.forced && !this.lite) { this._slow = avg > 40 ? this._slow + avg * 30 : 0; if (this._slow > 2000) { this.lite = true; resize(); console.info('[GFX] 프레임이 느려 가벼운 모드로 전환'); } }
       }
     }
     this._last = now;
@@ -5199,28 +5208,40 @@ function draw() {
     const TH = crayTheme;
     const CELL = 60, COLS = 15, ROWS = 13;
     const cs = CELL * scale;
+    // 맵(바닥·도로·풀·집·나무·상자)은 상자가 부서질 때만 바뀐다. 매 프레임 195칸을 벡터로 다시 그리면
+    // 느린 기기에서 7fps까지 떨어졌다(실측) — 같은 맵이면 오프스크린 한 장을 그대로 붙인다.
+    const mapW = Math.max(1, Math.round(COLS * cs)), mapH = Math.max(1, Math.round(ROWS * cs));
+    const sprKey = [TH.box, TH.tree].concat(TH.houses).map(n => (SPR[n] ? 1 : 0)).join('');
+    const mapKey = (crayGrid || '') + '|' + CRAY_THEMES.indexOf(TH) + '|' + mapW + 'x' + mapH + '|' + sprKey;
+    if (crayMapKey !== mapKey) {
+      crayMapKey = mapKey;
+      if (!crayMapCv) crayMapCv = document.createElement('canvas');
+      if (crayMapCv.width !== mapW || crayMapCv.height !== mapH) { crayMapCv.width = mapW; crayMapCv.height = mapH; }
+      const C = crayMapCv.getContext('2d', { alpha: false });   // 바닥이 전면을 덮으므로 불투명 — 합성이 빨라진다
+      C.clearRect(0, 0, mapW, mapH);
+      const ox = 0, oy = 0;   // 오프스크린은 좌상단 기준으로 그린다
     // ── 바닥: 잔디 + 가운데를 가로지르는 도로 (원작 '빌리지' 맵 느낌) ──────
     for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
       const x = ox + cx * cs, y = oy + cy * cs;
-      ctx.fillStyle = ((cx + cy) & 1) ? TH.floor[0] : TH.floor[1];
-      ctx.fillRect(x, y, cs, cs);
-      ctx.fillStyle = 'rgba(255,255,255,.06)';
-      ctx.fillRect(x, y, cs, cs * .16);
+      C.fillStyle = ((cx + cy) & 1) ? TH.floor[0] : TH.floor[1];
+      C.fillRect(x, y, cs, cs);
+      C.fillStyle = 'rgba(255,255,255,.06)';
+      C.fillRect(x, y, cs, cs * .16);
     }
     // 도로: 세로 한 줄 (가운데 열) — 아스팔트 + 흰 점선
     const roadCx = (COLS - 1) >> 1;
     const rx0 = ox + roadCx * cs;
-    ctx.fillStyle = TH.road; ctx.fillRect(rx0, oy, cs, ROWS * cs);
-    ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(rx0, oy, cs * .08, ROWS * cs);
-    ctx.fillStyle = 'rgba(0,0,0,.10)'; ctx.fillRect(rx0 + cs * .92, oy, cs * .08, ROWS * cs);
-    ctx.fillStyle = TH.dash;
+    C.fillStyle = TH.road; C.fillRect(rx0, oy, cs, ROWS * cs);
+    C.fillStyle = 'rgba(255,255,255,.22)'; C.fillRect(rx0, oy, cs * .08, ROWS * cs);
+    C.fillStyle = 'rgba(0,0,0,.10)'; C.fillRect(rx0 + cs * .92, oy, cs * .08, ROWS * cs);
+    C.fillStyle = TH.dash;
     for (let i = 0; i < ROWS * 2; i++) {
       if (i % 2) continue;
-      ctx.fillRect(rx0 + cs * .46, oy + i * cs * .5 + cs * .12, cs * .08, cs * .26);
+      C.fillRect(rx0 + cs * .46, oy + i * cs * .5 + cs * .12, cs * .08, cs * .26);
     }
-    ctx.strokeStyle = TH.grid; ctx.lineWidth = Math.max(1, dpr);
-    for (let i = 0; i <= COLS; i++) { ctx.beginPath(); ctx.moveTo(ox + i * cs, oy); ctx.lineTo(ox + i * cs, oy + ROWS * cs); ctx.stroke(); }
-    for (let i = 0; i <= ROWS; i++) { ctx.beginPath(); ctx.moveTo(ox, oy + i * cs); ctx.lineTo(ox + COLS * cs, oy + i * cs); ctx.stroke(); }
+    C.strokeStyle = TH.grid; C.lineWidth = Math.max(1, dpr);
+    for (let i = 0; i <= COLS; i++) { C.beginPath(); C.moveTo(ox + i * cs, oy); C.lineTo(ox + i * cs, oy + ROWS * cs); C.stroke(); }
+    for (let i = 0; i <= ROWS; i++) { C.beginPath(); C.moveTo(ox, oy + i * cs); C.lineTo(ox + COLS * cs, oy + i * cs); C.stroke(); }
     // 잔디 위 자잘한 풀·꽃 — 바닥이 밋밋해 보이지 않게 (고정 배치라 매 프레임 같다)
     for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
       if (cx === roadCx) continue;
@@ -5228,13 +5249,13 @@ function draw() {
       if ((hh % 100) > 26) continue;
       const gx = ox + cx * cs + cs * (0.2 + (hh % 7) / 14), gy = oy + cy * cs + cs * (0.55 + (hh % 5) / 20);
       if ((hh % 3) === 0) {                        // 작은 꽃 (테마별로 눈송이·자갈·스프링클)
-        ctx.fillStyle = TH.petal[(hh >> 3) % TH.petal.length];
-        ctx.beginPath(); ctx.arc(gx, gy, cs * .045, 0, 7); ctx.fill();
+        C.fillStyle = TH.petal[(hh >> 3) % TH.petal.length];
+        C.beginPath(); C.arc(gx, gy, cs * .045, 0, 7); C.fill();
       } else {                                     // 풀 포기
-        ctx.strokeStyle = TH.tuft; ctx.lineWidth = Math.max(1, cs * .022);
+        C.strokeStyle = TH.tuft; C.lineWidth = Math.max(1, cs * .022);
         for (const d of [-1, 0, 1]) {
-          ctx.beginPath(); ctx.moveTo(gx + d * cs * .05, gy);
-          ctx.lineTo(gx + d * cs * .085, gy - cs * .10); ctx.stroke();
+          C.beginPath(); C.moveTo(gx + d * cs * .05, gy);
+          C.lineTo(gx + d * cs * .085, gy - cs * .10); C.stroke();
         }
       }
     }
@@ -5244,11 +5265,11 @@ function draw() {
     const hashAt = (cx, cy) => { let h2 = (cx * 73856093 ^ cy * 19349663) >>> 0; h2 ^= h2 >>> 13; return (h2 >>> 0) / 4294967295; };
     const ROOFS = TH.roofs;
     const shadow = (x, y) => {
-      ctx.fillStyle = 'rgba(0,0,0,.20)';
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x + cs * .10, y + cs * .28, cs * .80, cs * .68, cs * .14)
-                    : ctx.rect(x + cs * .10, y + cs * .28, cs * .80, cs * .68);
-      ctx.fill();
+      C.fillStyle = 'rgba(0,0,0,.20)';
+      C.beginPath();
+      C.roundRect ? C.roundRect(x + cs * .10, y + cs * .28, cs * .80, cs * .68, cs * .14)
+                    : C.rect(x + cs * .10, y + cs * .28, cs * .80, cs * .68);
+      C.fill();
     };
     // 알록달록 레고집
     const drawHouse = (x, y, h2) => {
@@ -5257,61 +5278,61 @@ function draw() {
       const bx = x + cs * .12, bw = cs * .76;
       const bodyTop = y + cs * .40, bodyH = cs * .50;
       // 벽
-      const wg = ctx.createLinearGradient(0, bodyTop, 0, bodyTop + bodyH);
+      const wg = C.createLinearGradient(0, bodyTop, 0, bodyTop + bodyH);
       wg.addColorStop(0, TH.wall[0]); wg.addColorStop(1, TH.wall[1]);
-      ctx.fillStyle = wg;
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(bx, bodyTop, bw, bodyH, cs * .06) : ctx.rect(bx, bodyTop, bw, bodyH);
-      ctx.fill();
+      C.fillStyle = wg;
+      C.beginPath();
+      C.roundRect ? C.roundRect(bx, bodyTop, bw, bodyH, cs * .06) : C.rect(bx, bodyTop, bw, bodyH);
+      C.fill();
       // 창문 2개
-      ctx.fillStyle = TH.win;
+      C.fillStyle = TH.win;
       for (const fx of [.26, .58]) {
-        ctx.beginPath();
-        ctx.roundRect ? ctx.roundRect(x + cs * fx, bodyTop + bodyH * .22, cs * .16, cs * .18, cs * .03)
-                      : ctx.rect(x + cs * fx, bodyTop + bodyH * .22, cs * .16, cs * .18);
-        ctx.fill();
+        C.beginPath();
+        C.roundRect ? C.roundRect(x + cs * fx, bodyTop + bodyH * .22, cs * .16, cs * .18, cs * .03)
+                      : C.rect(x + cs * fx, bodyTop + bodyH * .22, cs * .16, cs * .18);
+        C.fill();
       }
       // 지붕 (사각뿔)
-      ctx.fillStyle = roof;
-      ctx.beginPath();
-      ctx.moveTo(x + cs * .06, bodyTop + cs * .02);
-      ctx.lineTo(x + cs * .50, y + cs * .10);
-      ctx.lineTo(x + cs * .94, bodyTop + cs * .02);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = roofDark;                      // 지붕 그늘진 오른쪽
-      ctx.beginPath();
-      ctx.moveTo(x + cs * .50, y + cs * .10);
-      ctx.lineTo(x + cs * .94, bodyTop + cs * .02);
-      ctx.lineTo(x + cs * .50, bodyTop + cs * .02);
-      ctx.closePath(); ctx.fill();
+      C.fillStyle = roof;
+      C.beginPath();
+      C.moveTo(x + cs * .06, bodyTop + cs * .02);
+      C.lineTo(x + cs * .50, y + cs * .10);
+      C.lineTo(x + cs * .94, bodyTop + cs * .02);
+      C.closePath(); C.fill();
+      C.fillStyle = roofDark;                      // 지붕 그늘진 오른쪽
+      C.beginPath();
+      C.moveTo(x + cs * .50, y + cs * .10);
+      C.lineTo(x + cs * .94, bodyTop + cs * .02);
+      C.lineTo(x + cs * .50, bodyTop + cs * .02);
+      C.closePath(); C.fill();
       // 굴뚝
-      ctx.fillStyle = roofDark;
-      ctx.fillRect(x + cs * .70, y + cs * .12, cs * .10, cs * .16);
-      ctx.strokeStyle = 'rgba(40,30,20,.40)'; ctx.lineWidth = Math.max(1.2, cs * .022);
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(bx, bodyTop, bw, bodyH, cs * .06) : ctx.rect(bx, bodyTop, bw, bodyH);
-      ctx.stroke();
+      C.fillStyle = roofDark;
+      C.fillRect(x + cs * .70, y + cs * .12, cs * .10, cs * .16);
+      C.strokeStyle = 'rgba(40,30,20,.40)'; C.lineWidth = Math.max(1.2, cs * .022);
+      C.beginPath();
+      C.roundRect ? C.roundRect(bx, bodyTop, bw, bodyH, cs * .06) : C.rect(bx, bodyTop, bw, bodyH);
+      C.stroke();
     };
     // 소나무
     const drawTree = (x, y) => {
       shadow(x, y);
-      ctx.fillStyle = TH.trunk;                      // 줄기
-      ctx.fillRect(x + cs * .44, y + cs * .66, cs * .12, cs * .26);
+      C.fillStyle = TH.trunk;                      // 줄기
+      C.fillRect(x + cs * .44, y + cs * .66, cs * .12, cs * .26);
       const layers = [[.30, .34], [.44, .27], [.58, .20]];
       layers.forEach(([ty, half], i) => {
-        ctx.fillStyle = TH.leaf[i % TH.leaf.length];
-        ctx.beginPath();
-        ctx.moveTo(x + cs * .5, y + cs * (ty - .22));
-        ctx.lineTo(x + cs * (.5 + half), y + cs * (ty + .18));
-        ctx.lineTo(x + cs * (.5 - half), y + cs * (ty + .18));
-        ctx.closePath(); ctx.fill();
+        C.fillStyle = TH.leaf[i % TH.leaf.length];
+        C.beginPath();
+        C.moveTo(x + cs * .5, y + cs * (ty - .22));
+        C.lineTo(x + cs * (.5 + half), y + cs * (ty + .18));
+        C.lineTo(x + cs * (.5 - half), y + cs * (ty + .18));
+        C.closePath(); C.fill();
       });
-      ctx.fillStyle = 'rgba(255,255,255,.22)';       // 왼쪽 하이라이트
-      ctx.beginPath();
-      ctx.moveTo(x + cs * .5, y + cs * .08);
-      ctx.lineTo(x + cs * .5, y + cs * .48);
-      ctx.lineTo(x + cs * .28, y + cs * .48);
-      ctx.closePath(); ctx.fill();
+      C.fillStyle = 'rgba(255,255,255,.22)';       // 왼쪽 하이라이트
+      C.beginPath();
+      C.moveTo(x + cs * .5, y + cs * .08);
+      C.lineTo(x + cs * .5, y + cs * .48);
+      C.lineTo(x + cs * .28, y + cs * .48);
+      C.closePath(); C.fill();
     };
     // 나무상자 (부서지는 블록)
     const CRATE_TOPS = TH.crateTops;
@@ -5319,30 +5340,30 @@ function draw() {
       shadow(x, y);
       const p = cs * .07, w = cs - p * 2, top = cs * .74;
       const [c1, c2] = CRATE_TOPS[Math.floor(h2 * CRATE_TOPS.length) % CRATE_TOPS.length];
-      ctx.fillStyle = TH.crateSide;                  // 옆벽
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x + p, y + p + cs * .13, w, top, cs * .10) : ctx.rect(x + p, y + p + cs * .13, w, top);
-      ctx.fill();
-      const g2 = ctx.createLinearGradient(0, y + p, 0, y + p + top);
+      C.fillStyle = TH.crateSide;                  // 옆벽
+      C.beginPath();
+      C.roundRect ? C.roundRect(x + p, y + p + cs * .13, w, top, cs * .10) : C.rect(x + p, y + p + cs * .13, w, top);
+      C.fill();
+      const g2 = C.createLinearGradient(0, y + p, 0, y + p + top);
       g2.addColorStop(0, c1); g2.addColorStop(1, c2);
-      ctx.fillStyle = g2;
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x + p, y + p, w, top, cs * .10) : ctx.rect(x + p, y + p, w, top);
-      ctx.fill();
-      ctx.strokeStyle = TH.crateLine; ctx.lineWidth = Math.max(2, cs * .05);
-      ctx.beginPath();
-      ctx.moveTo(x + p + w * .12, y + p + top * .14); ctx.lineTo(x + p + w * .88, y + p + top * .86);
-      ctx.moveTo(x + p + w * .88, y + p + top * .14); ctx.lineTo(x + p + w * .12, y + p + top * .86);
-      ctx.stroke();
-      ctx.strokeStyle = TH.crateLine; ctx.lineWidth = Math.max(1.5, cs * .03);
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x + p + w * .08, y + p + top * .10, w * .84, top * .80, cs * .06)
-                    : ctx.rect(x + p + w * .08, y + p + top * .10, w * .84, top * .80);
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(40,25,10,.45)'; ctx.lineWidth = Math.max(1.5, cs * .028);
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(x + p, y + p, w, top, cs * .10) : ctx.rect(x + p, y + p, w, top);
-      ctx.stroke();
+      C.fillStyle = g2;
+      C.beginPath();
+      C.roundRect ? C.roundRect(x + p, y + p, w, top, cs * .10) : C.rect(x + p, y + p, w, top);
+      C.fill();
+      C.strokeStyle = TH.crateLine; C.lineWidth = Math.max(2, cs * .05);
+      C.beginPath();
+      C.moveTo(x + p + w * .12, y + p + top * .14); C.lineTo(x + p + w * .88, y + p + top * .86);
+      C.moveTo(x + p + w * .88, y + p + top * .14); C.lineTo(x + p + w * .12, y + p + top * .86);
+      C.stroke();
+      C.strokeStyle = TH.crateLine; C.lineWidth = Math.max(1.5, cs * .03);
+      C.beginPath();
+      C.roundRect ? C.roundRect(x + p + w * .08, y + p + top * .10, w * .84, top * .80, cs * .06)
+                    : C.rect(x + p + w * .08, y + p + top * .10, w * .84, top * .80);
+      C.stroke();
+      C.strokeStyle = 'rgba(40,25,10,.45)'; C.lineWidth = Math.max(1.5, cs * .028);
+      C.beginPath();
+      C.roundRect ? C.roundRect(x + p, y + p, w, top, cs * .10) : C.rect(x + p, y + p, w, top);
+      C.stroke();
     };
     if (crayGrid) {
       for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
@@ -5361,9 +5382,12 @@ function draw() {
           const hs = TH.houses.map(n => SPR[n]).filter(Boolean);
           if (hs.length) spr = hs[((cx >> 2) + (cy >> 2) * 3) % hs.length];   // 지붕색 고르게 섞기
         }
-        if (spr) drawSpr(spr, x + cs / 2, y + cs / 2, cs * 1.04);
+        if (spr) { const ss = cs * 1.04; C.drawImage(spr, x + cs / 2 - ss / 2, y + cs / 2 - ss / 2, ss, ss); }
       }
     }
+    }
+    ctx.drawImage(crayMapCv, ox, oy);
+
     // 바닥 아이템 (둥둥 떠 보이게) — 스프라이트, 없으면 이모지 폴백
     const ITEM_SPR = [SPR.crayitem_balloon, SPR.crayitem_water, SPR.crayitem_shoe];
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
