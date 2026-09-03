@@ -43,7 +43,9 @@ module.exports = async function run() {
   }
 
   // 캔버스 게임: 플레이어는 색 말고 이름표로도 구분된다
-  t.ok(/ctx\.fillText\(name, px/.test(html), '캔버스 게임: 플레이어 이름표 표시(색 외 식별 수단)');
+  // 이름표는 nameTag()가 만든 캐시 캔버스를 붙인다 (매 프레임 fillText는 느려서 캐시로 바꿨다)
+  t.ok(/function nameTag\([\s\S]{0,1600}fillText\(name,/.test(html) && /ctx\.drawImage\(tag, px/.test(html),
+       '캔버스 게임: 플레이어 이름표 표시(색 외 식별 수단)');
 
   // 순위·명단: 색 점 옆에 항상 이름이 온다 (점만 있는 곳이 없어야)
   const dotOnly = [...html.matchAll(/<span class="dot"[^>]*><\/span>\s*<\/div>/g)];

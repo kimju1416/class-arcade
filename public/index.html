@@ -3945,8 +3945,9 @@ function drawSpr(img, x, y, size) {
 }
 
 // 화면 좌표 → 아레나 좌표 (draw()가 매 프레임 갱신하는 view 사용)
+function canvasDpr() { return Math.min(2, devicePixelRatio || 1); }   // 게임 캔버스 해상도 상한 — 3x 폰은 픽셀이 2.25배라 느리다
 function toArena(clientX, clientY) {
-  const dpr = devicePixelRatio;
+  const dpr = canvasDpr();
   return { x: (clientX * dpr - view.ox) / view.scale, y: (clientY * dpr - view.oy) / view.scale };
 }
 
@@ -4221,7 +4222,7 @@ function predictMe(latest, sx, sy, infected) {
 const cv = $('cv'), ctx = cv.getContext('2d');
 const PLAYER_R_CLIENT = 16;
 const PLAYER_VIS = 1.3;   // v3: 화면에서만 캐릭터를 키운다 (판정 반지름은 서버 그대로)
-function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; }
+function resize() { cv.width = Math.round(innerWidth * canvasDpr()); cv.height = Math.round(innerHeight * canvasDpr()); }
 addEventListener('resize', resize); resize();
 function lerp(a, b, t) { return a + (b - a) * t; }
 function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
@@ -4565,6 +4566,26 @@ function drawCometGame(W, H, dpr) {
   drawOverlay(latest);
 }
 
+// 이름표 캐시 — 글자·색·내것 여부·해상도가 같으면 같은 캔버스를 다시 쓴다 (300개 넘으면 비운다)
+const NAME_TAGS = new Map();
+function nameTag(name, col, me, dpr) {
+  const key = `${name}|${col}|${me ? 1 : 0}|${isHost ? 1 : 0}|${dpr}`;
+  let c = NAME_TAGS.get(key);
+  if (c) return c;
+  if (NAME_TAGS.size > 300) NAME_TAGS.clear();
+  const fs = (isHost ? 20 : 13) * dpr, font = `${me ? 800 : 700} ${fs}px Pretendard, sans-serif`;
+  const g0 = document.createElement('canvas').getContext('2d'); g0.font = font;
+  const tw = Math.ceil(g0.measureText(name).width + 14 * dpr), th = Math.ceil(fs + 8 * dpr);
+  c = document.createElement('canvas'); c.width = tw + 4; c.height = th + 4;
+  const g = c.getContext('2d'); g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = me ? 'rgba(255,176,58,.92)' : 'rgba(10,14,32,.66)';
+  g.beginPath(); if (g.roundRect) g.roundRect(2, 2, tw, th, th / 2); else g.rect(2, 2, tw, th); g.fill();
+  if (!me) { g.strokeStyle = col; g.lineWidth = 1.5 * dpr; g.globalAlpha = .85; g.stroke(); g.globalAlpha = 1; }
+  g.fillStyle = me ? '#241a05' : '#f4f6ff';
+  g.fillText(name, 2 + tw / 2, 2 + th / 2 + 1 * dpr);
+  NAME_TAGS.set(key, c);
+  return c;
+}
 // ============================================================
 // FX — 전 게임 공용 연출 층 (2026-09-03)
 // 파티클·팝업 글자·확장 링·화면 흔들림·번쩍임·탈락 배너·킬 피드.
@@ -4576,7 +4597,8 @@ const FX = {
   shakeAmp: 0, shakeUntil: 0, flashUntil: 0, flashMs: 1, lastT: 0, bannerT: 0,
   reset() { this.parts = []; this.pops = []; this.rings = []; this.feed = []; this.prevRows = new Map(); this.shakeAmp = 0; this.shakeUntil = 0; },
   burst(x, y, { col = '#ffd24a', n = 14, spd = 260, size = 5, grav = 320, life = 650, spread = 6.283 } = {}) {
-    if (this.parts.length > 600) return;                      // 40명 동시 탈락 같은 폭주 방어
+    if (this.parts.length > (GFX.lite ? 200 : 600)) return;   // 40명 동시 탈락 같은 폭주 방어
+    if (GFX.lite) n = Math.ceil(n / 2);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * spread, v = spd * (0.35 + Math.random() * 0.65);
       this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - spd * 0.25, col, size: size * (0.6 + Math.random() * 0.8), grav, life, t: life });
@@ -4608,7 +4630,7 @@ const FX = {
       cv.style.transform = `translate(${(Math.random() * 2 - 1) * a}px, ${(Math.random() * 2 - 1) * a}px)`;
     } else if (cv.style.transform) { cv.style.transform = ''; this.shakeAmp = 0; }
     const fl = $('fxFlash');
-    if (fl) fl.style.opacity = now < this.flashUntil ? String(0.55 * (this.flashUntil - now) / this.flashMs) : '0';
+    if (fl) { const v = now < this.flashUntil ? (0.55 * (this.flashUntil - now) / this.flashMs).toFixed(2) : '0'; if (fl.__v !== v) { fl.__v = v; fl.style.opacity = v; } }
   },
   draw(ox, oy, scale, dpr) {
     if (!this.parts.length && !this.pops.length && !this.rings.length) return;
@@ -4657,21 +4679,30 @@ const FX = {
     ctx.restore(); ctx.textBaseline = 'alphabetic';
   },
   // 경기장 프레임: 얇은 회색 선 → 네온 글로우 프레임 + 안쪽 비네트
+  _cache: {},
+  cached(key, w, h, paint) {   // 크기가 같으면 한 번 그린 캔버스를 재사용 (shadowBlur·그라데이션은 소프트웨어 렌더에서 비싸다)
+    let c = this._cache[key];
+    if (!c || c.width !== w || c.height !== h) { c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d'), w, h); this._cache[key] = c; }
+    return c;
+  },
   frame(ox, oy, aw, ah, dpr) {
-    ctx.save();
-    ctx.shadowColor = 'rgba(90,130,255,.65)'; ctx.shadowBlur = 22 * dpr;
-    ctx.strokeStyle = 'rgba(140,170,255,.85)'; ctx.lineWidth = 3 * dpr;
-    ctx.strokeRect(ox - 2 * dpr, oy - 2 * dpr, aw + 4 * dpr, ah + 4 * dpr);
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(8,12,28,.9)'; ctx.lineWidth = 2 * dpr;
-    ctx.strokeRect(ox - 5 * dpr, oy - 5 * dpr, aw + 10 * dpr, ah + 10 * dpr);
-    ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1.5 * dpr;
-    ctx.strokeRect(ox + 2 * dpr, oy + 2 * dpr, aw - 4 * dpr, ah - 4 * dpr);
+    // 블러 캔버스를 매 프레임 합성하면 1M픽셀이라 느리다 — 선 3개로 글로우 흉내 (비용 거의 0)
+    ctx.strokeStyle = 'rgba(90,130,255,.18)'; ctx.lineWidth = 14 * dpr; ctx.strokeRect(ox - 4 * dpr, oy - 4 * dpr, aw + 8 * dpr, ah + 8 * dpr);
+    ctx.strokeStyle = 'rgba(120,160,255,.35)'; ctx.lineWidth = 7 * dpr; ctx.strokeRect(ox - 3 * dpr, oy - 3 * dpr, aw + 6 * dpr, ah + 6 * dpr);
+    ctx.strokeStyle = 'rgba(160,190,255,.9)'; ctx.lineWidth = 2.5 * dpr; ctx.strokeRect(ox - 2 * dpr, oy - 2 * dpr, aw + 4 * dpr, ah + 4 * dpr);
   },
   vignette(ox, oy, aw, ah) {
-    const g = ctx.createRadialGradient(ox + aw / 2, oy + ah / 2, Math.min(aw, ah) * 0.42, ox + aw / 2, oy + ah / 2, Math.max(aw, ah) * 0.78);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.42)');
-    ctx.fillStyle = g; ctx.fillRect(ox, oy, aw, ah);
+    if (GFX.lite) return;   // 가벼운 모드에선 생략
+    const t = Math.round(Math.min(aw, ah) * 0.16);   // 가장자리 띠 두께
+    const strip = this.cached('vigstrip', 64, Math.max(2, t >> 1), (g, cw, ch) => {   // 세로 그라데이션 띠 하나만 만들어 4방향으로 돌려 쓴다
+      const r = g.createLinearGradient(0, 0, 0, ch); r.addColorStop(0, 'rgba(0,0,0,.4)'); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, cw, ch);
+    });
+    ctx.drawImage(strip, ox, oy, aw, t);
+    ctx.save(); ctx.translate(ox + aw / 2, oy + ah / 2);
+    ctx.rotate(Math.PI); ctx.drawImage(strip, -aw / 2, -ah / 2, aw, t);
+    ctx.rotate(Math.PI / 2); ctx.drawImage(strip, -ah / 2, -aw / 2, ah, t);
+    ctx.rotate(Math.PI); ctx.drawImage(strip, -ah / 2, -aw / 2, ah, t);
+    ctx.restore();
   },
 };
 // 상태 diff로 자동 연출 — 행 구조 [id,x,y,alive,waiting,extra,...] 를 쓰는 아레나 게임만
@@ -4726,6 +4757,8 @@ function fxDiff(latest) {
 // 색 글로우(lighter)를 얹는다. 게임별 그림을 새로 그리지 않고도 화면에 깊이가 생긴다.
 // ============================================================
 const LIGHT_CV = document.createElement('canvas'), LCTX = LIGHT_CV.getContext('2d');
+const GLOW_CV = document.createElement('canvas'), GCTX = GLOW_CV.getContext('2d');
+const LIGHT_RES = 0.25;   // 조명은 1/4 해상도면 충분히 부드럽다 (그라데이션 비용 16분의 1)
 // 어둠 농도 — 밝은 바닥(물풍선 눈·사탕, 레이싱 잔디)은 제외. 0이면 글로우만.
 const LIGHT_DARK = { bomb: .36, tag: .4, coin: .28, mos: .22, claw: .26, dodge: .28, sumo: .22, chair: .3, ox: .2, gala: 0, cray: 0 };
 // 광원 목록 [x, y, 구멍반지름, 글로우색, 글로우세기, 글로우반지름] (아레나 좌표)
@@ -4754,15 +4787,16 @@ function lightObjs(latest) {
 }
 function drawLighting(latest, pts, ox, oy, scale, dpr) {
   const dark = LIGHT_DARK[latest.mode];
-  if (dark == null) return false;
+  if (dark == null || GFX.lite) return false;
   const aw = Math.round(arena.w * scale), ah = Math.round(arena.h * scale);
   if (aw <= 0 || ah <= 0) return false;
   const objs = lightObjs(latest);
+  const lw = Math.max(1, Math.round(aw * LIGHT_RES)), lh = Math.max(1, Math.round(ah * LIGHT_RES)), k = LIGHT_RES;
   if (dark > 0) {
-    if (LIGHT_CV.width !== aw || LIGHT_CV.height !== ah) { LIGHT_CV.width = aw; LIGHT_CV.height = ah; }
+    if (LIGHT_CV.width !== lw || LIGHT_CV.height !== lh) { LIGHT_CV.width = lw; LIGHT_CV.height = lh; }
     LCTX.globalCompositeOperation = 'source-over';
-    LCTX.clearRect(0, 0, aw, ah);
-    LCTX.fillStyle = `rgba(3,6,20,${dark})`; LCTX.fillRect(0, 0, aw, ah);
+    LCTX.clearRect(0, 0, lw, lh);
+    LCTX.fillStyle = `rgba(3,6,20,${dark})`; LCTX.fillRect(0, 0, lw, lh);
     LCTX.globalCompositeOperation = 'destination-out';
     const hole = (x, y, r, a) => {
       if (r <= 0) return;
@@ -4770,24 +4804,25 @@ function drawLighting(latest, pts, ox, oy, scale, dpr) {
       g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(.5, `rgba(0,0,0,${a * .6})`); g.addColorStop(1, 'rgba(0,0,0,0)');
       LCTX.fillStyle = g; LCTX.beginPath(); LCTX.arc(x, y, r, 0, 7); LCTX.fill();
     };
-    for (const p of pts) hole(p.x - ox, p.y - oy, (p.alive ? 240 : 90) * scale, p.alive ? 1 : .55);
-    for (const o of objs) hole(o[0] * scale, o[1] * scale, o[2] * scale, .95);
-    ctx.drawImage(LIGHT_CV, ox, oy);
+    for (const p of pts) hole((p.x - ox) * k, (p.y - oy) * k, (p.alive ? 240 : 90) * scale * k, p.alive ? 1 : .55);
+    for (const o of objs) hole(o[0] * scale * k, o[1] * scale * k, o[2] * scale * k, .95);
   }
-  // 색 글로우 — 더하기 합성이라 겹칠수록 밝아진다 (플레이어는 자기 색으로 바닥을 물들인다)
-  ctx.save();
-  ctx.beginPath(); ctx.rect(ox, oy, aw, ah); ctx.clip();
-  ctx.globalCompositeOperation = 'lighter';
+  // 색 글로우 — 어둠과 같은 저해상도 캔버스에 더하기로 얹고, 화면에는 한 번만 붙인다 (블릿 2회 → 1회)
+  const T = dark > 0 ? LCTX : GCTX;
+  if (dark <= 0) { if (GLOW_CV.width !== lw || GLOW_CV.height !== lh) { GLOW_CV.width = lw; GLOW_CV.height = lh; } GCTX.globalCompositeOperation = 'source-over'; GCTX.clearRect(0, 0, lw, lh); }
+  T.globalCompositeOperation = 'lighter';
   const glow = (x, y, r, col, a) => {
     if (r <= 0 || a <= 0) return;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const g = T.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = Math.min(1, a); ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    T.globalAlpha = Math.min(1, a); T.fillStyle = g;
+    T.beginPath(); T.arc(x, y, r, 0, 7); T.fill();
   };
-  for (const p of pts) if (p.alive) glow(p.x, p.y + 6 * scale, 84 * scale, p.infected ? '#8ED11F' : p.col, .3);
-  for (const o of objs) glow(ox + o[0] * scale, oy + o[1] * scale, o[5] * scale, o[3], o[4]);
-  ctx.restore();
+  for (const p of pts) if (p.alive) glow((p.x - ox) * k, (p.y - oy + 6 * scale) * k, 84 * scale * k, p.infected ? '#8ED11F' : p.col, .3);
+  for (const o of objs) glow(o[0] * scale * k, o[1] * scale * k, o[5] * scale * k, o[3], o[4]);
+  T.globalAlpha = 1; T.globalCompositeOperation = 'source-over';
+  if (dark > 0) ctx.drawImage(LIGHT_CV, ox, oy, aw, ah);
+  else { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GLOW_CV, ox, oy, aw, ah); ctx.restore(); }
   return dark > 0;
 }
 
@@ -4812,7 +4847,7 @@ const AMBIENT = {
 };
 let ambParts = [], ambMode = '';
 function drawAmbient(latest, ox, oy, scale, dpr) {
-  const pre = AMBIENT[latest.mode]; if (!pre) return;
+  const pre = AMBIENT[latest.mode]; if (!pre || GFX.lite) return;
   const now = performance.now();
   if (ambMode !== latest.mode) {   // 게임이 바뀌면 새로 뿌린다
     ambMode = latest.mode; ambParts = [];
@@ -4839,6 +4874,26 @@ function drawAmbient(latest, ox, oy, scale, dpr) {
 }
 let ambDrawAt = 0;
 
+// 그래픽 품질 자동 조절 — 프레임이 2초 넘게 25fps 아래면 조명·분위기 파티클을 끈다(한 번 내려가면 세션 동안 유지).
+// 교실 구형 PC·저사양 폰에서 "버벅임"보다 "밋밋함"이 낫다. 수동 고정: localStorage ca_gfx = 'high' | 'lite'
+const GFX = {
+  lite: localStorage.getItem('ca_gfx') === 'lite', forced: !!localStorage.getItem('ca_gfx'),
+  get level() { return this.lite ? 'lite' : 'high'; },
+  _last: 0, _slow: 0, _acc: 0, _n: 0,
+  tick() {
+    const now = performance.now();
+    if (this._last) {
+      const dt = now - this._last;
+      if (dt < 500) { this._acc += dt; this._n++; }
+      if (this._n >= 30) {   // 30프레임마다 평균 판정
+        const avg = this._acc / this._n; this._acc = 0; this._n = 0;
+        if (!this.forced && !this.lite) { this._slow = avg > 40 ? this._slow + avg * 30 : 0; if (this._slow > 2000) { this.lite = true; console.info('[GFX] 프레임이 느려 가벼운 모드로 전환'); } }
+      }
+    }
+    this._last = now;
+  },
+};
+window.GFX = GFX;
 // 전용 렌더러 게임(러너·카트·꼬리별·줄다리기) 위에 얹는 화면 좌표 파티클 + 비네트
 const SCREEN_FX = {
   run:   { n: 46, col: ['#ffffff', '#dff4ff'], vy: 150, vx: -40, size: 2.6, sway: 1.2, a: .75 },   // 눈보라
@@ -4850,6 +4905,7 @@ let scrParts = [], scrMode = '', scrAt = 0;
 function screenFx(mode, W, H, dpr) {
   const pre = SCREEN_FX[mode]; if (!pre) return;
   const now = performance.now();
+  if (GFX.lite) { scrParts = []; }
   if (scrMode !== mode || scrParts.length !== pre.n) { scrMode = mode; scrParts = []; for (let i = 0; i < pre.n; i++) scrParts.push({ x: Math.random() * W, y: Math.random() * H, ph: Math.random() * 6.28, sp: .6 + Math.random() * .9, col: pre.col[i % pre.col.length] }); }
   const dt = Math.min(0.05, scrAt ? (now - scrAt) / 1000 : 0.016); scrAt = now;
   ctx.save();
@@ -4861,11 +4917,9 @@ function screenFx(mode, W, H, dpr) {
     ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, pre.size * p.sp * dpr, 0, 7); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  // 화면 가장자리 비네트 — 시점 게임에 몰입감
-  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .45, W / 2, H / 2, Math.max(W, H) * .75);
-  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, mode === 'pull' ? 'rgba(0,0,0,.3)' : 'rgba(0,0,0,.42)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // 화면 가장자리 비네트 — 전체 화면 블릿(2M픽셀)은 너무 비싸 가장자리 띠만 (가벼운 모드에선 생략)
   ctx.restore();
+  FX.vignette(0, 0, W, H);
 }
 // 작은 불티/반짝이 한 알 (폭탄 도화선·동전 광택용)
 FX.spark = function (x, y, col, { rise = 60, life = 420, size = 2.2 } = {}) {
@@ -4878,8 +4932,9 @@ function draw() {
   FX.step();
   if (!$('game').classList.contains('on')) return;
   const W = cv.width, H = cv.height;
-  const dpr = devicePixelRatio;
+  const dpr = canvasDpr();
   ctx.clearRect(0, 0, W, H);
+  GFX.tick();
   if (gameType === 'run') { drawRunGame(W, H, dpr); screenFx('run', W, H, dpr); return; }   // 설원 러너는 유사 3D 전용 렌더
   if (gameType === 'kart') { drawKartGame(W, H, dpr); screenFx('kart', W, H, dpr); return; } // 카트는 운전석 시점 전용 렌더
   if (gameType === 'comet') { drawCometGame(W, H, dpr); screenFx('comet', W, H, dpr); return; } // 꼬리별은 몸통 경로 렌더가 따로다
@@ -4998,7 +5053,7 @@ function draw() {
         if (SPR.bomb) {
           const puff = 1 + Math.sin(performance.now() / 90) * 0.06;   // 도화선 타는 느낌
           drawSpr(SPR.bomb, x, y, r * 0.95 * puff);
-          if (Math.random() < 0.45) FX.spark(bx + br * 0.28, by - br * 0.62, Math.random() < .5 ? '#ffd27a' : '#ff8a3a', { rise: 70, life: 380, size: 2 });   // 도화선 불티
+          if (!GFX.lite && Math.random() < 0.45) FX.spark(bx + br * 0.28, by - br * 0.62, Math.random() < .5 ? '#ffd27a' : '#ff8a3a', { rise: 70, life: 380, size: 2 });   // 도화선 불티
         }
       } else if (SPR.boom) {
         // 폭발 스프라이트: 커지면서 옅어지고 살짝 회전
@@ -5038,7 +5093,7 @@ function draw() {
         ctx.beginPath(); ctx.arc(x, y + float, r * 1.5, 0, 7); ctx.stroke();
       }
       if (SPR.coin) drawSpr(SPR.coin, x, y + float, r * 2.4);
-      if (Math.random() < (v === 3 ? 0.06 : 0.012)) FX.spark(cx2 + (Math.random() - .5) * 20, cy2 - 6, '#ffffff', { rise: 24, life: 360, size: 1.8 });   // 광택 반짝
+      if (!GFX.lite && Math.random() < (v === 3 ? 0.06 : 0.012)) FX.spark(cx2 + (Math.random() - .5) * 20, cy2 - 6, '#ffffff', { rise: 24, life: 360, size: 1.8 });   // 광택 반짝
       else { ctx.fillStyle = v === 3 ? '#ffd700' : '#f5c542'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
     }
     // 동전 줍기의 폭탄: 깜빡이는 경고 → 활성
@@ -5763,20 +5818,11 @@ function draw() {
       ctx.fillText(label, px, by + h / 2 + 1 * dpr);
       ctx.textBaseline = 'alphabetic';
     } else {
-      // v3 이름표: 반투명 알약 + 플레이어 색 테두리 (밝은 바닥·어두운 바닥 어디서든 읽힌다)
-      const fs = (isHost ? 20 : 13) * dpr;
-      ctx.font = `${(id === myId ? 800 : 700)} ${fs}px Pretendard, sans-serif`;
-      const tw = ctx.measureText(name).width + 14 * dpr, th = fs + 8 * dpr;
-      const bx = px - tw / 2, by = py - rr - 12 * dpr - th;
+      // v3 이름표: 반투명 알약 + 플레이어 색 테두리. 매 프레임 measureText·roundRect·fillText를 30명분 하면
+      // 느려서(실측 -4fps) 글자·색이 같은 동안은 작은 캔버스에 한 번 그려 두고 블릿만 한다.
       const tcol = teamOn ? TEAM_COL[(roster.get(id) || {}).team || 0] : null;   // 팀전이면 팀 색
-      const pcol = tcol || COLORS[meta.ci % COLORS.length];
-      ctx.fillStyle = id === myId ? 'rgba(255,176,58,.92)' : 'rgba(10,14,32,.66)';
-      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, by, tw, th, th / 2); else ctx.rect(bx, by, tw, th); ctx.fill();
-      if (id !== myId) { ctx.strokeStyle = pcol; ctx.lineWidth = 1.5 * dpr; ctx.globalAlpha = (alive ? 1 : .25) * .85; ctx.stroke(); ctx.globalAlpha = alive ? 1 : 0.25; }
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = id === myId ? '#241a05' : '#f4f6ff';
-      ctx.fillText(name, px, by + th / 2 + 1 * dpr);
-      ctx.textBaseline = 'alphabetic';
+      const tag = nameTag(name, tcol || COLORS[meta.ci % COLORS.length], id === myId, dpr);
+      ctx.drawImage(tag, px - tag.width / 2, py - rr - 12 * dpr - tag.height);
     }
     ctx.globalAlpha = 1;
   }
@@ -5974,7 +6020,7 @@ function draw() {
       const left = Math.max(0, phaseEndAt - serverNow());
       const secL = Math.ceil(left / 1000);
       setText($('hudTime'), secL + '초');
-      $('hudTime').classList.toggle('low', left > 0 && left <= 10000);
+      const lowNow = left > 0 && left <= 10000; if (draw._low !== lowNow) { draw._low = lowNow; $('hudTime').classList.toggle('low', lowNow); }
       if (isHost && secL >= 1 && secL <= 5 && secL !== sndPrev.lastSec) { sndPrev.lastSec = secL; SFX.countBeep(); }
     } else {
       // 라운드형 게임(사다리·통아저씨·침팬지)은 현재 페이즈 남은 시간을 보여준다
