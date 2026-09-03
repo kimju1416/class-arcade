@@ -5941,7 +5941,7 @@ function draw() {
       // 공이 내려가는 동안 또각또각 효과음 (8단계)
       const tick = Math.floor(Math.max(0, Math.min(0.999, rt)) * 8);
       const tickKey = latest.round + '-' + tick;
-      if (rt < 1 && sndPrev.sadTick !== tickKey) { sndPrev.sadTick = tickKey; (SFX.count || SFX.ok)(); }
+      if (rt < 1 && sndPrev.sadTick !== tickKey) { sndPrev.sadTick = tickKey; SFX.countBeep(); }   // 또각또각 (SFX.count는 없는 이름이라 늘 ok로 대체되고 있었다)
       // 착지 순간 결과음 (라운드당 한 번): 걸린 사람 있으면 폭탄, 없으면 팡파레
       if (rt >= 1 && sndPrev.sadLand !== latest.round) {
         sndPrev.sadLand = latest.round;

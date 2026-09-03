@@ -5,6 +5,7 @@ const H = require('./helpers');
 const SUITES = [
   ['자산', './assets.test'],
   ['접근성', './a11y.test'],
+  ['모듈 API', './api.test'],
   ['전 게임 스모크', './all-games.test'],
   ['치팅 방지', './anticheat.test'],
   ['게임 규칙', './games.test'],
