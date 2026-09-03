@@ -1058,10 +1058,59 @@ body.host #teamResult .tr-line { font-size: 30px; }
   /* ---- 토스트·모달 ---- */
   .toast { background: rgba(24,31,64,.94); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.5); backdrop-filter: blur(8px); font-weight: 600; }
   #btnMute { background: rgba(24,31,64,.9); border: 1px solid var(--line); box-shadow: 0 8px 20px rgba(0,0,0,.4); }
+
+  /* ============================================================
+     v3 DOM 게임 화면 (퀴즈쇼·순간포착·낱말·초성·사이먼·같은그림·블록배틀·그림퀴즈)
+     ============================================================ */
+  #quizGame, #wordGame, #simonGame, #pairsGame, #tetrisGame, #drawGame { box-shadow: inset 0 0 180px rgba(0,0,0,.6); }
+  #bgfx { z-index: 2; }   /* 떠다니는 빛을 DOM 게임 화면 위에도 (게임 캔버스가 뜨면 스스로 쉰다) */
+  .quiz-q {
+    background: linear-gradient(180deg, rgba(20,27,58,.78), rgba(10,14,30,.82)); border: 1px solid var(--line);
+    border-radius: 20px; padding: 14px 28px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 14px 34px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.1); text-shadow: 0 2px 8px rgba(0,0,0,.6);
+    width: 100%;
+  }
+  #quizProgress { font-weight: 800; color: #ffd24a; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  .quiz-choice {
+    border-radius: 18px; position: relative; overflow: hidden;
+    box-shadow: 0 6px 0 rgba(0,0,0,.35), 0 14px 26px rgba(0,0,0,.4), inset 0 2px 0 rgba(255,255,255,.35);
+    text-shadow: 0 2px 4px rgba(0,0,0,.4);
+  }
+  .quiz-choice::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,0) 55%); }
+  .quiz-choice:active { transform: translateY(4px) scale(.98); box-shadow: 0 2px 0 rgba(0,0,0,.35), 0 6px 12px rgba(0,0,0,.4); }
+  .quiz-choice.c0 { background: linear-gradient(180deg, #f25c76, #c02a44); }
+  .quiz-choice.c1 { background: linear-gradient(180deg, #4d90f5, #2054c2); }
+  .quiz-choice.c2 { background: linear-gradient(180deg, #f6b83a, #b7820c); }
+  .quiz-choice.c3 { background: linear-gradient(180deg, #5cc862, #2f8a34); }
+  .quiz-choice.sel { box-shadow: 0 0 0 4px #fff inset, 0 0 26px rgba(255,255,255,.55), 0 6px 0 rgba(0,0,0,.35); }
+  .quiz-choice.ok { animation: qOk .7s ease-in-out infinite alternate; }
+  @keyframes qOk { from { box-shadow: 0 0 0 4px #ffd700, 0 0 22px rgba(255,215,0,.5), 0 6px 0 rgba(0,0,0,.35); } to { box-shadow: 0 0 0 6px #fff, 0 0 48px rgba(255,215,0,.95), 0 6px 0 rgba(0,0,0,.35); } }
+  .word-timer { height: 10px; background: rgba(10,14,32,.7); border: 1px solid var(--line); box-shadow: inset 0 1px 3px rgba(0,0,0,.5); }
+  .word-timer > div { background: linear-gradient(90deg, #ffd24a, #ff9b2e); box-shadow: 0 0 14px rgba(255,176,58,.7); }
+  .word-big { border-color: rgba(120,150,255,.45); box-shadow: inset 0 0 0 2px rgba(120,150,255,.22), 0 20px 50px rgba(0,0,0,.55), 0 0 40px rgba(90,120,255,.18); }
+  .word-row { background: linear-gradient(180deg, rgba(34,43,82,.9), rgba(24,31,62,.9)); border: 1px solid var(--line); animation: rowIn .35s cubic-bezier(.2,1.2,.4,1) both; }
+  #wordFeedback { text-shadow: 0 2px 10px rgba(0,0,0,.6); }
+  .cho-cat { background: linear-gradient(180deg, #ffc65a, #ffab2e); box-shadow: 0 4px 0 #c9871f, 0 10px 20px rgba(255,176,58,.25); }
+  .cho-claimed .cw { background: rgba(20,40,40,.85); box-shadow: 0 0 12px rgba(61,220,132,.25); }
+  .simon-hub { box-shadow: 0 10px 26px rgba(0,0,0,.55), inset 0 0 0 2px rgba(120,150,255,.22), 0 0 40px rgba(90,120,255,.25); }
+  .simon-pad.on { transform: scale(1.05); }
+  #simonMsg { text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+  .pcard .inner { filter: drop-shadow(0 8px 14px rgba(0,0,0,.45)); }
+  .pcard .back::after { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,0) 45%); }
+  .pcard.match .front { box-shadow: 0 0 22px rgba(61,220,132,.9), 0 0 0 2px #3ddc84; }
+  #pairsInfo { text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+  #drawCanvas { box-shadow: 0 0 0 4px rgba(120,150,255,.45), 0 0 40px rgba(90,120,255,.35), 0 20px 46px rgba(0,0,0,.55); }
+  .draw-tools { background: rgba(14,19,44,.85); border: 1px solid var(--line); box-shadow: 0 8px 20px rgba(0,0,0,.4); }
+  .draw-chip, .draw-sug-chip { background: linear-gradient(180deg, #2a3468, #1a2142); box-shadow: 0 4px 0 #10142c; }
+  .draw-chip:active, .draw-sug-chip:active { transform: translateY(3px); box-shadow: 0 1px 0 #10142c; }
+  #drawMsg { text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+  #tetMyCanvas { box-shadow: 0 0 0 3px rgba(120,140,255,.6), 0 0 40px rgba(80,80,220,.7), 0 14px 34px rgba(0,0,0,.6); }
+  .tet-mini { box-shadow: 0 8px 20px rgba(0,0,0,.5), 0 0 16px rgba(90,120,255,.15); }
+  #flashScene span { filter: drop-shadow(0 0 14px rgba(255,255,255,.35)); }
 </style>
 </head>
 <body>
-<canvas id="bgfx"></canvas>
 
 <!-- 첫 화면 -->
 <div class="view on" id="home">
@@ -1348,6 +1397,7 @@ body.host #teamResult .tr-line { font-size: 30px; }
 </div>
 <button id="btnMute" title="효과음 켜기/끄기">🔊</button>
 <div id="reactLayer"></div>
+<canvas id="bgfx"></canvas>
 
 <script>
 // ============================================================
@@ -3473,9 +3523,11 @@ const BG = (() => {
     if (!active && !conf.length) { if (c.__on) { g.clearRect(0, 0, W, H); c.__on = false; } return; }
     c.__on = true;
     g.clearRect(0, 0, W, H);
+    const qrEl = document.querySelector('#hostLobby.on .qr-wrap'), qr = qrEl && qrEl.getBoundingClientRect(), k = W / innerWidth;
     if (active) for (const d of dots) {
       d.y += d.vy * dt * (W / 1000 + 0.5); d.sway += dt * 0.7; d.x += Math.sin(d.sway) * 12 * dt;
       if (d.y < -20) { d.y = H + 20; d.x = Math.random() * W; }
+      if (qr && d.x > qr.left * k && d.x < qr.right * k && d.y > qr.top * k && d.y < qr.bottom * k) continue;   // QR 위에는 안 찍는다
       g.fillStyle = `rgba(${d.col},${d.a})`; g.beginPath(); g.arc(d.x, d.y, d.r, 0, 7); g.fill();
     }
     for (const p of conf) {
@@ -4675,7 +4727,7 @@ function fxDiff(latest) {
 // ============================================================
 const LIGHT_CV = document.createElement('canvas'), LCTX = LIGHT_CV.getContext('2d');
 // 어둠 농도 — 밝은 바닥(물풍선 눈·사탕, 레이싱 잔디)은 제외. 0이면 글로우만.
-const LIGHT_DARK = { bomb: .36, tag: .4, coin: .28, mos: .22, claw: .26, dodge: .28, sumo: .22, chair: .3, ox: .2, gala: 0 };
+const LIGHT_DARK = { bomb: .36, tag: .4, coin: .28, mos: .22, claw: .26, dodge: .28, sumo: .22, chair: .3, ox: .2, gala: 0, cray: 0 };
 // 광원 목록 [x, y, 구멍반지름, 글로우색, 글로우세기, 글로우반지름] (아레나 좌표)
 function lightObjs(latest) {
   const now = performance.now(), out = [];
@@ -4690,6 +4742,12 @@ function lightObjs(latest) {
   if (latest.mode === 'claw') for (const [x, y, v] of (latest.dolls || [])) out.push([x, y, v === 5 ? 72 : v === 3 ? 56 : 44, v === 5 ? '#ff8fab' : v === 3 ? '#8ecae6' : '#c7d0e8', v === 5 ? .3 : .18, v === 5 ? 46 : 32]);
   if (latest.mode === 'chair') for (const [x, y, owned] of (latest.chairs || [])) out.push([x, y, 70, owned ? '#9ad8ff' : '#ffd24a', owned ? .16 : .3 * (0.7 + 0.3 * Math.sin(now / 160)), 40]);
   if (latest.mode === 'gala') for (const [x, y, elite] of (latest.enemies || [])) out.push([x, y, 0, elite ? '#c78bff' : '#6cf06c', .16, 30]);
+  if (latest.mode === 'cray') {   // 어둠 없이 광원만: 풍선 파랑(터지기 직전 강해짐)·아이템 금색·물줄기 하양
+    for (const [cx, cy, left] of (latest.balloons || [])) out.push([(cx + .5) * 60, (cy + .5) * 60, 0, '#6cc4ff', .28 + (1 - Math.min(1, left / 2800)) * .3, 62]);
+    for (const [cx, cy] of (latest.items || [])) out.push([(cx + .5) * 60, (cy + .5) * 60, 0, '#ffd24a', .3, 46]);
+    const st = latest.streams || [];
+    for (let i = 0; i < st.length; i += 2) out.push([(st[i] + .5) * 60, (st[i + 1] + .5) * 60, 0, '#bfefff', .35, 48]);
+  }
   if (latest.mode === 'sumo' && latest.ring) out.push([arena.w / 2, arena.h / 2, latest.ring * 1.08, '#ffd8a0', .08, latest.ring]);
   if (latest.mode === 'ox') { out.push([arena.w * .25, arena.h * .5, arena.w * .3, '#3ddc84', .06, arena.w * .25]); out.push([arena.w * .75, arena.h * .5, arena.w * .3, '#ff5d5d', .06, arena.w * .25]); }
   return out;
@@ -4746,6 +4804,11 @@ const AMBIENT = {
   chair: { n: 12, col: ['#ffd27a', '#ff8fc4', '#9ad8ff'], vy: -18, size: 0, sway: 1.4, a: .8, note: 1 },
   ox:    { n: 14, col: ['#ffffff'], vy: -12, size: 2, sway: 1, a: .3 },
   cray:  { n: 12, col: ['#ffffff', '#d8f4ff'], vy: 16, size: 2.2, sway: 1.6, a: .45 },
+  race:  { n: 14, col: ['#9ee07a', '#f0d070', '#ffffff'], vy: 12, size: 2.4, sway: 2.2, a: .5 },   // 서킷 위 날리는 잎
+  sadari: { n: 22, col: ['#ffb03a', '#ffd27a', '#ff8fc4'], vy: -16, size: 2, sway: 1.3, a: .7, blink: 1 },   // 청사초롱 불티
+  pirate: { n: 18, col: ['#ffffff', '#cfefff'], vy: -9, size: 2.4, sway: 2, a: .35 },    // 바다 물보라
+  timing: { n: 16, col: ['#ffffff', '#ffd24a'], vy: -10, size: 1.8, sway: 1, a: .4, blink: 1 },
+  chimp: { n: 20, col: ['#c6ff9a', '#ffffb0'], vy: -8, size: 2, sway: 2.4, a: .55, blink: 1 },   // 정글 반딧불
 };
 let ambParts = [], ambMode = '';
 function drawAmbient(latest, ox, oy, scale, dpr) {
@@ -4775,6 +4838,35 @@ function drawAmbient(latest, ox, oy, scale, dpr) {
   ctx.restore(); ctx.textBaseline = 'alphabetic';
 }
 let ambDrawAt = 0;
+
+// 전용 렌더러 게임(러너·카트·꼬리별·줄다리기) 위에 얹는 화면 좌표 파티클 + 비네트
+const SCREEN_FX = {
+  run:   { n: 46, col: ['#ffffff', '#dff4ff'], vy: 150, vx: -40, size: 2.6, sway: 1.2, a: .75 },   // 눈보라
+  kart:  { n: 16, col: ['#ffb6d5', '#ffe08a', '#b6f0a0'], vy: 70, vx: -25, size: 3.2, sway: 2.4, a: .7 }, // 꽃잎
+  comet: { n: 44, col: ['#ffffff', '#9ad8ff', '#ffd6f2'], vy: 0, vx: 0, size: 1.6, sway: 0, a: .6, blink: 1 }, // 별 반짝
+  pull:  { n: 18, col: ['#e8d3a8', '#f5e6c4'], vy: -14, vx: 22, size: 3, sway: 1.4, a: .28 },    // 운동장 흙먼지
+};
+let scrParts = [], scrMode = '', scrAt = 0;
+function screenFx(mode, W, H, dpr) {
+  const pre = SCREEN_FX[mode]; if (!pre) return;
+  const now = performance.now();
+  if (scrMode !== mode || scrParts.length !== pre.n) { scrMode = mode; scrParts = []; for (let i = 0; i < pre.n; i++) scrParts.push({ x: Math.random() * W, y: Math.random() * H, ph: Math.random() * 6.28, sp: .6 + Math.random() * .9, col: pre.col[i % pre.col.length] }); }
+  const dt = Math.min(0.05, scrAt ? (now - scrAt) / 1000 : 0.016); scrAt = now;
+  ctx.save();
+  for (const p of scrParts) {
+    p.y += pre.vy * p.sp * dt * dpr; p.x += (pre.vx * p.sp + Math.sin(p.ph) * pre.sway * 24) * dt * dpr; p.ph += dt * p.sp;
+    if (p.y > H + 20) { p.y = -20; p.x = Math.random() * W; } if (p.y < -20) { p.y = H + 20; }
+    if (p.x < -20) p.x = W + 20; if (p.x > W + 20) p.x = -20;
+    ctx.globalAlpha = pre.a * (pre.blink ? .35 + .65 * Math.abs(Math.sin(p.ph * 1.7)) : 1);
+    ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, pre.size * p.sp * dpr, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // 화면 가장자리 비네트 — 시점 게임에 몰입감
+  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .45, W / 2, H / 2, Math.max(W, H) * .75);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, mode === 'pull' ? 'rgba(0,0,0,.3)' : 'rgba(0,0,0,.42)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
 // 작은 불티/반짝이 한 알 (폭탄 도화선·동전 광택용)
 FX.spark = function (x, y, col, { rise = 60, life = 420, size = 2.2 } = {}) {
   if (this.parts.length > 500) return;
@@ -4788,13 +4880,13 @@ function draw() {
   const W = cv.width, H = cv.height;
   const dpr = devicePixelRatio;
   ctx.clearRect(0, 0, W, H);
-  if (gameType === 'run') { drawRunGame(W, H, dpr); return; }   // 설원 러너는 유사 3D 전용 렌더
-  if (gameType === 'kart') { drawKartGame(W, H, dpr); return; } // 카트는 운전석 시점 전용 렌더
-  if (gameType === 'comet') { drawCometGame(W, H, dpr); return; } // 꼬리별은 몸통 경로 렌더가 따로다
+  if (gameType === 'run') { drawRunGame(W, H, dpr); screenFx('run', W, H, dpr); return; }   // 설원 러너는 유사 3D 전용 렌더
+  if (gameType === 'kart') { drawKartGame(W, H, dpr); screenFx('kart', W, H, dpr); return; } // 카트는 운전석 시점 전용 렌더
+  if (gameType === 'comet') { drawCometGame(W, H, dpr); screenFx('comet', W, H, dpr); return; } // 꼬리별은 몸통 경로 렌더가 따로다
   // 줄다리기: 팀 고르는 동안은 일반 아레나(걸어다녀야 하니까), 당길 때부터 전용 화면
   if (gameType === 'pull' && snaps.length) {
     const lm = snaps[snaps.length - 1].m;
-    if (lm && lm.pl && lm.pl.ph !== 'pick') { drawPullGame(W, H, dpr, lm); return; }
+    if (lm && lm.pl && lm.pl.ph !== 'pick') { drawPullGame(W, H, dpr, lm); screenFx('pull', W, H, dpr); return; }
   }
 
   const pad = 8 * dpr, topPad = (isHost ? 64 : 48) * dpr;
@@ -5690,7 +5782,8 @@ function draw() {
   }
 
   // v3 그래픽: 분위기 파티클 + 동적 조명 (아레나 게임만)
-  const lit = (!boardMode && !chimpMode && !raceMode) ? (drawAmbient(latest, ox, oy, scale, dpr), drawLighting(latest, lightPts, ox, oy, scale, dpr)) : false;
+  drawAmbient(latest, ox, oy, scale, dpr);   // 분위기 파티클은 모든 캔버스 게임에
+  const lit = (!boardMode && !chimpMode && !raceMode) ? drawLighting(latest, lightPts, ox, oy, scale, dpr) : false;
   // v2 연출: 상태 diff → 파티클·팝업·배너, 그 위에 비네트 (조명이 어둠을 깔았으면 비네트는 생략)
   fxDiff(latest);
   FX.draw(ox, oy, scale, dpr);
