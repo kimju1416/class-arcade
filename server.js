@@ -809,6 +809,25 @@ const OX_MORE = [
   ['리히터 규모는 태풍의 세기를 나타내는 단위다.', 1, '상'],
   ['고구려는 한때 평양을 수도로 삼았다.', 0, '상'],
 ];
+// 추가 문제 병합 (data/quiz-extra.js) — 풀이 작아 같은 문제가 반복되던 것을 늘렸다
+try {
+  const EX = require('./data/quiz-extra.js');
+  OX_DATA.push(...EX.oxEasy); OX_MORE.push(...EX.oxMore);
+  for (const [cat, rows] of Object.entries(EX.quizEasy)) (QUIZ_DATA[cat] = QUIZ_DATA[cat] || []).push(...rows);
+  for (const [cat, rows] of Object.entries(EX.quizMore)) (QUIZ_MORE[cat] = QUIZ_MORE[cat] || []).push(...rows);
+} catch (e) { console.error('[추가 문제 로드 실패]', e.message); }
+
+// 같은 방에서 이미 나온 문제는 피한다 — 풀이 바닥나면 그때 처음부터 다시.
+// key: 'quiz'|'ox' 처럼 종류별로 따로 기억한다. 방이 닫히면 같이 사라진다(세션 단위).
+function pickFresh(room, key, pool, n, idOf) {
+  if (!room.usedQ) room.usedQ = {};
+  const used = room.usedQ[key] || (room.usedQ[key] = new Set());
+  let fresh = pool.filter(x => !used.has(idOf(x)));
+  if (fresh.length < n) { used.clear(); fresh = [...pool]; }   // 다 냈으면 초기화
+  const picked = [...fresh].sort(() => Math.random() - 0.5).slice(0, n);
+  for (const x of picked) used.add(idOf(x));
+  return picked;
+}
 // 카테고리·난이도로 퀴즈 문제 풀을 고른다. 해당 난이도 문제가 없으면 쉬움으로 대체해 빈 풀을 막는다.
 function quizPool(cat, diff) {
   const easy = cat === '믹스' ? Object.values(QUIZ_DATA).flat() : (QUIZ_DATA[cat] || []);
@@ -1615,7 +1634,8 @@ function startGame(room, type, opt) {
     const diff = ['하', '중', '상', '믹스'].includes(opt && opt.diff) ? opt.diff : '믹스';
     if (!pool) pool = quizPool(cat, diff);
     // 문제도 보기 순서도 판마다 섞는다. 6번째 원소(난이도 태그)는 보기 인덱스(0~3)에 안 잡혀 자동 무시된다.
-    g.questions = [...pool].sort(() => Math.random() - 0.5).slice(0, cnt).map(([q, ...cs]) => {
+    const chosen = cat === '내문제' ? [...pool].sort(() => Math.random() - 0.5).slice(0, cnt) : pickFresh(room, 'quiz', pool, cnt, x => x[0]);
+    g.questions = chosen.map(([q, ...cs]) => {
       const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
       return { q, choices: order.map(i => cs[i]), correct: order.indexOf(0) };
     });
@@ -1686,7 +1706,7 @@ function startGame(room, type, opt) {
     const diff = ['하', '중', '상', '믹스'].includes(opt && opt.diff) ? opt.diff : '믹스';
     g.oxDiff = diff;
     g.oxQMs = diff === '상' ? 7000 : diff === '중' ? 8000 : diff === '믹스' ? 8500 : 10000;
-    g.oxQs = [...oxPool(diff)].sort(() => Math.random() - 0.5).slice(0, OX_MAX_Q);
+    g.oxQs = pickFresh(room, 'ox', oxPool(diff), OX_MAX_Q, x => x[0]);
     g.oxIdx = 0; g.oxPhase = 'idle'; g.oxRevived = false;
     // 중앙선 근처에 흩어 배치 (양쪽 어디로든 뛰기 좋게)
     actives.forEach((p, i) => {

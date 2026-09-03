@@ -506,6 +506,37 @@ module.exports = async function run() {
     r.close();
   }
 
-  t.ok(H.serverErrors().length === 0, '서버 예외 0건');
-  return t;
+  // ---------- 퀴즈·OX 문제 풀 확대 + 같은 방 중복 방지 ----------
+  {
+    const fs = require('fs'), path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const EX = require('../data/quiz-extra.js');
+    t.ok(EX.oxEasy.length + EX.oxMore.length >= 300, `문제 풀: OX 추가 ${EX.oxEasy.length + EX.oxMore.length}문항 (300+)`);
+    const qn = Object.values(EX.quizEasy).flat().length + Object.values(EX.quizMore).flat().length;
+    t.ok(qn >= 180, `문제 풀: 퀴즈쇼 추가 ${qn}문항 (180+)`);
+    t.ok(/pickFresh\(room, 'ox'/.test(src) && /pickFresh\(room, 'quiz'/.test(src), '문제 풀: OX·퀴즈 모두 같은 방 중복 방지(pickFresh) 사용');
+    // 같은 방에서 OX 두 판 → 문제가 겹치지 않는다 (호스트가 받는 state의 q로 수집)
+    const r = await H.makeRoom(2);
+    const collect = async () => {
+      const seen = new Set();
+      H.send(r.host, { type: 'start_game', game: 'ox', opt: { diff: '하' } });
+      await H.waitPlaying(r.code);
+      const t0 = Date.now();
+      while (Date.now() - t0 < 9000) {
+        for (const f of r.host.frames) if (f.type === 'state' && f.mode === 'ox' && f.q) seen.add(f.q);
+        await H.sleep(300);
+      }
+      H.send(r.host, { type: 'back_to_lobby' });
+      await H.sleep(600);
+      H.clearFrames(r.host);
+      return seen;
+    };
+    const a = await collect(), b = await collect();
+    const overlap = [...a].filter(q => b.has(q));
+    t.ok(a.size >= 1 && b.size >= 1 && overlap.length === 0, `문제 풀: 같은 방 두 판의 OX 문제가 안 겹친다 (1판 ${a.size}·2판 ${b.size}·겹침 ${overlap.length})`);
+    r.close();
+  }
+
+  t.ok(H.serverErrors().length === 0, '서버 예외 0건');
+  return t;
 };
