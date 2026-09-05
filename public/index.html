@@ -3954,6 +3954,24 @@ function tintSprite(name, color) {
 }
 // 학생마다 다른 생김새: ci로 6종(기본·고양이·토끼·삐죽·뿔·더듬이) 중 하나 배정, 색은 multiply 틴팅
 const PLAYER_VARIANTS = ['player', 'player2', 'player3', 'player4', 'player5', 'player6'];
+// 감염 술래잡기: 좀비가 돼도 "내 캐릭터"가 남아야 누가 누군지 보인다.
+// 캐릭터 그림 위에 초록을 물들이고(source-atop) 채도를 죽인 캔버스를 ci별로 한 번만 만든다.
+const zombieCache = new Map();
+function zombieChar(ci) {
+  const src = charSprite(ci);
+  if (!src) return SPR.zombie || null;
+  if (zombieCache.has(ci)) return zombieCache.get(ci);
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'saturation'; g.fillStyle = '#808080'; g.fillRect(0, 0, c.width, c.height);   // 채도 낮춤
+  g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(96,205,80,.62)'; g.fillRect(0, 0, c.width, c.height);   // 초록 물
+  g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(20,60,20,.25)'; g.fillRect(0, c.height * .55, c.width, c.height * .45);   // 아래쪽 어둡게
+  // 'saturation' 블렌드는 투명 영역까지 회색으로 채운다(초록 네모가 됐다) — 원본 알파로 다시 잘라낸다
+  g.globalCompositeOperation = 'destination-in'; g.drawImage(src, 0, 0);
+  zombieCache.set(ci, c);
+  return c;
+}
 function tintedPlayer(color, ci) {
   const name = PLAYER_VARIANTS[(ci || 0) % PLAYER_VARIANTS.length];
   return tintSprite(SPR[name] ? name : 'player', color);
@@ -4624,9 +4642,9 @@ function nameTag(name, col, me, dpr) {
 // 좌표는 아레나 단위로 넣고 그릴 때 view(ox,oy,scale)로 바꾼다.
 // ============================================================
 const FX = {
-  parts: [], pops: [], rings: [], feed: [], prevRows: new Map(),
+  parts: [], pops: [], rings: [], feed: [], prevRows: new Map(), infectAt: new Map(),
   shakeAmp: 0, shakeUntil: 0, flashUntil: 0, flashMs: 1, lastT: 0, bannerT: 0,
-  reset() { this.parts = []; this.pops = []; this.rings = []; this.feed = []; this.prevRows = new Map(); this.shakeAmp = 0; this.shakeUntil = 0; },
+  reset() { this.parts = []; this.pops = []; this.rings = []; this.feed = []; this.prevRows = new Map(); this.infectAt = new Map(); this.shakeAmp = 0; this.shakeUntil = 0; },
   burst(x, y, { col = '#ffd24a', n = 14, spd = 260, size = 5, grav = 320, life = 650, spread = 6.283 } = {}) {
     if (this.parts.length > (GFX.lite ? 200 : 600)) return;   // 40명 동시 탈락 같은 폭주 방어
     if (GFX.lite) n = Math.ceil(n / 2);
@@ -4762,7 +4780,8 @@ function fxDiff(latest) {
       if (isHost) FX.feedAdd(`💥 ${nick} 탈락`);
     }
     if (mode === 'tag' && !p.infected && infected) {
-      if (hasPos) { FX.burst(x, y, { col: '#8ED11F', n: 16, spd: 260, size: 5 }); FX.ring(x, y, 'rgba(142,209,31,.9)'); FX.pop(x, y - 52, '감염!', '#b6ff5c', 24); }
+      FX.infectAt.set(id, performance.now());   // 변신 팝 시작
+      if (hasPos) { FX.burst(x, y, { col: '#8ED11F', n: 16, spd: 260, size: 5 }); FX.burst(x, y, { col: '#2d5a1e', n: 10, spd: 120, size: 6, grav: -60, life: 900 }); FX.ring(x, y, 'rgba(142,209,31,.9)'); FX.pop(x, y - 52, '감염!', '#b6ff5c', 24); }
       FX.shake(4, 200);
       if (isHost) { FX.banner(`🧟 ${nick} 감염!`, 'green'); FX.feedAdd(`🧟 ${nick} 감염`); }
     }
@@ -4849,7 +4868,7 @@ function drawLighting(latest, pts, ox, oy, scale, dpr) {
     T.globalAlpha = Math.min(1, a); T.fillStyle = g;
     T.beginPath(); T.arc(x, y, r, 0, 7); T.fill();
   };
-  for (const p of pts) if (p.alive) glow((p.x - ox) * k, (p.y - oy + 6 * scale) * k, 84 * scale * k, p.infected ? '#8ED11F' : p.col, .3);
+  for (const p of pts) if (p.alive) glow((p.x - ox) * k, (p.y - oy + 6 * scale) * k, (p.infected ? 120 : 84) * scale * k, p.infected ? '#6ee04a' : p.col, p.infected ? .36 : .3);
   for (const o of objs) glow(o[0] * scale * k, o[1] * scale * k, o[5] * scale * k, o[3], o[4]);
   T.globalAlpha = 1; T.globalCompositeOperation = 'source-over';
   if (dark > 0) ctx.drawImage(LIGHT_CV, ox, oy, aw, ah);
@@ -5755,19 +5774,46 @@ function draw() {
       ctx.beginPath(); ctx.ellipse(px, py + rr * .92, rr * .72, rr * .26, 0, 0, 7); ctx.fill();
     }
     if (infected) {
-      const blink = 0.45 + 0.45 * Math.sin(performance.now() / 190);
-      ctx.strokeStyle = `rgba(255,59,59,${blink})`; ctx.lineWidth = 4 * dpr;
+      const blink = 0.35 + 0.35 * Math.sin(performance.now() / 190);
+      ctx.strokeStyle = `rgba(120,230,90,${blink})`; ctx.lineWidth = 3 * dpr;
       ctx.beginPath(); ctx.arc(px, py, rr + 7 * dpr, 0, 7); ctx.stroke();
     }
     // 살짝 통통 튀는 움직임 (걸을 때만)
     const bob = alive ? Math.sin(performance.now() / 170 + id * 1.7) * rr * .06 : 0;
     // 선택한 캐릭터가 있으면 그걸로 (좀비/갤러그 함선은 예외). 캐릭터는 얼굴이 이미 있어 눈을 안 그린다.
-    const charImg = (latest.mode !== 'gala' && !infected) ? charSprite(meta.ci) : null;
+    const zomb = infected ? zombieChar(meta.ci) : null;   // 감염자: 자기 캐릭터의 초록판 (없으면 옛 좀비 그림)
+    const charImg = (latest.mode !== 'gala' && !infected) ? charSprite(meta.ci) : (zomb && zomb !== SPR.zombie ? zomb : null);
     const body = charImg ? charImg
       : latest.mode === 'gala' ? tintSprite('ship', COLORS[meta.ci % COLORS.length])
       : infected ? SPR.zombie : tintedPlayer(COLORS[meta.ci % COLORS.length], meta.ci);
     if (body) {
-      drawSpr(body, px, py + bob, rr * (charImg ? 2.5 : 2.35));
+      // 감염 직후 0.6초: 변신 팝(커졌다 돌아옴) + 흔들림
+      const infAt = infected ? FX.infectAt.get(id) : 0;
+      const infK = infAt ? Math.max(0, 1 - (performance.now() - infAt) / 600) : 0;
+      const popS = 1 + infK * 0.45 * Math.sin(infK * Math.PI);
+      const wob = infK ? Math.sin(performance.now() / 30) * 3 * dpr * infK : 0;
+      const drawSize = rr * (charImg ? 2.5 : 2.35) * popS;
+      if (infected && alive) {
+        // 발밑 초록 기운 + 위로 오르는 연기 (가벼운 모드에선 연기 생략)
+        ctx.fillStyle = 'rgba(96,205,80,.16)';
+        ctx.beginPath(); ctx.ellipse(px, py + rr * .9, rr * 1.15, rr * .45, 0, 0, 7); ctx.fill();
+        if (!GFX.lite && Math.random() < 0.25) FX.spark(wx, wy - 10, Math.random() < .5 ? 'rgba(60,120,50,.8)' : 'rgba(140,220,90,.7)', { rise: 40, life: 700, size: 3.2 });
+      }
+      drawSpr(body, px + wob, py + bob, drawSize);
+      if (infected && alive && charImg) {
+        // 빨간 눈 발광 — 캐릭터 얼굴 위치(위쪽 1/3)에 두 점 + 번짐
+        const ey = py + bob - drawSize * 0.16, ex = drawSize * 0.11;
+        const glow = 0.6 + 0.4 * Math.sin(performance.now() / 160 + id);
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        for (const sx of [-1, 1]) {
+          const g2 = ctx.createRadialGradient(px + sx * ex, ey, 0, px + sx * ex, ey, rr * .34);
+          g2.addColorStop(0, `rgba(255,40,40,${.85 * glow})`); g2.addColorStop(1, 'rgba(255,40,40,0)');
+          ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(px + sx * ex, ey, rr * .34, 0, 7); ctx.fill();
+        }
+        ctx.restore();
+        ctx.fillStyle = '#ff2a2a';
+        for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(px + sx * ex, ey, rr * .09, 0, 7); ctx.fill(); }
+      }
       // 갤러그 함선: 엔진 불꽃 깜빡임 (눈은 안 그린다)
       if (latest.mode === 'gala' && alive) {
         const fl = (0.6 + Math.random() * 0.4) * rr;
