@@ -10,6 +10,7 @@ const SUITES = [
   ['전 게임 스모크', './all-games.test'],
   ['치팅 방지', './anticheat.test'],
   ['게임 규칙', './games.test'],
+  ['통아저씨', './pirate.test'],
   ['꼬리별 규칙', './comet.test'],
   ['배포 생존(스냅샷)', './snapshot.test'],
 ];

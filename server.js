@@ -467,7 +467,13 @@ const SADARI_TRACE_MS = 3600;    // 공이 내려가는 애니메이션 시간
 const SADARI_REVEAL_MS = 6500;   // 애니메이션 + 결과 감상
 
 // 해적왕 통아저씨 (칼을 꽂아라 — 해적이 튀어나오면 탈락)
-const PIRATE_SLOTS = 24;         // 8열 × 3줄이 통을 한 바퀴 감싼다
+const PIRATE_SLOTS_MAX = 48;     // 통에 낼 수 있는 구멍 상한 (8열 × 6줄)
+const PIRATE_SLOTS_MIN = 8;
+// 구멍은 인원수에 맞춰 낸다 — 한 사람이 한 구멍씩(칼이 여러 자루면 그만큼) 쓰고,
+// 고를 여지가 있도록 절반쯤 여유를 둔다. 구멍이 딱 인원수면 마지막 사람은 선택의 여지가 없다.
+function pirateSlotsFor(need) {
+  return Math.max(PIRATE_SLOTS_MIN, Math.min(PIRATE_SLOTS_MAX, need + Math.max(3, Math.ceil(need * 0.5))));
+}
 const PIRATE_PICK_MS = 11000;
 const PIRATE_REVEAL_MS = 4500;
 const PIRATE_MAX_ROUNDS = 8;
@@ -1185,7 +1191,7 @@ const server = http.createServer((req, res) => {
         ? { phase: r.game.sPhase, round: r.game.round, lanes: r.game.lanes, prizes: r.game.prizes, map: r.game.map, picks: [...r.players.values()].map(p => [p.nick, p.pick]) }
         : undefined,
       pirate: r.gameType === 'pirate' && r.game && r.game.round
-        ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
+        ? { phase: r.game.pPhase, round: r.game.round, knives: r.game.knives, slots: r.game.slots, triggers: [...(r.game.triggers || [])], victims: r.game.victims, picks: [...r.players.values()].map(p => [p.nick, p.picks]) }
         : undefined,
       sumo: r.gameType === 'sumo' && r.game ? { ring: Math.round(r.game.ringR) } : undefined,
       comet: r.gameType === 'comet' && r.game && r.game.foods
@@ -2680,9 +2686,14 @@ function endSadari(room) {
 function startPirateRound(room, now) {
   const g = room.game;
   g.round++;
-  // 매 라운드 통을 리셋하고 위험 칸을 늘린다 (1라운드 4칸 → +1씩)
-  const T = Math.min(10, 3 + g.round);
-  const slots = [...Array(PIRATE_SLOTS).keys()].sort(() => Math.random() - 0.5);
+  // 구멍 수는 살아있는 인원 × 칼 수에 맞춰 매 라운드 다시 낸다 (사람이 줄면 통도 작아진다)
+  const aliveN = [...room.players.values()].filter(p => p.alive && p.connected).length;
+  const need = Math.max(1, aliveN) * g.knives;
+  g.slots = pirateSlotsFor(need);
+  // 위험 칸은 구멍 수에 비례해 늘리되, 전원이 안전하게 꽂을 자리는 남긴다(그래야 게임이 성립한다)
+  const ratio = 0.12 + 0.05 * g.round;
+  const T = Math.max(1, Math.min(g.slots - need, Math.round(g.slots * ratio)));
+  const slots = [...Array(g.slots).keys()].sort(() => Math.random() - 0.5);
   g.triggers = new Set(slots.slice(0, T));
   g.victims = [];
   g.pPhase = 'pick';
@@ -2698,13 +2709,15 @@ function pirateTick(room, now) {
     const allPicked = alive.length > 0 && alive.every(p => p.picks.length >= g.knives);
     if (now >= g.pickEndAt || allPicked) {
       // 시간 안에 다 못 꽂은 칼은 랜덤 칸에 (복불복이니 억울할 것 없음)
+      // 시간 안에 다 못 꽂은 칼은 빈 칸에 넣어 준다 (남이 이미 꽂은 칸은 피한다)
+      const used = new Set();
+      for (const p of room.players.values()) if (p.alive) for (const s of p.picks) used.add(s);
+      const free = [];
+      for (let i = 0; i < g.slots; i++) if (!used.has(i)) free.push(i);
+      for (let i = free.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [free[i], free[j]] = [free[j], free[i]]; }
       for (const p of room.players.values()) {
         if (!p.alive) continue;
-        let guard = 0;
-        while (p.picks.length < g.knives && guard++ < 200) {
-          const s = Math.floor(Math.random() * PIRATE_SLOTS);
-          if (!p.picks.includes(s)) p.picks.push(s);
-        }
+        while (p.picks.length < g.knives && free.length) p.picks.push(free.pop());
       }
       g.victims = [];
       for (const p of room.players.values())
@@ -4292,7 +4305,9 @@ function sendState(room, now) {
   }
   if (type === 'pirate') {
     msg.pPhase = g.pPhase; msg.round = g.round;
-    msg.slots = PIRATE_SLOTS; msg.knives = g.knives;
+    msg.slots = g.slots || PIRATE_SLOTS_MIN; msg.knives = g.knives;
+    // 남이 꽂은 칸(고를 때만) — 학생 화면에서 잠긴 구멍으로 보여 준다. 누가 꽂았는지는 안 보낸다.
+    if (g.pPhase === 'pick') msg.taken = [...room.players.values()].filter(p => p.alive && !p.waiting).flatMap(p => p.picks);
     msg.pickLeft = g.pPhase === 'pick' ? Math.max(0, g.pickEndAt - now) : 0;
     msg.pickedCount = [...room.players.values()].filter(p => p.alive && p.picks.length >= g.knives).length;
     msg.aliveCount = [...room.players.values()].filter(p => p.alive).length;
@@ -4799,10 +4814,16 @@ wss.on('connection', (ws) => {
             else p.pick = v;
           }
         } else if (room.gameType === 'pirate' && g.pPhase === 'pick') {
-          if (v >= 0 && v < PIRATE_SLOTS) {
+          if (v >= 0 && v < (g.slots || 0)) {
             const i = p.picks.indexOf(v);
             if (i >= 0) p.picks.splice(i, 1);                        // 같은 칸 다시 누르면 칼 뽑기(취소)
-            else { if (p.picks.length >= g.knives) p.picks.shift(); p.picks.push(v); }  // 꽉 찼으면 오래된 칼 이동
+            else {
+              // 한 구멍에 한 자루 — 남이 이미 꽂은 칸은 못 꽂는다 (사다리와 같은 선착순)
+              const taken = [...room.players.values()]
+                .some(q => q.id !== p.id && q.alive && !q.waiting && q.picks.includes(v));
+              if (taken) roomSend(ws, { type: 'pick_taken', v });
+              else { if (p.picks.length >= g.knives) p.picks.shift(); p.picks.push(v); }
+            }
           }
         } else if (room.gameType === 'chimp' && g.chPhase === 'input') {
           // 침팬지: 1부터 순서대로 탭 — 정답이면 +10, 라운드 완주 +15, 틀리면 이번 라운드 실패

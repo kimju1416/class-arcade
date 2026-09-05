@@ -1623,6 +1623,8 @@ let sadCounts = [], sadTakenMsgAt = 0;   // 사다리: 칸별 선택 인원 / "�
 let timingBoardPending = null;           // 10초 잡아라: 클립 밖에서 그릴 랭킹판 자료
 let myPicks = [];                        // 통아저씨: 내가 꽂은 칼들
 let pirKnives = 1;                       // 통아저씨: 1인당 칼 개수 (서버 상태로 갱신)
+let pirSlots = 24;                       // 통아저씨: 구멍 수 (인원에 따라 서버가 정한다)
+let pirTakenMsgAt = 0;                   // "이미 꽂힌 구멍" 안내 시각
 let pirRot = 0, pirDrag = null;          // 통아저씨: 통 회전각·드래그 상태
 let pirateKnives = Math.max(1, Math.min(3, +(localStorage.getItem('ca_knives') || 1)));  // 호스트가 고른 위험도
 let gameTabSel = localStorage.getItem('ca_gtab') || 'all';        // 로비 게임 분류 탭
@@ -2291,6 +2293,12 @@ function handle(m) {
       spawnReact(m.e, who.nick);
       break;
     }
+    case 'pick_taken':
+      if (gameType === 'pirate') {
+        const k = myPicks.indexOf(m.v); if (k >= 0) myPicks.splice(k, 1);
+        pirTakenMsgAt = performance.now(); SFX.miss();
+      } else { sadTakenMsgAt = performance.now(); SFX.miss(); }
+      break;
     case 'kicked':
       alert('선생님이 퇴장시켰습니다.');
       goHome();
@@ -4147,6 +4155,13 @@ function initInput() {
         if (slot >= 0) {
           // 서버와 같은 규칙: 같은 칸 다시 누르면 뽑기, 꽉 찼으면 오래된 칼 이동
           const i = myPicks.indexOf(slot);
+          const st2 = window.__lastState;
+          const takenByOther = i < 0 && st2 && (st2.taken || []).includes(slot);
+          if (takenByOther) {   // 남이 이미 꽂은 구멍 — 서버도 막지만 손끝 반응은 즉시
+            pirTakenMsgAt = performance.now(); SFX.miss();
+            if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+            return;
+          }
           if (i >= 0) myPicks.splice(i, 1);
           else { if (myPicks.length >= pirKnives) myPicks.shift(); myPicks.push(slot); }
           send({ type: 'pick', v: slot });
@@ -6674,22 +6689,33 @@ function drawSadari(latest, ox, oy, scale, dpr) {
 
 // ---- 해적왕 통아저씨 ----
 const PIR = { cx: 450, cy: 560, R: 300, topY: 340, botY: 850, rowY0: 460, rowH: 130, cols: 8, rows: 3 };
+// 구멍 수가 인원에 따라 달라지므로 열·줄도 그때그때 다시 잡는다 (한 바퀴에 최대 8열)
+function pirLayout(n) {
+  const cols = Math.min(8, Math.max(4, Math.ceil(Math.sqrt(n * 1.6))));
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const rowH = rows <= 3 ? 130 : Math.max(74, Math.round(430 / rows));
+  const rowY0 = 560 - (rows - 1) * rowH / 2;   // 통 가운데를 기준으로 위아래 균형
+  return { cols, rows, rowH, rowY0 };
+}
 function pirSlotPos(s) {
-  const col = s % PIR.cols, row = Math.floor(s / PIR.cols);
-  const ang = (col / PIR.cols) * Math.PI * 2 + pirRot;
+  const L = pirLayout(pirSlots);
+  const col = s % L.cols, row = Math.floor(s / L.cols);
+  const ang = (col / L.cols) * Math.PI * 2 + pirRot;
   const depth = Math.cos(ang);
   if (depth < 0.18) return null;    // 통 뒤쪽은 안 보인다
+  // 구멍이 적으면 크게, 많으면 작게 (인원에 따라 구멍 수가 달라진다)
+  const shrink = L.rows > 3 ? 0.78 : Math.max(1, Math.min(1.45, 1.9 - pirSlots * 0.05));
   return {
     x: PIR.cx + Math.sin(ang) * PIR.R * 0.84,
-    y: PIR.rowY0 + row * PIR.rowH,
-    w: 96 * (0.45 + 0.55 * depth),
-    h: 62 * (0.6 + 0.4 * depth),
+    y: L.rowY0 + row * L.rowH,
+    w: 96 * (0.45 + 0.55 * depth) * shrink,
+    h: 62 * (0.6 + 0.4 * depth) * shrink,
     depth,
   };
 }
 function pirateSlotAt(ax, ay) {
   let best = -1, bd = 1e9;
-  for (let s = 0; s < 24; s++) {
+  for (let s = 0; s < pirSlots; s++) {
     const p = pirSlotPos(s);
     if (!p) continue;
     const dx = ax - p.x, dy = ay - p.y;
@@ -6742,6 +6768,7 @@ function drawKnife(x, y, s, color) {
 function drawPirate(latest, ox, oy, scale, dpr) {
   if ((latest.round || 0) !== myPickRound) { myPickRound = latest.round || 0; myPicks = []; pirRot = 0; }
   pirKnives = latest.knives || 1;
+  pirSlots = latest.slots || 24;
   const picking = latest.pPhase === 'pick';
   const reveal = latest.pPhase === 'reveal';
   const tp = reveal && latest.revealAt ? serverNow() - latest.revealAt : 0;
@@ -6828,7 +6855,7 @@ function drawPirate(latest, ox, oy, scale, dpr) {
 
   // 슬롯 (뒤→앞 순서로)
   const slots = [];
-  for (let s = 0; s < 24; s++) { const p = pirSlotPos(s); if (p) slots.push([s, p]); }
+  for (let s = 0; s < pirSlots; s++) { const p = pirSlotPos(s); if (p) slots.push([s, p]); }
   slots.sort((a, b) => a[1].depth - b[1].depth);
   const pickMap = new Map();   // 공개 시: slot → [ci...]
   if (reveal) for (const [pid, arr] of (latest.picks || [])) {
@@ -6839,21 +6866,29 @@ function drawPirate(latest, ox, oy, scale, dpr) {
     }
   }
   const trigSet = new Set(latest.triggers || []);
+  const takenSet = new Set(latest.taken || []);   // 남이 이미 꽂은 구멍 (고를 때만 온다)
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const [s, p] of slots) {
     const x = ox + p.x * scale, y = oy + p.y * scale;
     const w = p.w * scale, h = p.h * scale;
     // 공개 순간: 위험 칸은 빨갛게
     const danger = reveal && tp >= 1600 && trigSet.has(s);
-    ctx.fillStyle = danger ? 'rgba(255,60,60,.85)' : `rgba(20,14,8,${0.55 + 0.35 * p.depth})`;
+    const lockedByOther = picking && takenSet.has(s) && !myPicks.includes(s);   // 남이 이미 꽂은 구멍
+    ctx.fillStyle = danger ? 'rgba(255,60,60,.85)'
+      : lockedByOther ? `rgba(46,36,26,${0.72 + 0.2 * p.depth})`
+      : `rgba(20,14,8,${0.55 + 0.35 * p.depth})`;
     ctx.beginPath();
     ctx.roundRect ? ctx.roundRect(x - w / 2, y - h / 2, w, h, 8 * scale) : ctx.rect(x - w / 2, y - h / 2, w, h);
     ctx.fill();
     ctx.strokeStyle = danger ? '#ff9a9a' : 'rgba(160,120,70,.6)'; ctx.lineWidth = 2 * dpr;
     ctx.stroke();
-    ctx.fillStyle = danger ? '#fff' : `rgba(230,210,180,${0.5 + 0.4 * p.depth})`;
-    ctx.font = `700 ${19 * scale * (0.7 + 0.3 * p.depth)}px Pretendard, sans-serif`;
+    ctx.fillStyle = danger ? '#fff' : lockedByOther ? `rgba(150,130,110,${0.4 + 0.3 * p.depth})`
+      : `rgba(230,210,180,${0.5 + 0.4 * p.depth})`;
+    ctx.font = `700 ${19 * scale * (0.7 + 0.3 * p.depth) * (h > 62 * scale ? 1.25 : 1)}px Pretendard, sans-serif`;
     ctx.fillText(String(s + 1), x, y - h * 0.05);
+    if (lockedByOther) {   // 이미 꽂힌 구멍 — 회색 칼 자국
+      drawKnife(x, y + h * 0.15, 30 * scale, 'rgba(150,140,130,.75)');
+    }
     // 칼: 내 선택(선택 중) / 전원 선택(공개)
     if (!isHost && picking && myPicks.includes(s)) {
       drawKnife(x, y + h * 0.15, 34 * scale, '#ffb03a');
@@ -6874,6 +6909,12 @@ function drawPirate(latest, ox, oy, scale, dpr) {
     }
   }
 
+  // "이미 꽂힌 구멍이에요" 안내 (남의 칸을 눌렀을 때 1.4초)
+  if (!isHost && performance.now() - pirTakenMsgAt < 1400) {
+    ctx.fillStyle = '#ffd24a';
+    ctx.font = `900 ${30 * scale}px Pretendard, sans-serif`;
+    ctx.fillText('이미 꽂힌 구멍이에요!', ox + PIR.cx * scale, oy + 250 * scale);
+  }
   // 공개: 희생자 이름
   if (reveal && tp >= 1600 && (latest.victims || []).length) {
     const names = latest.victims.map(id => (roster.get(id) || { nick: '?' }).nick).join(', ');
