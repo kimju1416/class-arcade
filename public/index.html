@@ -786,6 +786,11 @@ body.host #teamResult .tr-line { font-size: 30px; }
   }
   #bgfx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
+  /* 게임 중에는 배경 오로라를 멈춘다 — 전체 화면 그라데이션을 계속 움직이면
+     그릴 것이 적은 DOM 게임(퀴즈·사이먼)에서 60→36fps로 떨어진다(실측). */
+  body.ingame::before { animation: none; }
+  body.ingame #quizGame, body.ingame #wordGame, body.ingame #simonGame,
+  body.ingame #pairsGame, body.ingame #tetrisGame, body.ingame #drawGame { box-shadow: none; }
 
   /* ---- 버튼: 유리 하이라이트 + 눌림 ---- */
   .btn {
@@ -1108,6 +1113,28 @@ body.host #teamResult .tr-line { font-size: 30px; }
   #tetMyCanvas { box-shadow: 0 0 0 3px rgba(120,140,255,.6), 0 0 40px rgba(80,80,220,.7), 0 14px 34px rgba(0,0,0,.6); }
   .tet-mini { box-shadow: 0 8px 20px rgba(0,0,0,.5), 0 0 16px rgba(90,120,255,.15); }
   #flashScene span { filter: drop-shadow(0 0 14px rgba(255,255,255,.35)); }
+
+  /* v3 B급: 퀴즈쇼 TV 하단 (답한 사람 아바타 줄 + 선택지 분포 막대) */
+  .qbar { position: absolute; left: 0; bottom: 0; height: 6px; background: rgba(255,255,255,.55);
+    border-radius: 0 3px 3px 0; transition: width .5s cubic-bezier(.2,1,.4,1); }
+  .qbar.ok { background: #ffd700; box-shadow: 0 0 12px rgba(255,215,0,.8); height: 8px; }
+  .q-waitgrid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+    width: 100%; max-width: 1100px; margin-top: 6px; }
+  .q-wait { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px;
+    padding: 8px 4px 6px; border-radius: 14px; background: rgba(16,22,43,.6);
+    border: 1.5px solid rgba(120,150,255,.18); opacity: .4;
+    transition: opacity .25s, border-color .25s, transform .25s; }   /* grayscale 필터는 30개면 느리다 — 투명도만 */
+  .q-wait img { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; }
+  .q-wait i { width: 40px; height: 40px; border-radius: 50%; display: block; }
+  .q-wait span { font-size: 12px; font-weight: 800; color: #c8d0e8; max-width: 70px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q-wait.done { opacity: 1; border-color: #3ddc84; transform: translateY(-3px);
+    box-shadow: 0 0 0 2px rgba(61,220,132,.25), 0 8px 18px rgba(0,0,0,.35); }
+  .q-wait.done::after { content: '✓'; position: absolute; margin: -6px 0 0 30px;
+    font-size: 15px; font-weight: 900; color: #3ddc84; }
+  body.host .q-wait { width: 96px; }
+  body.host .q-wait img { width: 58px; height: 58px; }
+  body.host .q-wait span { font-size: 14px; max-width: 88px; }
 </style>
 </head>
 <body>
@@ -2091,6 +2118,7 @@ function handle(m) {
       // 시간만 갱신하고 화면·입력을 건드리지 않는다. 안 그러면 주행 중 전원 조이스틱이 풀린다.
       // 단, 게임 화면이 실제로 떠 있을 때만 — 호스트 새로고침 복귀 때 roster가 phase를 먼저
       // 'playing'으로 만들어 두면 초기값 게임(bomb)에서 오판해 TV가 로비에 갇힌다.
+      document.body.classList.toggle('ingame', phase === 'playing' || phase === 'countdown');
       const samePlaying = phase === 'playing' && prev === 'playing' && gameType === prevGame && gameViewActive();
       if (samePlaying) break;
       if (phase === 'countdown' || phase === 'playing') {
@@ -2305,7 +2333,15 @@ function renderQuiz(m) {
   // 답변 창(show) 동안은 남이 답할 때마다 바뀌는 answered/scores로 버튼 DOM을 재구성하지 않는다
   // (누르는 도중 노드가 교체되면 탭이 씹힌다) — 교사 카운터만 setText로 가볍게 갱신
   const showing = m.qPhase === 'show';
-  if (isHost && showing) setText($('quizInfo'), `✋ ${m.answered}/${m.partCount}명 답함`);
+  if (isHost && showing) {
+    setText($('quizInfo'), `✋ ${m.answered}/${m.partCount}명 답함`);
+    // 답한 사람 아바타에 표시만 켠다 (DOM을 다시 만들지 않는다 — 재구성하면 탭이 씹힌다)
+    const ans = new Set((m.scores || []).filter(sc => sc[2] === 1).map(sc => sc[0]));
+    for (const el of $('quizBoard').children) {
+      const on = ans.has(el.dataset.pid);
+      if (el.__on !== on) { el.__on = on; el.classList.toggle('done', on); }   // 바뀔 때만
+    }
+  }
   const json = JSON.stringify([m.qIdx, m.qPhase, m.q,
     showing ? 0 : m.answered, showing ? null : m.counts, showing ? null : m.scores, myQAnswer, phase]);
   if (json === lastQuizJson) return;
@@ -2335,6 +2371,13 @@ function renderQuiz(m) {
         renderQuiz(m);
       };
     }
+    if (reveal && m.counts) {   // 공개: 몇 명이 이 답을 골랐는지 막대로
+      const total = Math.max(1, m.counts.reduce((x, y) => x + y, 0));
+      const bar = document.createElement('i');
+      bar.className = 'qbar' + (i === m.correct ? ' ok' : '');
+      bar.style.width = (m.counts[i] / total * 100) + '%';
+      b.appendChild(bar);
+    }
     grid.appendChild(b);
   });
 
@@ -2354,17 +2397,31 @@ function renderQuiz(m) {
     }
   }
 
-  // 호스트: 공개 때 상위 5명 리더보드
+  // 호스트 하단: 답변 중엔 "누가 답했는지" 아바타 줄, 공개 때는 상위 5명 리더보드.
+  // (예전엔 답변 중 하단이 통째로 비어 TV 화면 아래 3분의 2가 검은 칠판이었다)
+  const qb = $('quizBoard');
   if (isHost && reveal && m.scores) {
     const top = [...m.scores].sort((a, b2) => b2[1] - a[1]).slice(0, 5);
-    $('quizBoard').innerHTML = top.map(([pid, sc], i) => {
+    qb.className = 'word-list';
+    qb.innerHTML = top.map(([pid, sc], i) => {
       const meta = roster.get(pid) || { nick: '?', ci: 0 };
-      return `<div class="word-row"><b>${i + 1}.</b>
-        <span style="width:10px;height:10px;border-radius:50%;background:${COLORS[meta.ci % COLORS.length]}"></span>
-        ${esc(meta.nick)}<span class="pts">${sc}점</span></div>`;
+      const src = charSrc(meta.ci);
+      const face = src ? `<img class="chip-face" src="${src}" alt="">`
+        : `<span style="width:10px;height:10px;border-radius:50%;background:${COLORS[meta.ci % COLORS.length]}"></span>`;
+      return `<div class="word-row"><b>${i + 1}.</b>${face}${esc(meta.nick)}<span class="pts">${sc}점</span></div>`;
+    }).join('');
+  } else if (isHost && showing) {
+    const ans = new Set((m.scores || []).filter(sc => sc[2] === 1).map(sc => sc[0]));
+    qb.className = 'q-waitgrid';
+    qb.innerHTML = [...roster.values()].filter(pl => pl.connected).map(pl => {
+      const src = charSrc(pl.ci);
+      return `<div class="q-wait${ans.has(pl.id) ? ' done' : ''}" data-pid="${pl.id}">`
+        + (src ? `<img src="${src}" alt="">` : `<i style="background:${COLORS[pl.ci % COLORS.length]}"></i>`)
+        + `<span>${esc(pl.nick)}</span></div>`;
     }).join('');
   } else if (isHost) {
-    $('quizBoard').innerHTML = '';
+    qb.className = 'word-list';
+    qb.innerHTML = '';
   }
 
   // 사운드 (교사 화면): 문제 공개 순간
@@ -3541,7 +3598,10 @@ const BG = (() => {
   function frame(now) {
     requestAnimationFrame(frame);
     const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now;
-    const active = !$('game').classList.contains('on') && !document.hidden;
+    // 게임 중에는 쉰다. 캔버스 게임은 #game으로 걸러지지만 퀴즈·사이먼 같은 DOM 게임은 안 걸려
+    // 배경 빛이 계속 돌아 퀴즈쇼가 60→39fps로 떨어졌다(실측). 분위기는 홈·로비·결과에서만 필요하다.
+    const inGame = phase === 'playing' || phase === 'countdown';
+    const active = !$('game').classList.contains('on') && !document.hidden && !inGame;
     if (!active && !conf.length) { if (c.__on) { g.clearRect(0, 0, W, H); c.__on = false; } return; }
     c.__on = true;
     g.clearRect(0, 0, W, H);
@@ -6364,7 +6424,7 @@ function drawChimpTiles(latest, ox, oy, scale, dpr) {
   }
   if (myFail && chimpFailCell < 0 && chimpPending >= 0) { chimpFailCell = chimpPending; SFX.miss(); }   // 틀린 순간 한 번
 
-  const R = 62 * scale;
+  const R = 78 * scale;   // 타일 확대 (TV 뒤에서도 숫자가 읽힌다)
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   cells.forEach((c, i) => {
     const x = ox + c[0] * scale, y = oy + c[1] * scale;
@@ -6705,6 +6765,29 @@ function drawPirate(latest, ox, oy, scale, dpr) {
   ctx.beginPath();
   ctx.moveTo(bx0, ty); ctx.lineTo(bx1, ty); ctx.lineTo(bx1, by); ctx.lineTo(bx0, by); ctx.closePath(); ctx.fill();
   ctx.beginPath(); ctx.ellipse(CX, by, PIR.R * 0.95 * scale, 34 * scale, 0, 0, Math.PI); ctx.fill();
+  // 나무 널판: 세로 이음선 (가운데는 넓고 가장자리는 좁게 — 원통으로 보인다)
+  const bw = bx1 - bx0;
+  for (let i = 1; i < 16; i++) {
+    const u = i / 16, xw = bx0 + bw * (0.5 - Math.cos(u * Math.PI) / 2);
+    ctx.strokeStyle = `rgba(50,30,12,${0.16 + 0.24 * Math.abs(Math.cos(u * Math.PI))})`;
+    ctx.lineWidth = Math.max(1, 2.4 * scale);
+    ctx.beginPath(); ctx.moveTo(xw, ty); ctx.lineTo(xw, by); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,220,170,.07)'; ctx.lineWidth = Math.max(1, 1.2 * scale);
+    ctx.beginPath(); ctx.moveTo(xw + 2 * scale, ty); ctx.lineTo(xw + 2 * scale, by); ctx.stroke();
+  }
+  // 쇠테 3줄
+  for (const hy of [ty + 26 * scale, (ty + by) / 2, by - 26 * scale]) {
+    const hg = ctx.createLinearGradient(0, hy - 9 * scale, 0, hy + 9 * scale);
+    hg.addColorStop(0, '#8e939c'); hg.addColorStop(.45, '#d7dbe4'); hg.addColorStop(1, '#5b616c');
+    ctx.fillStyle = hg; ctx.fillRect(bx0, hy - 8 * scale, bw, 16 * scale);
+    ctx.strokeStyle = 'rgba(20,14,8,.45)'; ctx.lineWidth = Math.max(1, 1.6 * scale);
+    ctx.strokeRect(bx0, hy - 8 * scale, bw, 16 * scale);
+  }
+  // 원통 명암 (좌우 가장자리를 어둡게)
+  const vg = ctx.createLinearGradient(bx0, 0, bx1, 0);
+  vg.addColorStop(0, 'rgba(0,0,0,.42)'); vg.addColorStop(.32, 'rgba(0,0,0,0)');
+  vg.addColorStop(.7, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.5)');
+  ctx.fillStyle = vg; ctx.fillRect(bx0, ty, bw, by - ty);
   // 해적: 공개 전엔 통 속에 숨어 눈만 빼꼼
   if (!reveal || tp < 1600) {
     if (Math.sin(performance.now() / 900) > 0.4) {  // 가끔 빼꼼
@@ -6997,24 +7080,61 @@ function drawTiming(latest, ox, oy, scale, dpr) {
     // 결과 점: 오차 작은 순으로 정렬해 왕관은 1등에게
     const done = latest.results.filter(r2 => r2[1] != null)
       .sort((a, b2) => Math.abs(a[1]) - Math.abs(b2[1]));
+    // 반 전체가 거의 같은 시각에 누르면 점이 한 자리에 뭉쳐 이름표가 서로 덮는다(실제로 6명이 겹쳐 못 읽었다).
+    // ① 가까운 점끼리 무리로 묶어 좌우로 부챗살처럼 벌리고 ② 무리 안에서 위아래로도 층을 나눈다.
+    // 진짜 값은 아래 회색 눈금(막대)이 가리키므로, 벌린 위치는 읽기용이다.
+    const MINGAP = 170 * scale;
+    const raw = done.map(r2 => x0 + Math.max(-3.4, Math.min(3.4, r2[1] / 1000)) * pxPerSec);
+    const order = raw.map((x, i) => i).sort((a, b2) => raw[a] - raw[b2]);   // 화면 왼쪽부터
+    const place = [];                        // i → {x, lane}
+    let gi = 0;
+    while (gi < order.length) {
+      let gj = gi + 1;
+      while (gj < order.length && raw[order[gj]] - raw[order[gj - 1]] < MINGAP) gj++;
+      const grp = order.slice(gi, gj), n = grp.length;
+      // 벌린 점이 경기장 밖으로 나가면 안 보인다(실제로 6명 중 2명이 왼쪽으로 잘렸다) — 무리 중심을 안쪽으로 당긴다
+      const lo = ox + 110 * scale, hi = ox + (arena.w - 110) * scale;
+      const perRow = Math.min(3, n), rows = Math.ceil(n / perRow);
+      const halfW = (Math.min(perRow, n) - 1) / 2 * MINGAP;
+      let mid = (raw[grp[0]] + raw[grp[n - 1]]) / 2;
+      mid = Math.max(lo + halfW, Math.min(hi - halfW, mid));
+      grp.forEach((idx, k) => {
+        const row = Math.floor(k / perRow), col = k % perRow;
+        const rowN = Math.min(perRow, n - row * perRow);
+        place[idx] = { x: mid + (col - (rowN - 1) / 2) * MINGAP, lane: rows - 1 - row };
+      });
+      gi = gj;
+    }
     done.forEach((r2, i) => {
       const [pid, diff, pts, perfect] = r2;
       const meta = roster.get(pid) || { nick: '?', ci: 0 };
-      const x = x0 + Math.max(-3.4, Math.min(3.4, diff / 1000)) * pxPerSec;
-      const lane = i % 3;
-      const y = axisY - (56 + lane * 78) * scale;
-      ctx.strokeStyle = 'rgba(147,160,196,.4)'; ctx.lineWidth = 2 * scale;
-      ctx.beginPath(); ctx.moveTo(x, y + 20 * scale); ctx.lineTo(x, axisY); ctx.stroke();
+      const x = place[i].x;
+      const trueX = raw[i];                  // 진짜 위치 (눈금에 표시)
+      const y = axisY - (86 + place[i].lane * 132) * scale;   // 층 간격을 이름·시각·오차 3줄이 안 겹치게
+      // 벌려 놓은 점과 진짜 시각을 잇는 얇은 선 + 눈금 위 작은 표식
+      if (Math.abs(trueX - x) > 2) {
+        ctx.strokeStyle = 'rgba(147,160,196,.28)'; ctx.lineWidth = 1.5 * scale;
+        ctx.beginPath(); ctx.moveTo(x, y + 20 * scale); ctx.lineTo(trueX, axisY); ctx.stroke();
+        ctx.fillStyle = COLORS[meta.ci % COLORS.length];
+        ctx.beginPath(); ctx.arc(trueX, axisY, 5 * scale, 0, 7); ctx.fill();
+      }
+      else {
+        ctx.strokeStyle = 'rgba(147,160,196,.4)'; ctx.lineWidth = 2 * scale;
+        ctx.beginPath(); ctx.moveTo(x, y + 20 * scale); ctx.lineTo(x, axisY); ctx.stroke();
+      }
       if (perfect) {
         ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 4 * scale;
         ctx.beginPath(); ctx.arc(x, y, 20 * scale, 0, 7); ctx.stroke();
       }
       ctx.fillStyle = COLORS[meta.ci % COLORS.length];
       ctx.beginPath(); ctx.arc(x, y, 14 * scale, 0, 7); ctx.fill();
-      ctx.fillStyle = i === 0 ? '#ffd700' : '#c8d0e8';
       ctx.font = `800 ${23 * scale}px Pretendard, sans-serif`;
-      // 순위(등수) + 이름 — 한 판 끝날 때 누가 몇 등인지 한눈에
-      ctx.fillText((i === 0 ? '👑 ' : (i + 1) + '위 ') + meta.nick, x, y - 34 * scale);
+      // 순위(등수) + 이름 — 한 판 끝날 때 누가 몇 등인지 한눈에. 어두운 테두리로 배경과 분리.
+      const label = (i === 0 ? '👑 ' : (i + 1) + '위 ') + meta.nick;
+      ctx.strokeStyle = 'rgba(8,12,28,.9)'; ctx.lineWidth = 5 * scale; ctx.lineJoin = 'round';
+      ctx.strokeText(label, x, y - 34 * scale);
+      ctx.fillStyle = i === 0 ? '#ffd700' : '#e6ecff';
+      ctx.fillText(label, x, y - 34 * scale);
       // 실제로 누른 시각(몇 초에 눌렀는지) + 오차
       const pressed = tSec + diff / 1000;
       ctx.fillStyle = '#ffd257';
