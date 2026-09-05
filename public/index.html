@@ -1209,6 +1209,7 @@ body.host #teamResult .tr-line { font-size: 30px; }
 
 <!-- 게임 (캔버스형: 폭탄·술래잡기·동전) -->
 <div id="game">
+  <div id="partyStatus" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);pointer-events:none"></div>
   <canvas id="cv"></canvas>
   <div class="hud">
     <span id="hudLeft">생존 0</span>
@@ -1399,6 +1400,7 @@ body.host #teamResult .tr-line { font-size: 30px; }
 <div id="reactLayer"></div>
 <canvas id="bgfx"></canvas>
 
+<script src="party-games.js?v=20260906-1"></script>
 <script>
 // ============================================================
 // 교실 아케이드 — 클라이언트 (교사 TV 모드 + 학생 폰 모드 겸용)
@@ -1414,6 +1416,9 @@ document.addEventListener('gesturechange', e => e.preventDefault());
 document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 const GAMES_META = {
+  freeze: { icon: '🌼', name: '무궁화 꽃이 피었습니다', desc: '초록에 전진, 노랑에 손 떼기, 빨강에 정지! 걸리면 뒤로 물러나 다시 도전. 빨리 완주할수록 높은 점수.', badge: 'NEW · 75초', rule: '조이스틱으로 위쪽 꽃밭까지 이동!\n노랑에 손 떼기 · 빨강에 움직이면 뒤로!' },
+  paint: { icon: '🎨', name: '색 땅따먹기', desc: '이동하며 내 색으로 칠하고 상대 땅을 빼앗자! 7초마다 넓게 칠하기. 마지막에 차지한 칸 수로 승부.', badge: 'NEW · 70초', rule: '왼손: 이동하며 색칠 · 오른손: 넓게 칠하기\n마지막에 내 색으로 남은 칸이 점수!' },
+  fishing: { icon: '🎣', name: '보물 낚시', desc: '입질에 챔질! 움직이는 바늘이 초록 띠에 들어오면 낚아 올리기. 연속 성공 보너스와 황금 물고기·보물을 노려라!', badge: 'NEW · 60초', rule: '입질이 오면 챔질 버튼!\n바늘이 초록 띠에 들어오면 한 번 더!' },
   bomb: { icon: '💣', name: '폭탄 피하기', desc: '떨어지는 폭탄을 피해 최후의 1인이 되자! 빨간 원은 1초 뒤 폭발.', badge: '최대 90초', rule: '조이스틱으로 폭탄을 피하세요!' },
   tag:  { icon: '🧟', name: '감염 술래잡기', desc: '좀비(술래)에게 닿으면 나도 좀비! 60초 동안 도망 다니며 살아남자.', badge: '60초', rule: '초록 좀비를 피해 도망가세요!\n잡히면 나도 좀비가 되어 친구를 잡으세요' },
   coin: { icon: '🪙', name: '동전 줍기', desc: '동전을 주워 담되 💣폭탄은 피해라! 폭탄을 밟으면 모은 돈이 전부 0원. 탈락 없이 모두 끝까지.', badge: '60초', rule: '동전 위로 지나가면 자동으로 줍습니다!\n💣폭탄을 밟으면 0원이 되니 조심!' },
@@ -1456,6 +1461,7 @@ const GAME_CATS = [
 ];
 // 게임당 분류 하나 — 여러 탭에 걸치면 같은 게임이 중복으로 보여 헷갈린다 (갤러그가 두 탭에 뜨던 문제)
 const GAME_CAT_OF = {
+  freeze: ['score'], paint: ['score'], fishing: ['score'],
   // ⚔️ 서바이벌: 탈락이 있고 최후 생존을 다투는 게임
   bomb: ['sur'], tag: ['sur'], dodge: ['sur'], sumo: ['sur'], chair: ['sur'], gala: ['sur'], tetris: ['sur'],
   // 🏆 점수 경쟁: 탈락 없이 점수·기록으로 겨루는 게임
@@ -3070,6 +3076,9 @@ function tetBindInput() {
 }
 
 function enterGameView(keepInput) {
+  PartyGames.reset();
+  $('partyStatus').textContent = '';
+  $('btnAction').disabled = false;
   if (gameType === 'quiz' || gameType === 'flash') {
     show('quizGame');
     $('quizGame').classList.toggle('flashmode', gameType === 'flash');
@@ -3146,7 +3155,7 @@ function enterGameView(keepInput) {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기·사다리·통) / 버튼(인형뽑기·부스터·발사·대시)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet');
+    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet' || gameType === 'paint' || gameType === 'fishing');
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
@@ -3155,7 +3164,9 @@ function enterGameView(keepInput) {
       : gameType === 'cray' ? '물풍선<br>💧'
       : gameType === 'kart' ? '아이템<br>🎁'
       : gameType === 'pull' ? '당겨!<br>🪢'
-      : gameType === 'comet' ? '부스터<br>⚡' : '집게<br>내리기';
+      : gameType === 'comet' ? '부스터<br>⚡'
+      : gameType === 'paint' ? '넓게 칠하기'
+      : gameType === 'fishing' ? '입질 대기' : '집게<br>내리기';
     // 설원 러너 전용 부스터 버튼 (점프와 별개)
     $('btnBoost').style.display = (!isHost && gameType === 'run') ? 'block' : 'none';
     $('btnBoost').classList.add('wait'); $('btnBoost').classList.remove('ready'); $('btnBoost').__label = '';
@@ -3303,6 +3314,12 @@ function renderSelBar() {
   $('btnStart').textContent = `▶ ${meta.name} 시작`;
   const opt = $('sbOpt'); opt.innerHTML = '';
   renderGameOptions(key, opt);
+  if (PartyGames.has(key)) {
+    const desc = document.createElement('p');
+    desc.textContent = meta.desc;
+    desc.style.cssText = 'margin:6px 0 0;max-width:440px;color:#edf3ff;font-size:14px;line-height:1.5';
+    opt.appendChild(desc);
+  }
 }
 
 // 게임별 옵션 UI를 선택 바 안에 렌더 (바뀌면 선택 바만 다시 그린다)
@@ -4016,7 +4033,7 @@ function initInput() {
       if (i >= 0) { chimpPending = i; send({ type: 'pick', v: i }); if (navigator.vibrate) navigator.vibrate(12); }
       return;
     }
-    const usesStick = gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
+    const usesStick = gameType === 'freeze' || gameType === 'paint' || gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
       || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
       || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
       || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet';
@@ -4082,6 +4099,10 @@ function cometBoostOff() {
 $('btnAction').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (isHost || phase !== 'playing') return;
+  if (gameType === 'paint' || gameType === 'fishing') {
+    if (!$('btnAction').disabled) send({ type: 'action' });
+    return;
+  }
   if (gameType === 'comet') {
     if (cometBoostPid !== null) return;
     cometBoostPid = e.pointerId;
@@ -4131,6 +4152,9 @@ function moveStick(x, y) {
 }
 
 const keys = {};
+$('btnAction').addEventListener('click', e => {
+  if (e.detail === 0 && !isHost && phase === 'playing' && !$('btnAction').disabled && (gameType === 'paint' || gameType === 'fishing')) send({ type: 'action' });
+});
 addEventListener('keydown', e => { if (e.target.tagName !== 'INPUT') { keys[e.key.toLowerCase()] = true; flushInput(); } });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; flushInput(); });
 function keyDir() {
@@ -4151,7 +4175,7 @@ const INPUT_MIN_MS = 70;     // 초당 약 14회 상한
 let inputSentAt = 0, inputPending = null;
 let inputLog = [];           // 예측 보정용 입력 기록 {서버시각, x, y}
 function inputMoves() {
-  return gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
+  return gameType === 'freeze' || gameType === 'paint' || gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
     || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
     || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet';
@@ -4944,6 +4968,13 @@ function draw() {
   const dpr = canvasDpr();
   ctx.clearRect(0, 0, W, H);
   GFX.tick();
+  if (PartyGames.has(gameType)) {
+    const m = snaps.length ? snaps[snaps.length - 1].m : null;
+    PartyGames.draw({ ctx, W, H, dpr, m, host: isHost, id: myId, roster, colors: COLORS,
+      character: charSprite, now: serverNow(), phase, good: () => SFX.ok(), warn: () => SFX.countBeep() });
+    drawOverlay({ alive: true }, m);
+    return;
+  }
   if (gameType === 'run') { drawRunGame(W, H, dpr); screenFx('run', W, H, dpr); return; }   // 설원 러너는 유사 3D 전용 렌더
   if (gameType === 'kart') { drawKartGame(W, H, dpr); screenFx('kart', W, H, dpr); return; } // 카트는 운전석 시점 전용 렌더
   if (gameType === 'comet') { drawCometGame(W, H, dpr); screenFx('comet', W, H, dpr); return; } // 꼬리별은 몸통 경로 렌더가 따로다
