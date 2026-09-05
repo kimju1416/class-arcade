@@ -1609,6 +1609,8 @@ let myQAnswer = -1, myQIdx = -1, lastQuizJson = '';               // 퀴즈쇼: 
 let myTap = false, myTapRound = -1;                               // 10초를 잡아라: 내가 탭했나
 let camX = null, camY = null;            // 레이싱 추적 카메라 (부드럽게 따라감)
 let seenDeadAt = 0, seenInfectedAt = 0;  // 탈락·감염 안내를 몇 초만 띄우기 위한 시각
+const dodgePrev = { db: null }; const dodgeTrail = new Map(); let dodgeFlash = [];   // 탄막: 꼬리·발사 섬광용
+const clawGotAt = new Map(), mosSwing = new Map();   // 인형: 뽑은 순간 / 모기: 파리채 휘두르기 시작 시각
 let champ = [];                          // 오늘의 챔피언 누적 [[id,nick,ci,pts,wins,games],…]
 let hostRestoreTried = false;            // 재배포 후 방 되살리기를 한 번만 시도
 let hostRestoreMidGame = false;          // 게임 도중에 서버가 재시작됐는지 (복원 후 안내 문구 분기)
@@ -3184,6 +3186,7 @@ function enterGameView(keepInput) {
   seenDeadAt = 0; seenInfectedAt = 0;
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
   FX.reset(); $('hudTime').classList.remove('low');
+  dodgePrev.db = null; dodgeFlash = []; mosSwing.clear(); clawGotAt.clear();
   // 꼬리별: 이전 판의 먹이·자취가 남으면 유령이 되고 몸이 엉뚱하게 이어진다
   cometFoods.clear(); cometPaths.clear(); cometParts = []; cometFeed = []; cometCam = null;
   cometBoostPid = null;
@@ -3878,7 +3881,9 @@ warmup(() =>
  'crayhouse1', 'crayhouse2', 'crayhouse3', 'crayhouse4',
  'icebox', 'icehouse', 'icetree', 'dstbox', 'dsthouse', 'dsttree',
  'cdybox', 'cdyhouse', 'cdytree',
- 'crayitem_balloon', 'crayitem_water', 'crayitem_shoe'].forEach(name => {
+ 'crayitem_balloon', 'crayitem_water', 'crayitem_shoe',
+ 'coinspin0', 'coinspin1', 'coinspin2', 'coinspin3', 'coinspin4', 'coinspin5',
+ 'mos2', 'mosgold', 'mosgold2', 'boom0', 'boom1', 'boom2', 'boom3', 'oxo', 'oxx', 'dohyo', 'alien3'].forEach(name => {
   const im = new Image();
   // onload를 src보다 먼저 걸어야 한다. 캐시된 이미지는 src 대입 즉시 로드가 끝나
   // 그 뒤에 붙인 onload가 영영 안 불리고, 스프라이트가 통째로 안 그려진다.
@@ -4766,7 +4771,7 @@ function fxDiff(latest) {
     const [id, x, y, alive, waiting, extra] = pb;
     if (waiting) continue;
     const infected = mode === 'tag' && extra === 1, blown = mode === 'coin' && pb[6] === 1;
-    cur.set(id, { alive: !!alive, extra: +extra || 0, infected, blown });
+    cur.set(id, { alive: !!alive, extra: +extra || 0, infected, blown, bump: mode === 'sumo' && pb[8] === 1 });
     const p = prev.get(id); if (!p) continue;
     const nick = (roster.get(id) || { nick: '?' }).nick;
     if (p.alive && !alive && mode !== 'tag') {
@@ -4789,6 +4794,10 @@ function fxDiff(latest) {
       const d = extra - p.extra;
       FX.pop(x, y - 50, `+${d}${FX_SCORE[mode]}`, '#ffd24a', d >= 3 ? 26 : 20);
       FX.burst(x, y, { col: '#ffd24a', n: d >= 3 ? 12 : 6, spd: 160, size: 3.5, life: 450, grav: 200 });
+    }
+    if (mode === 'sumo' && pb[8] === 1 && !p.bump) {   // 스모 충돌: 충격파 + 먼지
+      if (hasPos) { FX.ring(x, y, 'rgba(255,230,180,.9)', 10, 70, 320); FX.burst(x, y, { col: '#e8d2a8', n: 10, spd: 140, size: 4, grav: 40, life: 500 }); }
+      FX.shake(3, 120);
     }
     if (mode === 'coin' && !p.blown && blown) {
       if (hasPos) { FX.burst(x, y, { col: '#ff7a5c', n: 16, spd: 280, size: 6 }); FX.ring(x, y, 'rgba(255,120,90,.9)'); FX.pop(x, y - 52, '💣 0원!', '#ff8a7a', 24); }
@@ -5114,14 +5123,16 @@ function draw() {
           drawSpr(SPR.bomb, x, y, r * 0.95 * puff);
           if (!GFX.lite && Math.random() < 0.45) FX.spark(bx + br * 0.28, by - br * 0.62, Math.random() < .5 ? '#ffd27a' : '#ff8a3a', { rise: 70, life: 380, size: 2 });   // 도화선 불티
         }
-      } else if (SPR.boom) {
-        // 폭발 스프라이트: 커지면서 옅어지고 살짝 회전
+      } else if (SPR.boom0 || SPR.boom) {
+        // 폭발: 코덱스 4프레임(작은 섬광 → 불덩이 → 큰 폭발 → 연기)을 진행도에 맞춰 재생
         const t = Math.min(1, prog / 100);
+        const fi = Math.min(3, Math.floor(t * 4));
+        const bimg = SPR['boom' + fi] || SPR.boom;
         ctx.save();
-        ctx.globalAlpha = Math.max(0, 1 - t * 0.85);
+        ctx.globalAlpha = Math.max(0, 1 - t * 0.65);
         ctx.translate(x, y);
-        ctx.rotate(t * 0.5);
-        drawSpr(SPR.boom, 0, 0, r * (1.7 + t * 1.1));
+        ctx.rotate(t * 0.3);
+        drawSpr(bimg, 0, 0, r * (1.5 + t * 1.6));
         ctx.restore();
       } else {
         const t = Math.min(1, prog / 100);
@@ -5151,7 +5162,17 @@ function draw() {
         ctx.lineWidth = 3 * dpr;
         ctx.beginPath(); ctx.arc(x, y + float, r * 1.5, 0, 7); ctx.stroke();
       }
-      if (SPR.coin) drawSpr(SPR.coin, x, y + float, r * 2.4);
+      const fi = Math.floor(performance.now() / 75 + cx2 * 0.05 + cy2 * 0.03) % 6;   // 동전마다 위상이 다르게
+      const fr = SPR['coinspin' + fi];
+      if (fr) {   // 코덱스로 뽑은 회전 6프레임 (shadowBlur는 안 쓴다 — 소프트웨어 렌더에서 TV가 14→5fps로 죽었다)
+        drawSpr(fr, x, y + float, r * (v === 3 ? 3.2 : 2.6));
+      } else if (SPR.coin) {   // 프레임이 아직 안 왔으면 가로 압축으로 회전 흉내
+        const sp = Math.cos(performance.now() / 260 + cx2 * 0.7 + cy2 * 0.3), w = Math.max(0.12, Math.abs(sp));
+        ctx.save(); ctx.translate(x, y + float); ctx.scale(w, 1);
+        if (v === 3) { ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 14 * dpr; }
+        drawSpr(SPR.coin, 0, 0, r * 2.4);
+        ctx.restore();
+      }
       if (!GFX.lite && Math.random() < (v === 3 ? 0.06 : 0.012)) FX.spark(cx2 + (Math.random() - .5) * 20, cy2 - 6, '#ffffff', { rise: 24, life: 360, size: 1.8 });   // 광택 반짝
       else { ctx.fillStyle = v === 3 ? '#ffd700' : '#f5c542'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
     }
@@ -5177,16 +5198,17 @@ function draw() {
     // 격추 폭발 잔상 (로컬 파티클 350ms)
     if (latest.kills) for (const [kx, ky] of latest.kills) {
       if (!window.__galaFx) window.__galaFx = [];
-      if (!latest.__fxDone) window.__galaFx.push({ x: kx, y: ky, t: performance.now() });
+      if (!latest.__fxDone) { window.__galaFx.push({ x: kx, y: ky, t: performance.now() }); FX.burst(kx, ky, { col: '#ffb040', n: 10, spd: 220, size: 4, grav: 0, life: 420 }); FX.burst(kx, ky, { col: '#8cf08c', n: 6, spd: 140, size: 3, grav: 0, life: 380 }); }
     }
     latest.__fxDone = true;
     if (window.__galaFx) {
       window.__galaFx = window.__galaFx.filter(f => performance.now() - f.t < 380);
       for (const f of window.__galaFx) {
         const age = (performance.now() - f.t) / 380;
-        if (SPR.boom) {
+        const bimg = SPR['boom' + Math.min(3, Math.floor(age * 4))] || SPR.boom;
+        if (bimg) {
           ctx.globalAlpha = 1 - age;
-          drawSpr(SPR.boom, ox + f.x * scale, oy + f.y * scale, (30 + age * 46) * scale);
+          drawSpr(bimg, ox + f.x * scale, oy + f.y * scale, (34 + age * 52) * scale);
           ctx.globalAlpha = 1;
         }
       }
@@ -5195,40 +5217,93 @@ function draw() {
     for (const [ex, ey, elite, dive] of (latest.enemies || [])) {
       const x = ox + ex * scale, y = oy + ey * scale;
       const bob = dive ? 0 : Math.sin(performance.now() / 300 + ex * 0.05) * 3 * scale;
-      const img = elite ? SPR.alien2 : SPR.alien;
-      const sz = (elite ? 52 : 44) * scale;
+      // 정예는 보라 말벌, 웨이브 4부터 정예 일부가 붉은 보스형으로
+      const boss = elite && (latest.wave || 1) >= 4 && ((ex * 7 + ey * 13) | 0) % 3 === 0;
+      const img = boss ? (SPR.alien3 || SPR.alien2) : elite ? SPR.alien2 : SPR.alien;
+      const sz = (boss ? 78 : elite ? 66 : 56) * scale;   // TV 뒤에서도 보이게
       if (img) drawSpr(img, x, y + bob, sz);
       else { ctx.fillStyle = elite ? '#a05aff' : '#4cd94c'; ctx.beginPath(); ctx.arc(x, y, 20 * scale, 0, 7); ctx.fill(); }
     }
-    // 내 총알 (노란 트레이서) — [x1,y1,x2,y2,...] 평탄 배열
-    ctx.fillStyle = '#ffe45c';
+    // 내 총알 — 빛 꼬리가 달린 노란 레이저
     const pb = latest.pb || [];
-    for (let i = 0; i < pb.length; i += 2) {
-      const x = ox + pb[i] * scale, y = oy + pb[i + 1] * scale;
-      ctx.fillRect(x - 2 * scale, y - 9 * scale, 4 * scale, 18 * scale);
-    }
-    // 적 총알 (붉은 구슬 + 흰 심)
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(255,228,92,.35)'; ctx.lineWidth = 8 * scale; ctx.lineCap = 'round'; ctx.beginPath();
+    for (let i = 0; i < pb.length; i += 2) { const x = ox + pb[i] * scale, y = oy + pb[i + 1] * scale; ctx.moveTo(x, y + 26 * scale); ctx.lineTo(x, y - 8 * scale); }
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#ffe45c';
+    for (let i = 0; i < pb.length; i += 2) { const x = ox + pb[i] * scale, y = oy + pb[i + 1] * scale; ctx.fillRect(x - 2 * scale, y - 9 * scale, 4 * scale, 18 * scale); }
+    // 적 총알 — 붉은 발광 구슬
     const eb = latest.eb || [];
-    for (let i = 0; i < eb.length; i += 2) {
-      const x = ox + eb[i] * scale, y = oy + eb[i + 1] * scale;
-      ctx.fillStyle = '#ff5d7a';
-      ctx.beginPath(); ctx.arc(x, y, 7 * scale, 0, 7); ctx.fill();
-      ctx.fillStyle = '#ffd9e0';
-      ctx.beginPath(); ctx.arc(x, y, 3 * scale, 0, 7); ctx.fill();
-    }
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,60,110,.35)'; ctx.beginPath();
+    for (let i = 0; i < eb.length; i += 2) { const x = ox + eb[i] * scale, y = oy + eb[i + 1] * scale; ctx.moveTo(x + 13 * scale, y); ctx.arc(x, y, 13 * scale, 0, 7); }
+    ctx.fill(); ctx.restore();
+    ctx.fillStyle = '#ff5d7a'; ctx.beginPath();
+    for (let i = 0; i < eb.length; i += 2) { const x = ox + eb[i] * scale, y = oy + eb[i + 1] * scale; ctx.moveTo(x + 7 * scale, y); ctx.arc(x, y, 7 * scale, 0, 7); }
+    ctx.fill();
+    ctx.fillStyle = '#ffd9e0'; ctx.beginPath();
+    for (let i = 0; i < eb.length; i += 2) { const x = ox + eb[i] * scale, y = oy + eb[i + 1] * scale; ctx.moveTo(x + 3 * scale, y); ctx.arc(x, y, 3 * scale, 0, 7); }
+    ctx.fill();
   }
-  // 탄막 서바이벌: 마젠타 탄
+  // 탄막 서바이벌: 꼬리가 달린 발광탄. 서버는 좌표만 보내므로 직전 스냅샷의 가장 가까운 탄과 짝지어 꼬리를 그린다.
   if (latest.mode === 'dodge' && latest.db) {
-    const db = latest.db;
-    for (let i = 0; i < db.length; i += 2) {
-      const x = ox + db[i] * scale, y = oy + db[i + 1] * scale;
-      ctx.fillStyle = 'rgba(255,80,180,.35)';
-      ctx.beginPath(); ctx.arc(x, y, 12 * scale, 0, 7); ctx.fill();
-      ctx.fillStyle = '#ff64c8';
-      ctx.beginPath(); ctx.arc(x, y, 7 * scale, 0, 7); ctx.fill();
-      ctx.fillStyle = '#ffe3f5';
-      ctx.beginPath(); ctx.arc(x, y, 2.8 * scale, 0, 7); ctx.fill();
+    const db = latest.db, prev = dodgePrev.db, n = db.length >> 1;
+    const now2 = performance.now();
+    // 새로 나타난 탄(직전 프레임에 짝이 없음)의 발사 지점에 번쩍 — 어디서 쏘는지 보인다
+    if (prev && prev !== db) {
+      const pn = prev.length >> 1;
+      for (let i = 0; i < n; i++) {
+        const x = db[i * 2], y = db[i * 2 + 1]; let bd = 1e9;
+        for (let j = 0; j < pn; j++) { const d = (prev[j * 2] - x) ** 2 + (prev[j * 2 + 1] - y) ** 2; if (d < bd) bd = d; }
+        if (bd > 60 * 60) { dodgeTrail.set(i, null); if (!GFX.lite && dodgeFlash.length < 40) dodgeFlash.push({ x, y, t: now2 }); }
+      }
     }
+    // 발사 지점 섬광 (0.35초)
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    dodgeFlash = dodgeFlash.filter(f => now2 - f.t < 350);
+    for (const f of dodgeFlash) {
+      const k = (now2 - f.t) / 350, R = (14 + 70 * k) * scale;
+      const g2 = ctx.createRadialGradient(ox + f.x * scale, oy + f.y * scale, 0, ox + f.x * scale, oy + f.y * scale, R);
+      g2.addColorStop(0, `rgba(255,120,220,${.55 * (1 - k)})`); g2.addColorStop(1, 'rgba(255,120,220,0)');
+      ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(ox + f.x * scale, oy + f.y * scale, R, 0, 7); ctx.fill();
+    }
+    // 꼬리: 직전 위치 → 현재 위치 (짝은 가장 가까운 탄)
+    if (prev && prev !== db && !GFX.lite) {
+      const pn = prev.length >> 1;
+      ctx.lineCap = 'round'; ctx.lineWidth = 5 * scale; ctx.strokeStyle = 'rgba(255,90,200,.45)';
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = db[i * 2], y = db[i * 2 + 1]; let bd = 1e9, bj = -1;
+        for (let j = 0; j < pn; j++) { const d = (prev[j * 2] - x) ** 2 + (prev[j * 2 + 1] - y) ** 2; if (d < bd) { bd = d; bj = j; } }
+        if (bj < 0 || bd > 60 * 60) continue;
+        const px2 = prev[bj * 2], py2 = prev[bj * 2 + 1];
+        // 꼬리는 진행 방향 반대로 2.2배 늘려 속도감을 준다
+        ctx.moveTo(ox + (x + (px2 - x) * 2.2) * scale, oy + (y + (py2 - y) * 2.2) * scale); ctx.lineTo(ox + x * scale, oy + y * scale);
+      }
+      ctx.stroke();
+    }
+    // 발광 후광 (한 경로로 모아 그린다)
+    ctx.fillStyle = 'rgba(255,80,180,.30)'; ctx.beginPath();
+    for (let i = 0; i < n; i++) { const x = ox + db[i * 2] * scale, y = oy + db[i * 2 + 1] * scale; ctx.moveTo(x + 13 * scale, y); ctx.arc(x, y, 13 * scale, 0, 7); }
+    ctx.fill();
+    ctx.restore();
+    // 탄 몸통 + 흰 심
+    ctx.fillStyle = '#ff64c8'; ctx.beginPath();
+    for (let i = 0; i < n; i++) { const x = ox + db[i * 2] * scale, y = oy + db[i * 2 + 1] * scale; ctx.moveTo(x + 7 * scale, y); ctx.arc(x, y, 7 * scale, 0, 7); }
+    ctx.fill();
+    ctx.fillStyle = '#ffe3f5'; ctx.beginPath();
+    for (let i = 0; i < n; i++) { const x = ox + db[i * 2] * scale, y = oy + db[i * 2 + 1] * scale; ctx.moveTo(x + 2.8 * scale, y); ctx.arc(x, y, 2.8 * scale, 0, 7); }
+    ctx.fill();
+    // 15초부터 중앙 회오리 — 중심에 맥동하는 핵을 그려 "저기서 나온다"를 알린다
+    if ((latest.elapsed || 0) >= 15) {
+      const cx2 = ox + arena.w / 2 * scale, cy2 = oy + arena.h / 2 * scale, pulse = 0.7 + 0.3 * Math.sin(now2 / 90);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const g3 = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, 46 * scale * pulse);
+      g3.addColorStop(0, 'rgba(255,160,240,.75)'); g3.addColorStop(.5, 'rgba(255,80,200,.35)'); g3.addColorStop(1, 'rgba(255,80,200,0)');
+      ctx.fillStyle = g3; ctx.beginPath(); ctx.arc(cx2, cy2, 46 * scale * pulse, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    dodgePrev.db = db;
   }
   if (latest.mode === 'mos' && latest.mos) {
     for (const [mx, my, gold] of latest.mos) {
@@ -5241,12 +5316,15 @@ function draw() {
         ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, 7); ctx.stroke();
       }
       if (SPR.mos) {
-        if (gold) {   // 황금 모기: 노랗게 물들여 구분
-          ctx.save();
-          ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 12 * dpr;
-          drawSpr(SPR.mos, x, y + wob, r * 2.6);
-          ctx.restore();
-        } else drawSpr(SPR.mos, x, y + wob, r * 2.4);
+        // 날갯짓: 두 프레임을 번갈아 (없으면 가로 압축 폴백)
+        const wingUp = Math.floor(performance.now() / 70 + mx) % 2 === 0;
+        const img = gold ? (wingUp ? (SPR.mosgold || SPR.mos) : (SPR.mosgold2 || SPR.mosgold || SPR.mos))
+                         : (wingUp ? SPR.mos : (SPR.mos2 || SPR.mos));
+        ctx.save(); ctx.translate(x, y + wob);
+        if (!SPR.mos2) { const flap = 1 + 0.16 * Math.sin(performance.now() / 45 + mx); ctx.scale(flap, 2 - flap); }
+        if (gold && !SPR.mosgold) { ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 12 * dpr; }
+        drawSpr(img, 0, 0, r * (gold ? 2.8 : 2.5));
+        ctx.restore();
       } else {
         ctx.fillStyle = gold ? '#ffd700' : '#4b4a55';
         ctx.beginPath(); ctx.ellipse(x, y, r * .55, r * .85, 0, 0, 7); ctx.fill();
@@ -5570,27 +5648,51 @@ function draw() {
     // 체육관 마루가 살짝 비치는 어둠 — 링 밖은 위험 구역
     ctx.fillStyle = 'rgba(5,7,18,.45)';
     ctx.fillRect(ox, oy, arena.w * scale, arena.h * scale);
-    const grd = ctx.createRadialGradient(cx2, cy2, r * 0.15, cx2, cy2, r);
-    grd.addColorStop(0, '#dcb668'); grd.addColorStop(1, '#b98a3e');
-    ctx.fillStyle = grd;
-    ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 * dpr;
-    ctx.beginPath(); ctx.arc(cx2, cy2, r * 0.96, 0, 7); ctx.stroke();
-    ctx.strokeStyle = '#c1121f'; ctx.lineWidth = 7 * dpr;
-    ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, 7); ctx.stroke();
-    ctx.strokeStyle = 'rgba(120,60,20,.35)'; ctx.lineWidth = 3 * dpr;
-    ctx.beginPath(); ctx.arc(cx2, cy2, r * 0.34, 0, 7); ctx.stroke();
+    if (SPR.dohyo) {   // 코덱스로 그린 씨름판 (짚 밧줄 테두리 포함)
+      drawSpr(SPR.dohyo, cx2, cy2, r * 2.16);
+    } else {
+      const grd = ctx.createRadialGradient(cx2, cy2, r * 0.15, cx2, cy2, r);
+      grd.addColorStop(0, '#dcb668'); grd.addColorStop(1, '#b98a3e');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 * dpr;
+      ctx.beginPath(); ctx.arc(cx2, cy2, r * 0.96, 0, 7); ctx.stroke();
+      ctx.strokeStyle = '#c1121f'; ctx.lineWidth = 7 * dpr;
+      ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, 7); ctx.stroke();
+    }
   }
-  // 의자 뺏기: 의자 (빈 의자는 노란 링이 깜빡인다)
+  // 의자 뺏기: 음악 중엔 무대 조명이 빙글빙글 돌고, 멈추면 빈 의자에 스포트라이트가 꽂힌다
   if (latest.mode === 'chair' && latest.chairs) {
+    const now3 = performance.now(), W2 = arena.w * scale, H2 = arena.h * scale, cx3 = ox + W2 / 2, cy3 = oy + H2 / 2;
+    if (!GFX.lite) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      if (latest.cphase === 'music') {
+        const R = Math.max(W2, H2) * 0.75;
+        for (let i = 0; i < 3; i++) {   // 조명 3줄기 — 색이 다르고 속도가 다르다
+          const a = now3 / (1400 + i * 300) * (i % 2 ? -1 : 1) + i * 2.1, spread = 0.22;
+          const g2 = ctx.createRadialGradient(cx3, cy3, 0, cx3, cy3, R);
+          const col = ['255,120,200', '120,200,255', '255,220,120'][i];
+          g2.addColorStop(0, `rgba(${col},.22)`); g2.addColorStop(1, `rgba(${col},0)`);
+          ctx.fillStyle = g2; ctx.beginPath(); ctx.moveTo(cx3, cy3); ctx.arc(cx3, cy3, R, a - spread, a + spread); ctx.closePath(); ctx.fill();
+        }
+      } else if (latest.cphase === 'grab') {
+        for (const [chx, chy, owned] of latest.chairs) if (!owned) {   // 빈 의자 위 스포트라이트
+          const x = ox + chx * scale, y = oy + chy * scale, R = 78 * scale;
+          const g2 = ctx.createRadialGradient(x, y, 0, x, y, R);
+          g2.addColorStop(0, 'rgba(255,240,180,.45)'); g2.addColorStop(.6, 'rgba(255,220,120,.18)'); g2.addColorStop(1, 'rgba(255,220,120,0)');
+          ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
     for (const [chx, chy, owned] of latest.chairs) {
       const x = ox + chx * scale, y = oy + chy * scale;
       if (!owned && latest.cphase === 'grab') {
-        ctx.strokeStyle = `rgba(255,215,0,${0.4 + 0.35 * Math.sin(performance.now() / 160)})`;
+        ctx.strokeStyle = `rgba(255,215,0,${0.4 + 0.35 * Math.sin(now3 / 160)})`;
         ctx.lineWidth = 4 * dpr;
-        ctx.beginPath(); ctx.arc(x, y, 34 * scale, 0, 7); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 40 * scale, 0, 7); ctx.stroke();
       }
-      drawChair(x, y, 24 * scale, dpr, owned === 1);
+      drawChair(x, y, 30 * scale, dpr, owned === 1);   // 의자 1.25배
     }
   }
   if (latest.mode === 'sadari') drawSadari(latest, ox, oy, scale, dpr);
@@ -5612,11 +5714,37 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(ox + half, oy); ctx.lineTo(ox + half, oy + H2); ctx.stroke();
     ctx.setLineDash([]);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `900 ${230 * scale}px Pretendard, sans-serif`;
-    ctx.fillStyle = dimO ? 'rgba(110,150,130,.18)' : 'rgba(61,220,132,.42)';
-    ctx.fillText('O', ox + half / 2, oy + H2 * 0.56);
-    ctx.fillStyle = dimX ? 'rgba(150,110,120,.18)' : 'rgba(255,107,107,.42)';
-    ctx.fillText('X', ox + half * 1.5, oy + H2 * 0.56);
+    // 입체 글자: 아래로 겹쳐 그린 어두운 층(두께) + 위쪽 밝은 층 + 가장자리 하이라이트
+    const glyph = (ch, gx, gy, bright, dim, dark, glow) => {
+      const fs = 250 * scale;
+      ctx.font = `900 ${fs}px Pretendard, sans-serif`;
+      if (glow > 0 && !GFX.lite) { ctx.save(); ctx.shadowColor = bright; ctx.shadowBlur = 40 * scale * glow; ctx.fillStyle = bright; ctx.globalAlpha = .5 * glow; ctx.fillText(ch, gx, gy); ctx.restore(); }
+      for (let d = 8; d >= 1; d--) { ctx.fillStyle = dark; ctx.globalAlpha = dim ? .18 : .9; ctx.fillText(ch, gx, gy + d * 1.4 * scale); }
+      ctx.fillStyle = bright; ctx.globalAlpha = dim ? .18 : .95; ctx.fillText(ch, gx, gy);
+      ctx.globalAlpha = 1;
+    };
+    const okO = reveal && latest.oxAnswer === 0, okX = reveal && latest.oxAnswer === 1;
+    const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 140);
+    const gsz = Math.min(half * 0.62, H2 * 0.42);
+    if (SPR.oxo && SPR.oxx) {   // 코덱스로 그린 입체 글자
+      for (const [img, gx, dim, ok, glowCol] of [[SPR.oxo, ox + half / 2, dimO, okO, '#5cf0a0'], [SPR.oxx, ox + half * 1.5, dimX, okX, '#ff7a7a']]) {
+        ctx.save();
+        ctx.globalAlpha = dim ? .22 : 1;
+        if (ok && !GFX.lite) { ctx.shadowColor = glowCol; ctx.shadowBlur = 40 * scale * pulse; }
+        drawSpr(img, gx, oy + H2 * 0.56, gsz * (ok ? 1 + 0.05 * pulse : 1));
+        ctx.restore();
+      }
+    } else {
+      glyph('O', ox + half / 2, oy + H2 * 0.56, '#5cf0a0', dimO, '#0f5a32', okO ? pulse : 0);
+      glyph('X', ox + half * 1.5, oy + H2 * 0.56, '#ff7a7a', dimX, '#6e1c22', okX ? pulse : 0);
+    }
+    // 오답 구역: 어두운 균열선
+    if (reveal && !GFX.lite) {
+      const wx0 = dimO ? ox : ox + half;
+      ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 3 * scale; ctx.beginPath();
+      for (let i = 0; i < 7; i++) { const sx2 = wx0 + half * (0.15 + 0.7 * ((i * 37) % 10) / 10), sy2 = oy + H2 * (0.2 + 0.6 * ((i * 53) % 10) / 10); ctx.moveTo(sx2, sy2); ctx.lineTo(sx2 + 60 * scale * (i % 2 ? 1 : -1), sy2 + 90 * scale); ctx.lineTo(sx2 + 20 * scale, sy2 + 160 * scale); }
+      ctx.stroke();
+    }
     // 문제 배너 (긴 문장은 두 줄로)
     if (latest.q) {
       const bw = W2 * 0.95, bh = 105 * scale;
@@ -5986,7 +6114,7 @@ function draw() {
     }
     if (latest.mode === 'gala') {
       if (latest.kills && latest.kills.length) SFX.boom();
-      if ((latest.wave || 0) > (sndPrev.wave || 0)) { SFX.fanfare(); sndPrev.wave = latest.wave; }
+      if ((latest.wave || 0) > (sndPrev.wave || 0)) { SFX.fanfare(); sndPrev.wave = latest.wave; FX.banner(`🌊 WAVE ${latest.wave}`, 'blue'); }
     }
     if (latest.mode === 'dodge' || latest.mode === 'gala') {
       const al = latest.players.filter(pp => pp[3] === 1 && !pp[4]).length;
@@ -8809,17 +8937,19 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
       const [, , , , , , swatting, sx, sy, hit] = pb;
       if (swatting) {
         const x = ox + sx * scale, y = oy + sy * scale, r = 62 * scale;
-        // 때린 자리에 충격 링
+        // 휘두르기: 처음 본 순간부터 0.18초 동안 위에서 내리친다 (각도·크기 애니메이션)
+        if (!mosSwing.has(id)) { mosSwing.set(id, performance.now()); if (hit) FX.burst(sx, sy, { col: hit === 2 ? '#ffd700' : '#8ED11F', n: 12, spd: 180, size: 3.5, life: 420 }); }
+        const k = Math.min(1, (performance.now() - mosSwing.get(id)) / 180), ease = 1 - (1 - k) * (1 - k);
+        // 때린 자리에 충격 링 (내리친 뒤 퍼진다)
         ctx.strokeStyle = color; ctx.lineWidth = 4 * dpr;
-        ctx.globalAlpha = .75;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+        ctx.globalAlpha = .75 * ease;
+        ctx.beginPath(); ctx.arc(x, y, r * (0.6 + 0.4 * ease), 0, 7); ctx.stroke();
         ctx.globalAlpha = 1;
         if (SPR.swatter) {
-          // 파리채가 살짝 기울어 내려친 모습
           ctx.save();
           ctx.translate(x, y);
-          ctx.rotate(-0.35);
-          drawSpr(SPR.swatter, 0, 0, r * 2.3);
+          ctx.rotate(-1.3 + 0.95 * ease);           // 들었다가 탁
+          drawSpr(SPR.swatter, 0, 0, r * (2.9 - 0.6 * ease));   // 멀리서 가까이
           ctx.restore();
         } else {
           ctx.fillStyle = color; ctx.globalAlpha = .18;
@@ -8830,7 +8960,7 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
         ctx.font = `700 ${(isHost ? 18 : 13) * dpr}px Pretendard, sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText(meta.nick, x, y - r - 8 * dpr);
-      }
+      } else mosSwing.delete(id);
       if (hit) {
         const x = ox + sx * scale;
         const y = Math.max(oy + 26 * scale, oy + sy * scale - 70 * scale);
@@ -8851,7 +8981,7 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
           btn.innerHTML = busy ? '내려가는<br>중…' : '집게<br>내리기';
         }
       }
-      const x = ox + clawX * scale;
+      const x = ox + clawX * scale;   // 집게 x (흔들림은 줄·집게에만 준다)
       // 집게 레일을 3단으로 어긋나게 배치해 이름표가 겹치지 않게 한다
       const lane = (meta.ci % 3) * 16;
       const topY = oy + (10 + lane) * scale;
@@ -8859,6 +8989,7 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
       // 내려가는 정도: 0~50%는 내려가고 50~100%는 올라온다
       const t = dropPct / 100;
       const depth = t === 0 ? 0 : (t <= .5 ? t * 2 : (1 - t) * 2);
+      const swayA = depth > 0 ? Math.sin(performance.now() / 110 + meta.ci) * (3 + 6 * depth) * scale : 0;   // 내려갈수록 줄이 더 흔들린다
       const tipY = topY + reach * depth;
       // 내 기계 강조: 학생 본인의 집게 레인을 세로 하이라이트 기둥으로 표시 (내 집게가 어느 것인지 한눈에)
       const isMine = id === myId && !isHost;
@@ -8874,18 +9005,25 @@ function drawTapGames(latest, ox, oy, scale, dpr) {
         ctx.setLineDash([]);
         ctx.restore();
       }
-      // 줄
-      ctx.strokeStyle = 'rgba(200,208,232,.5)'; ctx.lineWidth = 2 * dpr;
-      ctx.beginPath(); ctx.moveTo(x, topY); ctx.lineTo(x, tipY); ctx.stroke();
+      // 줄 (살짝 휘어 흔들린다)
+      ctx.strokeStyle = 'rgba(200,208,232,.6)'; ctx.lineWidth = 2.5 * dpr;
+      ctx.beginPath(); ctx.moveTo(x, topY); ctx.quadraticCurveTo(x + swayA * 1.6, (topY + tipY) / 2, x + swayA, tipY); ctx.stroke();
+      // 뽑은 인형이 집게에 매달려 올라온다 (올라오는 절반 동안)
+      if (got && t > .5) {
+        const dimg = got >= 5 ? SPR.doll3 : got >= 3 ? SPR.doll2 : SPR.doll;
+        if (dimg) { ctx.save(); ctx.translate(x + swayA, tipY + 34 * scale); ctx.rotate(Math.sin(performance.now() / 140) * 0.12); drawSpr(dimg, 0, 0, (got >= 5 ? 56 : got >= 3 ? 44 : 36) * scale); ctx.restore(); }
+        if (!clawGotAt.has(id)) { clawGotAt.set(id, performance.now()); FX.burst(clawX, (tipY - oy) / scale, { col: got >= 5 ? '#ff8fab' : '#ffd24a', n: 14, spd: 200, size: 4, grav: 120 }); }
+      } else if (!got) clawGotAt.delete(id);
       // 집게: 스프라이트 + 소유자 색 레일
       ctx.fillStyle = color;
       ctx.fillRect(x - 15 * scale, topY - 7 * scale, 30 * scale, 9 * scale);
       if (SPR.claw) {
         const grabW = 46 * scale * (depth > .1 ? 0.82 : 1);  // 내려가면 오므린 느낌
         ctx.save();
-        ctx.translate(x, tipY + 16 * scale);
+        ctx.translate(x + swayA, tipY + 16 * scale);
+        ctx.rotate(swayA / (60 * scale));
         ctx.scale(depth > .1 ? 0.82 : 1, 1);
-        drawSpr(SPR.claw, 0, 0, grabW / (depth > .1 ? 0.82 : 1));
+        drawSpr(SPR.claw, 0, 0, grabW * 1.25 / (depth > .1 ? 0.82 : 1));   // 집게 1.25배
         ctx.restore();
       } else {
         ctx.strokeStyle = color; ctx.lineWidth = 4 * dpr;
