@@ -11,6 +11,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const comet = require('./comet');   // 꼬리별 — 로직이 커서 별도 모듈로 뺐다
+const party = require('./party-games');
 
 const PORT = process.env.PORT || 3000;
 
@@ -1141,7 +1142,7 @@ function drawSuggest() {
   return [...out];
 }
 
-const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray', 'kart', 'pull', 'comet'];
+const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 'gala', 'dodge', 'sumo', 'chair', 'sadari', 'pirate', 'quiz', 'ox', 'timing', 'run', 'simon', 'chimp', 'flash', 'pairs', 'tetris', 'draw', 'cray', 'kart', 'pull', 'comet', 'freeze', 'paint', 'fishing'];
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
@@ -1253,11 +1254,11 @@ const server = http.createServer((req, res) => {
   if (file !== root && !file.startsWith(root + path.sep)) { res.writeHead(403); res.end(); return; }
   // 캐시 정책. 예전엔 아무 헤더도 안 보내서 브라우저도 Cloudflare도 캐싱을 못 했고,
   // 새로고침 한 번에 스프라이트 7MB를 미국 원점에서 통째로 다시 받아왔다.
-  //  - html/json : 항상 재검증(no-cache). ETag가 같으면 304라 본문은 안 나간다 → 배포 즉시 반영.
+  //  - html/json/js : 항상 재검증(no-cache). 외부 게임 코드도 HTML과 같은 버전으로 반영.
   //  - 그 외(이미지·소리) : 하루 캐시 + 일주일 SWR. 만료돼도 캐시본을 바로 쓰고 갱신은 뒤에서 한다.
   //    파일을 교체하면 mtime이 바뀌어 ETag가 달라지므로 만료 후 자동으로 새로 받는다.
   const ext = path.extname(file);
-  const cache = (ext === '.html' || ext === '.json')
+  const cache = (ext === '.html' || ext === '.json' || ext === '.js')
     ? 'no-cache'
     : 'public, max-age=86400, stale-while-revalidate=604800';
   fs.stat(file, (er, st) => {
@@ -1746,6 +1747,7 @@ function startGame(room, type, opt) {
     g.strokes = []; g.drawnIds = new Set(); g.correctOrder = [];
   }
 
+  if (party.has(type)) party.start(room);
   room.state = 'countdown';
   room.phaseEndAt = Date.now() + COUNTDOWN_MS;
   broadcast(room, {
@@ -1846,6 +1848,10 @@ function tick(room) {
   else if (room.gameType === 'kart') kartTick(room, now, dt);
   else if (room.gameType === 'pull') pullTick(room, now, dt);
   else if (room.gameType === 'comet') cometTick(room, now, dt);
+  else if (party.has(room.gameType)) {
+    if (party.tick(room, now, dt)) endScoreGame(room, room.gameType === 'paint' ? '칸' : '점');
+    else sendState(room, now);
+  }
 }
 
 // ---------- 꼬리별 ----------
@@ -3871,6 +3877,7 @@ function finishGame(room, sorted, labelOf, keyOf) {
 function sendState(room, now) {
   const g = room.game;
   const type = room.gameType;
+  if (party.has(type)) { broadcast(room, party.state(room, now)); return; }
   // 아레나 크기를 한 번 보냈다고 표시. 재접속자는 sendCurrentPhase가 따로 챙긴다.
   const arenaKey = g.arenaW * 100000 + g.arenaH;
   const arenaWasSent = g.arenaSent === arenaKey;
@@ -4520,6 +4527,7 @@ wss.on('connection', (ws) => {
         const p = room.players.get(ws.playerId);
         if (!p) return;
         if (room.gameType === 'pull') { pullTap(room, p, Date.now()); return; }
+        if (party.has(room.gameType)) { party.action(room, p, Date.now()); return; }
         if (room.gameType === 'claw') clawDrop(room, p);
         else if (room.gameType === 'gala' && room.state === 'playing' && p.alive) {
           const g2 = room.game, now2 = Date.now();

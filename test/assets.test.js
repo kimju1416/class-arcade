@@ -10,6 +10,9 @@ module.exports = async function run() {
 
   // 코드에서 참조하는 경로 수집 (문자열 리터럴 + 템플릿 조합)
   const refs = new Set();
+  // Cards use template URLs; check every game's thumbnail, including new games.
+  const meta = html.match(/const GAMES_META = \{([\s\S]*?)\n\};/);
+  if (meta) for (const m of meta[1].matchAll(/^\s*([a-z]+):\s*\{/gm)) refs.add(`sprites/thumb-${m[1]}.jpg`);
   for (const m of html.matchAll(/['"`](sprites\/[\w.-]+\.(?:png|jpg))['"`]/g)) refs.add(m[1]);
   for (const m of html.matchAll(/['"`](sfx\/[\w.-]+\.mp3)['"`]/g)) refs.add(m[1]);
   // 'sprites/' + key + '.png' 형태로 조합되는 것들 (게임 카드 아이콘·바닥)
@@ -43,6 +46,10 @@ module.exports = async function run() {
   // 없는 경로는 404여야 (SPA 폴백으로 200을 주면 배포 검증이 무의미해진다)
   const res404 = await fetch(`${H.HTTP}/sprites/__없는파일__.png`);
   t.ok(res404.status === 404, `없는 자산은 404 (실제 ${res404.status})`);
+
+  const module = await fetch(`${H.HTTP}/party-games.js`);
+  t.ok(module.ok && (module.headers.get('content-type') || '').includes('javascript'), '새 게임 화면 모듈 정상 서빙');
+  t.eq(module.headers.get('cache-control'), 'no-cache', '외부 게임 코드도 배포 시 재검증');
 
   return t;
 };
