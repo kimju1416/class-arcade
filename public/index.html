@@ -359,6 +359,8 @@
   .word-list { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 420px; }
   .word-row { display: flex; gap: 10px; align-items: center; background: #1a2140; border-radius: 10px; padding: 8px 14px; font-size: 15px; }
   .word-row .pts { margin-left: auto; color: #3ddc84; font-weight: 700; }
+  .word-row.out { opacity: .55; }   /* 탈락자 — 남은 사람이 먼저 눈에 들어오게 */
+  .word-row .rank-face { width: 22px; height: 22px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0; }
   #wordFeedback { font-size: 24px; font-weight: 800; min-height: 34px; }
   #wordInput.shake { animation: shake .3s; border-color: #ff6b6b; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
@@ -386,7 +388,8 @@
                 url('sprites/bg-simon.jpg') center/cover no-repeat;
   }
   .simon-wrap { position: relative; width: min(86vw, 380px); }
-  body.host .simon-wrap { width: min(46vh, 470px); }
+  /* TV는 원판 아래에 학생 명단(#simonBoard)이 붙는다 — 원판이 46vh를 다 먹으면 명단이 잘린다 */
+  body.host .simon-wrap { width: min(37vh, 380px); }
   .simon-pads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   /* 어둡게/밝게는 배경 레이어(::before)에만 건다.
      예전엔 버튼 전체에 filter를 걸었는데, 그러면 안에 넣은 도형까지 같이 어두워져
@@ -542,8 +545,9 @@
     /* 트로피·우승자 얼굴이 세로를 다 먹지 않게 (720p에서 시상대가 잘렸다) */
     body.host #trophyImg { max-height: 11vh; }
     body.host #podiumFace { width: 110px; height: 110px; }
-    /* 왼쪽 칸이 좁아졌으니 우승자 줄도 그 폭에 맞춘다 (46px면 두 줄로 감겼다) */
-    body.host .podium { font-size: 26px; line-height: 1.35; }
+    /* 왼쪽 칸이 좁아졌으니 우승자 줄도 그 폭에 맞춘다 (46px면 두 줄로 감겼다).
+       «OO, OO 외 N명»이 이름 길이에 따라 또 감겨서 22px까지 내렸다. */
+    body.host .podium { font-size: 22px; line-height: 1.35; }
   }
   body.host .result-actions {
     position: sticky; bottom: 0; width: 100%; display: flex; gap: 12px;
@@ -1281,6 +1285,27 @@ body.host #teamResult .tr-line { font-size: 30px; }
     body.host .word-list > * { font-size: 15px; padding: 7px 12px; }
     body.host #wordList { max-height: calc(100vh - 300px); }
     body.host #quizBoard { max-height: calc(100vh - 330px); }
+    /* 사이먼 명단은 이름 + 상태뿐이라 칸을 좁게 잡아 열을 늘린다 (25명이 5행에 들어간다) */
+    body.host #simonBoard {
+      max-height: calc(100vh - 420px); width: min(100%, 1120px);
+      grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+    }
+    body.host #simonBoard .word-row { font-size: 15px; padding: 7px 11px; gap: 7px; }
+    body.host #simonBoard .word-row .pts { font-size: 13px; }
+    /* `body.host .rank-face`가 46px이라 행이 62px로 부풀었다 — 명단용으로 다시 줄인다 */
+    body.host #simonBoard .rank-face, body.host #drawBoard .rank-face { width: 22px; height: 22px; }
+    /* 그림 퀴즈: 사람 고르기·문제 정하기 동안 아래를 채우는 순위판 */
+    /* 남은 세로를 차지하고 그 안에서 가운데 — 위로만 붙으면 아래가 다시 비어 보인다 */
+    body.host #drawSide { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 100%; flex: 1; }
+    body.host #drawSideMsg { font-size: 17px; font-weight: 800; color: #93a0c4; }
+    body.host #drawBoard {
+      max-height: calc(100vh - 330px); width: min(100%, 1120px);
+      grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+    }
+    body.host #drawBoard .word-row { font-size: 15px; padding: 7px 11px; gap: 7px; }
+    body.host #drawBoard .word-row .r { width: 20px; color: #ffb03a; font-weight: 800; font-size: 13px; flex-shrink: 0; }
+    body.host #drawBoard .word-row .pts { font-size: 13px; }
+    body.host #drawBoard .word-row.drawer { border-color: rgba(255,176,58,.65); background: rgba(58,48,26,.9); }
     /* 같은 그림은 진행 막대가 있어 한 칸이 넓어야 한다 */
     body.host #pairsBoard {
       max-width: none; display: grid; align-content: start;
@@ -1465,6 +1490,8 @@ body.host #teamResult .tr-line { font-size: 30px; }
   </div>
   <div class="simon-dots" id="simonDots"></div>
   <div id="simonInfo"></div>
+  <!-- TV 전용: 누가 통과했고 누가 어디서 떨어졌는지 (학생 폰은 아래 정보 바가 대신한다) -->
+  <div class="word-list" id="simonBoard"></div>
   <button class="btn danger-ghost" id="btnSimonAbort" style="display:none">게임 중단</button>
 </div>
 
@@ -1537,6 +1564,11 @@ body.host #teamResult .tr-line { font-size: 30px; }
     </div>
     <div id="drawInfo"></div>
     <div id="drawTicker"></div>
+  </div>
+  <!-- TV 전용: 사람 고르는 동안·출제자가 문제 정하는 동안 화면이 통째로 비었다 (2026-09-07) -->
+  <div id="drawSide" style="display:none">
+    <div id="drawSideMsg"></div>
+    <div class="word-list" id="drawBoard"></div>
   </div>
   <button class="btn danger-ghost" id="btnDrawAbort" style="display:none">게임 중단</button>
 </div>
@@ -2289,7 +2321,10 @@ function handle(m) {
       } else rosterPrevConn = 0;
       renderChampLobby();
       renderMyTeam();
-      if (isHost && phase === 'lobby') renderHostLobby();
+      // 로비 화면이 떠 있으면 phase가 무엇이든 다시 그린다. phase만 보고 판단하면,
+      // TV를 새로고침해 복귀했을 때(서버는 'result'인데 화면은 로비인 순간) 명단이 비어
+      // «학생을 기다리는 중»으로 남는다 — 학생 25명이 멀쩡히 접속해 있는데도(2026-09-07 실측).
+      if (isHost && (phase === 'lobby' || $('hostLobby').classList.contains('on'))) renderHostLobby();
       else if (isHost) renderTeamBar();
       break;
     }
@@ -2820,6 +2855,25 @@ function renderSimon(m) {
   } else $('simonDots').innerHTML = '';
   setText($('simonInfo'), isHost && m.siPhase === 'input' ? `✋ ${m.doneN}/${m.aliveN}명 완료` : '');
 
+  // TV 명단 — 예전엔 원판만 덩그러니 있고 «누가 남았는지»를 알 길이 없었다(2026-09-07).
+  // 학생 폰은 phInfoBar가 같은 내용을 이미 보여 준다.
+  if (isHost) {
+    const rows = (m.players || []).filter(pb => !pb[2]);
+    // 통과한 사람 → 아직 입력 중 → 탈락(늦게 떨어진 사람이 위로)
+    const key = pb => pb[1] ? (pb[3] ? 3 : 2) : 1;
+    rows.sort((a, b) => (key(b) - key(a)) || ((b[5] || 0) - (a[5] || 0)));
+    $('simonBoard').innerHTML = rows.map(pb => {
+      const meta = roster.get(pb[0]) || { nick: '?', ci: 0 };
+      const src = charSrc(meta.ci);
+      const face = src ? `<img class="rank-face" src="${src}" alt="">`
+        : `<span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${COLORS[meta.ci % COLORS.length]}"></span>`;
+      const out = !pb[1];
+      const sub = out ? `${pb[5] || 0}R 탈락` : pb[3] ? '✅ 입력 끝' : '⌛';
+      return `<div class="word-row${out ? ' out' : ''}">${face}<span>${esc(meta.nick)}</span>`
+        + `<span class="pts"${out ? ' style="color:#7d8ab5"' : ''}>${sub}</span></div>`;
+    }).join('');
+  }
+
   // 사운드 (교사 화면)
   if (isHost) {
     if (m.siPhase === 'input' && sndPrev.simPhase !== 'input') SFX.countBeep();
@@ -3276,6 +3330,7 @@ function renderDraw(m) {
   $('drawPickWrap').style.display = 'none';
   $('drawWriteWrap').style.display = 'none';
   $('drawBoardWrap').style.display = 'none';
+  $('drawSide').style.display = 'none';
 
   if (m.dPhase === 'pick') {
     if (isHost) {
@@ -3306,6 +3361,7 @@ function renderDraw(m) {
       setText($('drawMsg'), `${drawerMeta.nick} 님이 문제를 정하는 중…`);
     }
   } else if (m.dPhase === 'draw') {
+    // (아래 drawSide 처리에서 pick·write 단계의 빈 화면을 채운다)
     $('drawBoardWrap').style.display = 'flex';
     drawSizeCanvas();
     $('drawTools').style.display = iAmDrawer ? 'flex' : 'none';
@@ -3325,6 +3381,30 @@ function renderDraw(m) {
     setText($('drawMsg'), `정답은 "${m.answer}"! — ${m.correctN}명이 맞혔어요`);
     $('drawInfo').textContent = '';
     if (isHost && renderDraw._rev !== m.round) { renderDraw._rev = m.round; SFX.fanfare(); }
+  }
+
+  // TV: 사람을 고르는 동안과 출제자가 문제를 정하는 동안(15초) 화면이 통째로 비어 있었다.
+  // 그 자리에 지금 순위를 깔고, 첫 판에는 규칙을 대신 띄운다.
+  if (isHost && (m.dPhase === 'pick' || m.dPhase === 'write')) {
+    $('drawSide').style.display = 'flex';
+    const rows = (m.players || []).filter(r => r[4]).slice().sort((a, b) => (b[1] || 0) - (a[1] || 0));
+    const anyScore = rows.some(r => (r[1] || 0) > 0);
+    setText($('drawSideMsg'), anyScore ? '🏆 지금 순위'
+      : '✏️ 그림으로만 설명해요 · 먼저 맞힐수록 높은 점수 · 출제자도 맞힌 사람 수만큼 받아요');
+    // 고르는 화면에는 이미 «이름 · 점수» 칩이 깔려 있다 — 첫 판(전원 0점)엔 같은 목록을
+    // 두 번 보여 주는 꼴이라 접는다. 문제 정하는 동안(write)은 칩이 없으니 늘 띄운다.
+    const showList = anyScore || m.dPhase === 'write';
+    $('drawBoard').style.display = showList ? '' : 'none';
+    $('drawBoard').innerHTML = !showList ? '' : rows.map((r, i) => {
+      const [id, score, , drew] = r;
+      const meta = roster.get(id) || { nick: '?', ci: 0 };
+      const src = charSrc(meta.ci);
+      const face = src ? `<img class="rank-face" src="${src}" alt="">`
+        : `<span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${COLORS[meta.ci % COLORS.length]}"></span>`;
+      const rank = anyScore ? `<span class="r">${i + 1}</span>` : '';
+      return `<div class="word-row${id === m.drawer ? ' drawer' : ''}">${rank}${face}`
+        + `<span>${esc(meta.nick)}</span><span class="pts">${drew ? '🎨 ' : ''}${score}점</span></div>`;
+    }).join('');
   }
   if (!isHost) {
     const rowsD = (m.players || []).map(r => ({ id: r[0], val: r[1] || 0,

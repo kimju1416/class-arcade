@@ -92,7 +92,31 @@ module.exports = async function run() {
   t.ok(actZ > reactZ, `결과 화면 버튼이 이모지 위에 있다 (${actZ} > ${reactZ})`);
   t.ok(codeZ > reactZ, `로비 방 코드가 이모지 위에 있다 (${codeZ} > ${reactZ}) — 코드를 못 읽으면 입장을 못 한다`);
 
-  // ── ⑦ 무궁화꽃: 전원 탈락이어도 등수가 갈리는가 ───────────────────────
+  // ── ⑦ 비어 있던 화면을 채웠는가 (2026-09-07) ──────────────────────────
+  // 사이먼은 원판만 덩그러니 있어 «누가 남았는지»를 알 길이 없었고,
+  // 그림 퀴즈는 사람 고르는 동안·출제자가 문제 정하는 15초 동안 화면이 통째로 비었다.
+  t.ok(/<div class="word-list" id="simonBoard">/.test(html), '사이먼: TV 명단 자리가 있다');
+  t.ok(/if \(isHost\) \{[\s\S]{0,400}?\$\('simonBoard'\)\.innerHTML/.test(html),
+    '사이먼: TV에서 명단을 채운다');
+  t.ok(/body\.host #simonBoard \{[\s\S]{0,200}grid-template-columns: repeat\(auto-fill/.test(html),
+    '사이먼: 명단이 여러 열로 펼쳐진다 (25명이 한눈에)');
+  t.ok(/body\.host #simonBoard \.rank-face \{ width: 22px/.test(html)
+    || /#simonBoard \.rank-face, body\.host #drawBoard \.rank-face \{ width: 22px/.test(html),
+    '사이먼: 명단 얼굴 크기를 줄인다 (body.host .rank-face가 46px이라 행이 62px로 부푼다)');
+  t.ok(/m\.dPhase === 'pick' \|\| m\.dPhase === 'write'/.test(html),
+    '그림 퀴즈: 사람 고르기·문제 정하기 두 단계에서 아래를 채운다');
+  t.ok(/const showList = anyScore \|\| m\.dPhase === 'write'/.test(html),
+    '그림 퀴즈: 첫 판 고르기 화면에서는 칩과 겹치는 명단을 접는다');
+  t.ok(/body\.host #drawSide \{[\s\S]{0,200}justify-content: center[\s\S]{0,80}flex: 1/.test(html),
+    '그림 퀴즈: 남은 세로를 채우고 가운데 정렬한다');
+
+  // ── ⑧ 로비 명단이 화면 기준으로 갱신되는가 ────────────────────────────
+  // phase만 보면 TV 새로고침 복귀 때(서버는 'result'인데 화면은 로비인 순간) 명단이 비어
+  // «학생을 기다리는 중»으로 남는다 — 학생 25명이 접속해 있는데도 그랬다.
+  t.ok(/if \(isHost && \(phase === 'lobby' \|\| \$\('hostLobby'\)\.classList\.contains\('on'\)\)\) renderHostLobby\(\)/.test(html),
+    '로비 명단은 화면이 떠 있으면 phase와 무관하게 다시 그린다');
+
+  // ── ⑨ 무궁화꽃: 전원 탈락이어도 등수가 갈리는가 ───────────────────────
   const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const frz = (server.match(/if \(room\.gameType === 'freeze'\) \{[\s\S]*?\n  \}/) || [])[0] || '';
   t.ok(frz.includes('frzReach'), '무궁화꽃: 탈락자는 걸리기 전까지 간 거리로 가른다');
