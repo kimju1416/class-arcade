@@ -22,6 +22,21 @@ const PLAYER_R = 16;
 const COUNTDOWN_MS = 3500;
 const ROOM_IDLE_MS = 30 * 60 * 1000;
 const DROP_GRACE_MS = 8000;  // 접속이 끊긴 학생을 이번 판에서 빼기까지 기다리는 시간
+// 최후의 1인이 가려진 순간, 곧바로 결과 화면으로 넘기지 않고 잠깐 뜸을 들인다.
+// 교실이 제일 시끄러운 순간인데 예전엔 눈 깜짝할 새 결과창으로 넘어갔다.
+const CLIMAX_MS = 1800;
+// 클라이맥스 동안은 판을 통째로 멈춘다. 안 그러면 폭탄이 계속 떨어져
+// 우승자가 자기 우승 장면에서 죽어 버린다(실제로 겪었다 — 화면이 곧장 결과창으로 넘어갔다).
+function climaxFrozen(room, now) {
+  const g = room.game;
+  return !!(g && g.climaxAt && now - g.climaxAt < CLIMAX_MS);
+}
+function climaxHold(room, now, winnerId) {
+  const g = room.game;
+  if (!g) return true;
+  if (!g.climaxAt) { g.climaxAt = now; g.climaxWinner = winnerId || null; }
+  return now - g.climaxAt >= CLIMAX_MS;
+}
 
 // 폭탄 피하기
 const BOMB_WARN_MS = 1000;
@@ -1884,6 +1899,7 @@ function movePlayers(room, dt, speedOf) {
 // ---------- 폭탄 피하기 ----------
 function bombTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
   const W = g.arenaW, H = g.arenaH;
   movePlayers(room, dt);
 
@@ -1919,6 +1935,9 @@ function bombTick(room, now, dt) {
   g.bombs = g.bombs.filter(b => now <= b.endAt);
 
   const alive = [...room.players.values()].filter(p => p.alive);
+  // 최후의 1인이 가려졌으면 1.8초 뜸을 들인다 (시간 종료·전멸은 그대로 바로 끝낸다)
+  if (g.startingCount >= 2 && alive.length === 1 && now < room.phaseEndAt
+      && !climaxHold(room, now, alive[0].id)) { sendState(room, now); return; }
   if (now >= room.phaseEndAt || (g.startingCount >= 2 && alive.length <= 1) || alive.length === 0) {
     endBomb(room, now); return;
   }
@@ -2291,6 +2310,7 @@ function galaSpawnWave(g, now) {
 
 function galaTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
   const alivePs = [...room.players.values()].filter(p => p.alive);
 
   // 웨이브 시작/클리어
@@ -2387,6 +2407,8 @@ function galaTick(room, now, dt) {
   g.eb = g.eb.filter(bl => !bl.hitP);
 
   const stillAlive = [...room.players.values()].filter(p => p.alive);
+  if (stillAlive.length === 1 && g.startingCount >= 2 && now < room.phaseEndAt
+      && !climaxHold(room, now, stillAlive[0].id)) { sendState(room, now); return; }
   if (!stillAlive.length || now >= room.phaseEndAt) { endGala(room, now); return; }
   sendState(room, now);
 }
@@ -2474,6 +2496,7 @@ function dodgeTick(room, now, dt) {
 // ---------- 스모 밀치기 ----------
 function sumoTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
   const cx = g.arenaW / 2, cy = g.arenaH / 2;
   const el = now - g.startedAt;
   // 첫 15초는 링 유지, 이후 서서히 줄어든다 (대치 상태 방지)
@@ -2520,6 +2543,8 @@ function sumoTick(room, now, dt) {
     if (Math.hypot(p.x - cx, p.y - cy) > g.ringR + PLAYER_R * 0.35) { p.alive = false; p.deadAt = now; }
   }
   const alive = [...room.players.values()].filter(p => p.alive);
+  if (g.startingCount >= 2 && alive.length === 1 && now < room.phaseEndAt
+      && !climaxHold(room, now, alive[0].id)) { sendState(room, now); return; }
   if (now >= room.phaseEndAt || (g.startingCount >= 2 && alive.length <= 1) || !alive.length) {
     endBomb(room, now);   // 생존자 → 늦게 떨어진 순
     return;
@@ -4110,6 +4135,8 @@ function sendState(room, now) {
   }
   const msg = {
     type: 'state', mode: type, st: now,
+    // 최후의 1인 연출: 남은 시간과 승자 (클라가 줌인·스포트라이트를 켠다)
+    climax: g.climaxAt ? { left: Math.max(0, CLIMAX_MS - (now - g.climaxAt)), id: g.climaxWinner } : undefined,
     arena: arenaWasSent ? undefined : { w: g.arenaW, h: g.arenaH },
     timeLeft: room.state === 'playing' && room.phaseEndAt ? Math.max(0, room.phaseEndAt - now) : (g.roundMs || 0),
     players: [...room.players.values()].map(p => {

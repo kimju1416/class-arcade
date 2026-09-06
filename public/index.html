@@ -3250,7 +3250,7 @@ function enterGameView(keepInput) {
   if (!keepInput) resetInputState();
   seenDeadAt = 0; seenInfectedAt = 0;
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
-  FX.reset(); $('hudTime').classList.remove('low');
+  FX.reset(); CLIMAX.reset(); CLIMAX._confetti = 0; $('hudTime').classList.remove('low');
   dodgePrev.db = null; dodgeFlash = []; mosSwing.clear(); clawGotAt.clear();
   // 꼬리별: 이전 판의 먹이·자취가 남으면 유령이 되고 몸이 엉뚱하게 이어진다
   cometFoods.clear(); cometPaths.clear(); cometParts = []; cometFeed = []; cometCam = null;
@@ -4724,6 +4724,103 @@ function nameTag(name, col, me, dpr) {
   return c;
 }
 // ============================================================
+// 결정적 순간 (2026-09-06) — 서바이벌의 마지막 장면을 교실이 같이 보게 만든다.
+//  · 생존 2명이 되면 TV 카메라가 두 사람을 향해 천천히 줌인하고 "파이널" 배너
+//  · 최후의 1인이 가려지면 서버가 1.8초 뜸을 들이고(CLIMAX_MS) 그동안 승자만 스포트라이트
+// 학생 폰은 화면이 작아 줌인하지 않는다(자기 캐릭터를 놓치면 안 된다) — TV 전용.
+// ============================================================
+const CLIMAX_GAMES = { bomb: 1, tag: 1, dodge: 1, sumo: 1, chair: 1, ox: 1, cray: 1, gala: 1 };
+const CLIMAX = {
+  cam: null, finalAt: 0, lastAlive: -1, winAt: 0, winId: null, alive: 0,
+  reset() { this.cam = null; this.finalAt = 0; this.lastAlive = -1; this.winAt = 0; this.winId = null; this.alive = 0; },
+  update(latest) {
+    let alive = 0;
+    for (const pb of (latest.players || [])) if (!pb[4] && pb[3]) alive++;
+    this.alive = alive;
+    if (!CLIMAX_GAMES[latest.mode] || phase !== 'playing') { this.lastAlive = alive; return; }
+    if (this.lastAlive < 0) this.lastAlive = alive;
+    // 둘만 남은 순간 한 번
+    if (alive === 2 && this.lastAlive > 2) {
+      this.finalAt = performance.now();
+      if (isHost) { FX.banner('🔥 파이널 2!', 'gold'); SFX.fanfare(); FX.shake(4, 260); }
+    }
+    this.lastAlive = alive;
+    // 서버가 "최후의 1인" 뜸을 들이는 동안
+    if (latest.climax && !this.winAt) {
+      this.winAt = performance.now(); this.winId = latest.climax.id;
+      if (isHost) { FX.flash(220); SFX.fanfare(); }
+    }
+  },
+  // TV 카메라 — 살아남은 사람들을 감싸는 사각형으로 부드럽게 이동·확대
+  camera(latest, bOx, bOy, bScale) {
+    const on = isHost && !!CLIMAX_GAMES[latest.mode] && (this.winAt > 0 || (this.alive >= 1 && this.alive <= 2 && this.finalAt > 0));
+    const vw = arena.w * bScale, vh = arena.h * bScale;
+    let tScale = bScale, tOx = bOx, tOy = bOy;
+    if (on) {
+      const rows = (latest.players || []).filter(pb => !pb[4] && pb[3]);
+      if (rows.length) {
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const pb of rows) { x0 = Math.min(x0, pb[1]); x1 = Math.max(x1, pb[1]); y0 = Math.min(y0, pb[2]); y1 = Math.max(y1, pb[2]); }
+        const pad = 240;
+        const bw = Math.max(300, x1 - x0 + pad * 2), bh = Math.max(300, y1 - y0 + pad * 2);
+        tScale = Math.min(bScale * 2.4, Math.min(vw / bw, vh / bh));
+        if (tScale < bScale) tScale = bScale;          // 멀어지면 굳이 줄이지 않는다
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        tOx = bOx + vw / 2 - cx * tScale;
+        tOy = bOy + vh / 2 - cy * tScale;
+        tOx = Math.min(bOx, Math.max(bOx + vw - arena.w * tScale, tOx));   // 경기장 밖이 보이지 않게
+        tOy = Math.min(bOy, Math.max(bOy + vh - arena.h * tScale, tOy));
+      }
+    }
+    if (!this.cam) { if (!on) return null; this.cam = { ox: bOx, oy: bOy, scale: bScale }; }
+    const k = this.winAt ? 0.1 : 0.055;                // 승부가 나면 조금 더 빠르게 당긴다
+    this.cam.scale += (tScale - this.cam.scale) * k;
+    this.cam.ox += (tOx - this.cam.ox) * k;
+    this.cam.oy += (tOy - this.cam.oy) * k;
+    if (!on && Math.abs(this.cam.scale - bScale) < 0.003) { this.cam = null; return null; }
+    return this.cam;
+  },
+  // 최후의 1인: 화면을 어둡게 깔고 승자만 동그랗게 밝힌다
+  spotlight(latest, ox, oy, scale, bOx, bOy, bScale, dpr) {
+    if (!this.winAt || !isHost) return;
+    const el = performance.now() - this.winAt, k = Math.min(1, el / 420);
+    const row = (latest.players || []).find(pb => pb[0] === this.winId);
+    const vw = arena.w * bScale, vh = arena.h * bScale;
+    const wx = row ? ox + row[1] * scale : bOx + vw / 2;
+    const wy = row ? oy + row[2] * scale : bOy + vh / 2;
+    const R = (150 + 26 * Math.sin(el / 160)) * scale;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(bOx, bOy, vw, vh); ctx.clip();
+    // 어둠 + 승자 자리에 구멍
+    const g2 = ctx.createRadialGradient(wx, wy, R * 0.55, wx, wy, R * 2.1);
+    g2.addColorStop(0, 'rgba(4,6,16,0)'); g2.addColorStop(1, `rgba(4,6,16,${0.74 * k})`);
+    ctx.fillStyle = g2; ctx.fillRect(bOx, bOy, vw, vh);
+    // 스포트라이트 링
+    ctx.globalCompositeOperation = 'lighter';
+    const g3 = ctx.createRadialGradient(wx, wy, 0, wx, wy, R);
+    g3.addColorStop(0, `rgba(255,225,140,${0.30 * k})`); g3.addColorStop(1, 'rgba(255,225,140,0)');
+    ctx.fillStyle = g3; ctx.beginPath(); ctx.arc(wx, wy, R, 0, 7); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = `rgba(255,215,90,${0.75 * k})`; ctx.lineWidth = 3 * dpr;
+    ctx.beginPath(); ctx.arc(wx, wy, R, 0, 7); ctx.stroke();
+    // 왕관 + 이름
+    const meta = roster.get(this.winId) || { nick: '' };
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const pop = 1 + 0.25 * Math.max(0, 1 - el / 300);
+    ctx.font = `900 ${52 * scale * pop}px Pretendard, sans-serif`;
+    ctx.fillText('👑', wx, wy - R * 0.72);
+    const label = meta.nick ? meta.nick + ' 우승!' : '최후의 1인!';
+    ctx.font = `900 ${46 * scale}px Pretendard, sans-serif`;
+    ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(8,12,28,.9)'; ctx.lineWidth = 8 * scale;
+    ctx.strokeText(label, wx, wy + R * 0.92);
+    ctx.fillStyle = '#ffd24a'; ctx.fillText(label, wx, wy + R * 0.92);
+    ctx.textBaseline = 'alphabetic';
+    // 반짝이는 색종이 (한 번만)
+    if (!this._confetti) { this._confetti = 1; BG.confetti(90); }
+  },
+};
+
+// ============================================================
 // FX — 전 게임 공용 연출 층 (2026-09-03)
 // 파티클·팝업 글자·확장 링·화면 흔들림·번쩍임·탈락 배너·킬 피드.
 // 게임별 코드를 고치지 않고, 서버 상태의 변화(탈락·감염·득점)를 diff로 감지해 자동으로 터뜨린다.
@@ -5120,10 +5217,21 @@ function draw() {
       oy = ah2 <= H ? (H - ah2) / 2 : Math.max(H - ah2, Math.min(0, oy));
     }
   }
+  // 결정적 순간(TV 전용): 뷰포트(테두리·순위판)는 그대로 두고 카메라만 당긴다
+  const bOx = ox, bOy = oy, bScale = scale;
+  let climaxCam = null;
+  if (snaps.length) {
+    const lm0 = snaps[snaps.length - 1].m;
+    CLIMAX.update(lm0);
+    climaxCam = CLIMAX.camera(lm0, bOx, bOy, bScale);
+    if (climaxCam) { ox = climaxCam.ox; oy = climaxCam.oy; scale = climaxCam.scale; }
+  }
   view = { ox, oy, scale };
   window.__view = view;  // 자동 검증용 훅
 
   const aw = arena.w * scale, ah = arena.h * scale;
+  // 줌인 중에는 바닥도 화면 속 경기장 안으로 잘라낸다 (안 그러면 오른쪽 순위판을 덮는다)
+  if (climaxCam) { ctx.save(); ctx.beginPath(); ctx.rect(bOx, bOy, arena.w * bScale, arena.h * bScale); ctx.clip(); }
   if (gameType === 'race') {
     if (grassReady) ctx.drawImage(GRASS_IMG, ox, oy, aw, ah);
     else { ctx.fillStyle = '#2c5a2e'; ctx.fillRect(ox, oy, aw, ah); }
@@ -5172,7 +5280,8 @@ function draw() {
     ctx.fillStyle = '#ffd24a'; ctx.fillText(`걸어가서 팀을 고르세요 · ${sec}초`, ox + aw / 2, oy + ah * 0.93);
   }
   // 경기장 테두리: 네온 글로우 프레임 (v2)
-  FX.frame(ox, oy, aw, ah, dpr);
+  if (climaxCam) ctx.restore();
+  FX.frame(bOx, bOy, arena.w * bScale, arena.h * bScale, dpr);   // 테두리는 화면(뷰포트) 기준
 
   // 아직 상태가 안 왔어도 카운트다운·안내는 보여야 한다 (학생이 규칙을 보는 유일한 화면)
   if (snaps.length === 0) { drawOverlay(null); return; }
@@ -5185,9 +5294,9 @@ function draw() {
   const posA = new Map(a.m.players.map(p => [p[0], p]));
   const latest = snaps[snaps.length - 1].m;
 
-  // 게임 오브젝트 (경기장 안으로 잘라서 그림)
+  // 게임 오브젝트 (화면에 보이는 경기장 안으로 잘라서 그림 — 줌인 중에도 테두리 밖으로 안 넘친다)
   ctx.save();
-  ctx.beginPath(); ctx.rect(ox, oy, arena.w * scale, arena.h * scale); ctx.clip();
+  ctx.beginPath(); ctx.rect(bOx, bOy, arena.w * bScale, arena.h * bScale); ctx.clip();
   if (latest.mode === 'bomb' && latest.bombs) {
     for (const [bx, by, br, boom, prog] of latest.bombs) {
       const x = ox + bx * scale, y = oy + by * scale, r = br * scale;
@@ -5882,7 +5991,8 @@ function draw() {
     ctx.fillText('맞으면 ⬅️ O · 틀리면 X ➡️', W / 2, yBase + 58 * dpr);
   }
 
-  // 플레이어
+  // 플레이어 — 줌인 중에는 화면 속 경기장 밖으로 넘치지 않게 잘라낸다
+  if (climaxCam) { ctx.save(); ctx.beginPath(); ctx.rect(bOx, bOy, arena.w * bScale, arena.h * bScale); ctx.clip(); }
   let aliveCount = 0, humanCount = 0, myScore = 0, myAlive = null, tapHud = null;
   const lightPts = [];   // v3 조명: 플레이어 위치(화면 좌표)
 
@@ -6145,7 +6255,7 @@ function draw() {
   // v2 연출: 상태 diff → 파티클·팝업·배너, 그 위에 비네트 (조명이 어둠을 깔았으면 비네트는 생략)
   fxDiff(latest);
   FX.draw(ox, oy, scale, dpr);
-  if (!tapMode && !boardMode && !lit) FX.vignette(ox, oy, arena.w * scale, arena.h * scale);
+  if (!tapMode && !boardMode && !lit) FX.vignette(bOx, bOy, arena.w * bScale, arena.h * bScale);
 
   // 효과음 트리거 (교사 화면): 폭발·동전·감염 변화 감지
   if (isHost && phase === 'playing') {
@@ -6283,7 +6393,9 @@ function draw() {
   }
 
   // 교사 화면: 좌우 여백이 비어 있으므로 실시간 순위를 크게 띄운다
-  if (isHost) { drawHostBoard(latest, ox, oy, scale, dpr, W, H); FX.drawFeed(W, H, dpr, ox + arena.w * scale); }
+  if (climaxCam) ctx.restore();
+  CLIMAX.spotlight(latest, ox, oy, scale, bOx, bOy, bScale, dpr);
+  if (isHost) { drawHostBoard(latest, bOx, bOy, bScale, dpr, W, H); FX.drawFeed(W, H, dpr, bOx + arena.w * bScale); }
 
   // HUD (같은 문자열이면 건드리지 않는다)
   // 물풍선 HUD: 팀전은 팀별 생존, 개인전은 생존 + 내 능력치
