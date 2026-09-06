@@ -1883,15 +1883,29 @@ const SFX = (() => {
       const m = this._bgm[mood] || this._bgm.action;
       if (this._bgmIv) { if (this._bgmMood === mood) return; this.bgmStop(); }
       if (!isHost || muted) return;
-      this._bgmMood = mood; this._bgmStep = 0;
+      this._bgmMood = mood; this._bgmStep = 0; this._bgmHeat = 1;
+      this._bgmRun(m, 1);
+    },
+    // 같은 곡을 빠르기만 바꿔 다시 건다 (스텝은 이어져서 곡이 끊기지 않는다)
+    _bgmRun(m, heat) {
+      clearInterval(this._bgmIv);
+      const ms = Math.round(m.ms / heat);
       this._bgmIv = setInterval(() => {
         const i = this._bgmStep++ % m.lead.length;
-        if (m.bass[i]) tone(m.bass[i], m.ms / 1000 * 1.05, { type: 'square', vol: .045 });
-        if (m.lead[i]) tone(m.lead[i], m.ms / 1000 * .8, { type: 'triangle', vol: .07 });
-        if (m.hat && i % m.hat === 0) noise(.02, .012);
-      }, m.ms);
+        const v = heat > 1 ? 1.25 : 1;                       // 조여들면 조금 더 크게
+        if (m.bass[i]) tone(m.bass[i], ms / 1000 * 1.05, { type: 'square', vol: .045 * v });
+        if (m.lead[i]) tone(m.lead[i], ms / 1000 * .8, { type: 'triangle', vol: .07 * v });
+        if (m.hat && i % m.hat === 0) noise(.02, .012 * v);
+      }, ms);
     },
-    bgmStop() { clearInterval(this._bgmIv); this._bgmIv = null; this._bgmMood = null; },
+    // heat 1 = 평소, 1.25 = 막판(마지막 10초·생존 2명). 같은 값이면 아무 일도 안 한다.
+    bgmHeat(heat) {
+      if (!this._bgmIv || !this._bgmMood) return;
+      if (Math.abs((this._bgmHeat || 1) - heat) < 0.01) return;
+      this._bgmHeat = heat;
+      this._bgmRun(this._bgm[this._bgmMood] || this._bgm.action, heat);
+    },
+    bgmStop() { clearInterval(this._bgmIv); this._bgmIv = null; this._bgmMood = null; this._bgmHeat = 1; },
     // 예전 이름 유지 (물풍선은 액션 분위기)
     crayBgmStart() { this.bgmStart('action'); },
     crayBgmStop() { this.bgmStop(); },
@@ -4866,8 +4880,13 @@ const CLIMAX = {
   cam: null, finalAt: 0, lastAlive: -1, winAt: 0, winId: null, alive: 0,
   reset() { this.cam = null; this.finalAt = 0; this.lastAlive = -1; this.winAt = 0; this.winId = null; this.alive = 0; },
   update(latest) {
+    // 술래잡기는 감염돼도 alive가 1로 남는다(계속 뛰어다닌다) — 안 잡힌 사람 수로 세야 한다
+    const tagMode = latest.mode === 'tag';
     let alive = 0;
-    for (const pb of (latest.players || [])) if (!pb[4] && pb[3]) alive++;
+    for (const pb of (latest.players || [])) {
+      if (pb[4]) continue;
+      if (tagMode ? pb[5] !== 1 : pb[3]) alive++;
+    }
     this.alive = alive;
     if (!CLIMAX_GAMES[latest.mode] || phase !== 'playing') { this.lastAlive = alive; return; }
     if (this.lastAlive < 0) this.lastAlive = alive;
@@ -4880,7 +4899,13 @@ const CLIMAX = {
     // 서버가 "최후의 1인" 뜸을 들이는 동안
     if (latest.climax && !this.winAt) {
       this.winAt = performance.now(); this.winId = latest.climax.id;
-      if (isHost) { FX.flash(220); SFX.fanfare(); }
+      // BGM을 끊고 정적 위에 팡파르를 얹는다 — 계속 깔리면 승부의 순간이 묻힌다
+      if (isHost) { SFX.bgmStop(); FX.flash(220); SFX.fanfare(); }
+    }
+    // 막판에는 곡이 조여든다 (둘만 남았거나 시간이 얼마 안 남았을 때)
+    if (isHost && !this.winAt) {
+      const leftMs = phaseEndAt ? phaseEndAt - serverNow() : 1e9;
+      SFX.bgmHeat((alive === 2 || (leftMs > 0 && leftMs < 10000)) ? 1.25 : 1);
     }
   },
   // TV 카메라 — 살아남은 사람들을 감싸는 사각형으로 부드럽게 이동·확대
@@ -4889,7 +4914,8 @@ const CLIMAX = {
     const vw = arena.w * bScale, vh = arena.h * bScale;
     let tScale = bScale, tOx = bOx, tOy = bOy;
     if (on) {
-      const rows = (latest.players || []).filter(pb => !pb[4] && pb[3]);
+      const rows = (latest.players || []).filter(pb =>
+        !pb[4] && (latest.mode === 'tag' ? pb[5] !== 1 : pb[3]));
       if (rows.length) {
         let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
         for (const pb of rows) { x0 = Math.min(x0, pb[1]); x1 = Math.max(x1, pb[1]); y0 = Math.min(y0, pb[2]); y1 = Math.max(y1, pb[2]); }
@@ -5032,99 +5058,25 @@ function phoneRank(latest) {
   out.rows = rows;
   return out;
 }
-// 둥근 네모 한 장 (구형 사파리에도 roundRect가 없을 수 있어 직접 그린다)
-function phCard(x, y, w, h, r, fill, stroke) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1, 1.5 * (window.devicePixelRatio || 1)); ctx.stroke(); }
-}
-function drawPhoneBoard(latest, W, H, dpr, ox, oy, aw, ah) {
-  if (isHost || !latest || H <= W) return;          // TV·가로 화면은 대상 아님
-  const top = oy + ah + 12 * dpr;
-  const room = H - top - 14 * dpr;
-  if (room < 132 * dpr) return;                     // 자리가 없으면 조용히 생략
-  // 남은 자리를 다 먹지 않는다 — 아래쪽은 조이스틱을 잡는 자리다(패널이 손에 가리면 소용없다)
-  const restH = Math.min(room, 196 * dpr);
-  const pad = 14 * dpr, x0 = pad, cw = W - pad * 2;
-
-  // ① 바닥을 어둡게 이어 붙여 화면이 뚝 끊기지 않게
-  const floor = FLOORS[gameType] || (floorReady ? FLOOR_IMG : null);
-  ctx.save();
-  phCard(x0, top, cw, restH, 20 * dpr, null, null); ctx.clip();
-  if (floor) { ctx.globalAlpha = 0.22; ctx.drawImage(floor, x0, top, cw, restH); ctx.globalAlpha = 1; }
-  const gr = ctx.createLinearGradient(0, top, 0, top + restH);
-  gr.addColorStop(0, 'rgba(10,14,34,.72)'); gr.addColorStop(1, 'rgba(8,11,28,.92)');
-  ctx.fillStyle = gr; ctx.fillRect(x0, top, cw, restH);
-  ctx.restore();
-  phCard(x0, top, cw, restH, 20 * dpr, null, 'rgba(120,140,255,.22)');
-
+// 캔버스 게임도 DOM 정보 바(#phInfo)를 쓴다 — 예전엔 캔버스에 직접 그렸는데,
+// 오프스크린 캐시를 넣어도 큰 캔버스를 한 장 더 합성하는 값이 비싸 폰이 50→41fps로 떨어졌다(실측).
+function phoneBarFromState(latest) {
+  if (isHost || !latest) return;
   const R = phoneRank(latest);
-  const meIdx = R.rows.findIndex(r => r.id === myId);
-  const me = meIdx >= 0 ? R.rows[meIdx] : null;
-  ctx.textBaseline = 'middle';
-
-  // ② 내 카드 — 폰에서 제일 궁금한 건 "나"다
-  const my = top + 12 * dpr, myH = Math.min(96 * dpr, restH * 0.42);
-  phCard(x0 + 10 * dpr, my, cw - 20 * dpr, myH, 16 * dpr,
-    'rgba(38,48,92,.92)', me && !me.alive && R.kind === 'alive' ? 'rgba(255,90,90,.5)' : 'rgba(255,210,74,.45)');
-  const fim = me ? charSprite(me.ci) : null;
-  const fx = x0 + 10 * dpr + myH * 0.5, fy = my + myH / 2;
-  if (fim) drawSpr(fim, fx, fy, myH * 0.74);
-  else if (me) { ctx.fillStyle = COLORS[me.ci % COLORS.length]; ctx.beginPath(); ctx.arc(fx, fy, myH * 0.26, 0, 7); ctx.fill(); }
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#dfe8ff'; ctx.font = `800 ${17 * dpr}px Pretendard, sans-serif`;
-  ctx.fillText(me ? me.nick : '관전 중', fx + myH * 0.46, fy - 15 * dpr);
-  ctx.fillStyle = '#93a0c4'; ctx.font = `700 ${14 * dpr}px Pretendard, sans-serif`;
-  const sub = !me ? '이번 판은 쉬는 중이에요'
-    : R.kind === 'race' ? `${me.fin ? '완주' : (me.lap || 0) + '랩'} 째`
-    : R.kind === 'score' ? `${me.val}${R.unit}`
-    : me.alive ? `${R.left}명 남음` : '탈락 — 친구를 응원해요';
-  ctx.fillText(sub, fx + myH * 0.46, fy + 14 * dpr);
-  // 오른쪽 큰 글씨: 등수(점수·레이스) 또는 생존 여부
-  ctx.textAlign = 'right';
-  const bigX = x0 + cw - 24 * dpr;
-  if (me && (R.kind === 'score' || R.kind === 'race')) {
-    ctx.fillStyle = meIdx === 0 ? '#ffd24a' : '#c8d0e8';
-    ctx.font = `900 ${34 * dpr}px Pretendard, sans-serif`;
-    ctx.fillText(`${meIdx + 1}`, bigX - 22 * dpr, fy);
-    ctx.fillStyle = '#5c6a95'; ctx.font = `800 ${15 * dpr}px Pretendard, sans-serif`;
-    ctx.fillText('위', bigX, fy + 8 * dpr);
-  } else if (me) {
-    ctx.fillStyle = me.alive ? '#3ddc84' : '#ff6b6b';
-    ctx.font = `900 ${20 * dpr}px Pretendard, sans-serif`;
-    ctx.fillText(me.alive ? '생존' : '탈락', bigX, fy);
-  }
-
-  // ③ 상위 3명 — 누구를 쫓아야 하는지 보이게
-  const lty = my + myH + 14 * dpr;
-  if (lty + 74 * dpr > top + restH) return;
-  ctx.textAlign = 'left'; ctx.fillStyle = '#7d8ab5';
-  ctx.font = `700 ${12 * dpr}px Pretendard, sans-serif`;
-  ctx.fillText(R.kind === 'alive' ? '남은 친구들' : '실시간 순위', x0 + 14 * dpr, lty + 6 * dpr);
-  const by = lty + 20 * dpr, bh = Math.min(64 * dpr, top + restH - by - 10 * dpr);
-  const gap = 8 * dpr, bw = (cw - 20 * dpr - gap * 2) / 3;
-  // 생존형은 내 카드에 이미 내가 있으니 "나 말고 남은 친구"를 보여 준다 (점수형은 상위 3명 그대로)
-  const top3 = (R.kind === 'alive' ? R.rows.filter(r => r.alive && r.id !== myId) : R.rows).slice(0, 3);
-  top3.forEach((r, i) => {
-    const bx = x0 + 10 * dpr + (bw + gap) * i;
-    phCard(bx, by, bw, bh, 12 * dpr, r.id === myId ? 'rgba(60,74,132,.9)' : 'rgba(26,34,68,.85)',
-      i === 0 ? 'rgba(255,210,74,.55)' : 'rgba(120,140,255,.18)');
-    const im = charSprite(r.ci);
-    const cx2 = bx + bh * 0.42, cy2 = by + bh / 2;
-    if (im) drawSpr(im, cx2, cy2, bh * 0.66);
-    else { ctx.fillStyle = COLORS[r.ci % COLORS.length]; ctx.beginPath(); ctx.arc(cx2, cy2, bh * 0.22, 0, 7); ctx.fill(); }
-    ctx.textAlign = 'left';
-    ctx.fillStyle = i === 0 ? '#ffd24a' : '#dfe8ff';
-    ctx.font = `800 ${13 * dpr}px Pretendard, sans-serif`;
-    const nm = r.nick.length > 4 ? r.nick.slice(0, 4) : r.nick;
-    ctx.fillText(nm, cx2 + bh * 0.36, cy2 - 9 * dpr);
-    ctx.fillStyle = '#93a0c4'; ctx.font = `700 ${11 * dpr}px Pretendard, sans-serif`;
-    ctx.fillText(R.kind === 'race' ? (r.fin ? '완주' : (r.lap || 0) + '랩')
-      : R.kind === 'score' ? r.val + R.unit : '생존', cx2 + bh * 0.36, cy2 + 10 * dpr);
+  if (!R.rows.length) return;
+  const me = R.rows.find(r => r.id === myId);
+  const rows = (R.kind === 'alive' ? R.rows.filter(r => r.alive || r.id === myId) : R.rows).map(r => ({
+    id: r.id, val: r.val,
+    sub: R.kind === 'race' ? (r.fin ? '완주' : (r.lap || 0) + '랩')
+      : R.kind === 'score' ? r.val + R.unit
+      : r.alive ? '생존' : '탈락',
+  }));
+  phInfoBar(rows, {
+    unit: R.unit,
+    out: !!(me && R.kind === 'alive' && !me.alive),
+    survival: R.kind === 'alive',
+    note: R.kind === 'alive' ? `${R.left}명 남음` : '',
   });
-  ctx.textBaseline = 'alphabetic';
 }
 
 // ============================================================
@@ -6716,7 +6668,7 @@ function draw() {
   if (climaxCam) ctx.restore();
   CLIMAX.spotlight(latest, ox, oy, scale, bOx, bOy, bScale, dpr);
   if (isHost) { drawHostBoard(latest, bOx, bOy, bScale, dpr, W, H); FX.drawFeed(W, H, dpr, bOx + arena.w * bScale); }
-  else drawPhoneBoard(latest, W, H, dpr, bOx, bOy, arena.w * bScale, arena.h * bScale);
+  else phoneBarFromState(latest);
 
   // HUD (같은 문자열이면 건드리지 않는다)
   // 물풍선 HUD: 팀전은 팀별 생존, 개인전은 생존 + 내 능력치

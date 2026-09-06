@@ -10,6 +10,21 @@ const PartyGames = (() => {
     if (!art[key]) { art[key] = new Image(); art[key].src = 'sprites/thumb-' + key + '.jpg'; }
     return art[key];
   }
+  // 게임 오브젝트 그림 (없으면 호출한 쪽이 이모지로 되돌아간다)
+  function spr(name) {
+    const k = 'spr:' + name;
+    if (!art[k]) { art[k] = new Image(); art[k].src = 'sprites/' + name + '.png'; }
+    return art[k];
+  }
+  // 그림을 상자 가운데에 비율 유지로. 아직 안 실려 있으면 false를 돌려 이모지로 대체하게 한다.
+  function icon(c, name, cx, cy, size) {
+    const im = spr(name);
+    if (!im.complete || !im.naturalWidth) return false;
+    const k = size / Math.max(im.naturalWidth, im.naturalHeight);
+    const w = im.naturalWidth * k, h = im.naturalHeight * k;
+    c.drawImage(im, cx - w / 2, cy - h / 2, w, h);
+    return true;
+  }
   function box(c, x, y, w, h, r, fill, stroke) {
     c.beginPath(); c.roundRect(x, y, w, h, r); c.fillStyle = fill; c.fill();
     if (stroke) { c.strokeStyle = stroke; c.lineWidth = 2; c.stroke(); }
@@ -46,16 +61,17 @@ const PartyGames = (() => {
   function header(e, title, hint, color) {
     const c = e.ctx, w = e.W / e.dpr;
     const short = e.H / e.dpr < 500;
-    box(c, 12, short ? 42 : 54, w - 24, short ? 62 : 80, 18, '#111b36ed', color);
-    text(c, title, w / 2, short ? 64 : 80, Math.min(e.host ? 28 : 23, w / (title.length * 1.05)), color);
-    text(c, hint, w / 2, short ? 88 : 113, e.host ? 16 : 12, '#eef2ff');
+    // 화면 가운데 위에는 남은 시간 뱃지가 떠 있다 — 그 아래로 내려야 제목이 안 가린다
+    box(c, 12, short ? 52 : 78, w - 24, short ? 62 : 80, 18, '#111b36ed', color);
+    text(c, title, w / 2, short ? 74 : 104, Math.min(e.host ? 28 : 23, w / (title.length * 1.05)), color);
+    text(c, hint, w / 2, short ? 98 : 137, e.host ? 16 : 12, '#eef2ff');
     // Expose meaningful live status to assistive technologies and UI testing.
     const el = document.getElementById('partyStatus');
     if (el && el.textContent !== title + '. ' + hint) el.textContent = title + '. ' + hint;
   }
   function board(e, ratio) {
     const w = e.W / e.dpr, h = e.H / e.dpr;
-    const short = h < 500, top = short ? 120 : 154, foot = e.host || short ? 38 : 155;
+    const short = h < 500, top = short ? 130 : 178, foot = e.host || short ? 38 : 155;
     const maxW = e.host && w > 900 ? w - 270 : !e.host && short ? w - 260 : w - 28;
     const bw = Math.min(maxW, Math.max(80, h - top - foot) * ratio), bh = bw / ratio;
     const x = (e.host && w > 900 ? w - 245 : w) / 2 - bw / 2;
@@ -89,8 +105,17 @@ const PartyGames = (() => {
       c.fillStyle = i % 2 ? '#b4d98b' : '#c5e3a7'; c.fillRect(b.x, b.y + i * b.h / 10, b.w, b.h / 10);
     }
     c.fillStyle = '#ffdc7f'; c.fillRect(b.x, b.y, b.w, 110 * sy);
-    for (let i = 0; i < 9; i++) text(c, '🌼', b.x + (i + .5) * b.w / 9, b.y + 40 * sy, Math.max(15, 40 * sx));
-    text(c, '도착!', b.x + b.w / 2, b.y + 82 * sy, Math.max(12, 23 * sx), '#71512b');
+    // 결승선 꽃밭 — 가운데는 술래(꽃 인형), 양옆은 꽃
+    const fsz = Math.max(18, 52 * sx);
+    for (let i = 0; i < 9; i++) {
+      const fx = b.x + (i + .5) * b.w / 9, fy = b.y + 40 * sy;
+      if (i === 4) {
+        // 술래는 '멈춰' 신호일 때 이쪽을 돌아본다 (커지며 강조)
+        const look = sig === 'stop' || sig === 'warn';
+        if (!icon(c, 'frzdoll', fx, fy, fsz * (look ? 1.5 : 1.15))) text(c, '🌸', fx, fy, fsz);
+      } else if (!icon(c, 'frzdoll', fx, fy, fsz * .62)) text(c, '🌼', fx, fy, Math.max(15, 40 * sx));
+    }
+    text(c, '도착!', b.x + b.w / 2, b.y + 92 * sy, Math.max(12, 20 * sx), '#71512b');
     c.strokeStyle = '#fff'; c.lineWidth = 3; c.setLineDash([9, 6]);
     for (const yy of [110, 900]) { c.beginPath(); c.moveTo(b.x, b.y + yy * sy); c.lineTo(b.x + b.w, b.y + yy * sy); c.stroke(); }
     c.setLineDash([]);
@@ -110,6 +135,7 @@ const PartyGames = (() => {
     const c = e.ctx;
     header(e, '🎨 마지막까지 내 색으로!', '이동하면 칠해져요 · 넓게 칠하기는 7초마다', '#9cebea');
     const b = board(e, 20 / 14), tw = b.w / 20, th = b.h / 14;
+    if (e.host) icon(c, 'paintcan', b.x + b.w - 46, b.y - 34, 74);   // 판 위에 페인트통
     m.party.tiles.forEach((id, i) => {
       const col = id ? paintColor(id) : '#e7ebef';
       c.fillStyle = col; c.fillRect(b.x + i % 20 * tw + 1, b.y + Math.floor(i / 20) * th + 1, tw - 2, th - 2);
@@ -137,16 +163,34 @@ const PartyGames = (() => {
     header(e, ...(e.host ? ['🎣 보물 낚시 대회', '각자 폰에서 입질을 기다렸다가 타이밍을 맞혀요'] : messages[stage] || messages.wait), stage === 'bite' ? '#ffd66f' : '#9cecf3');
     if (e.host) {
       const ps = m.players.filter(r => !r[4]);
-      const cols = Math.max(2, Math.ceil(Math.sqrt(ps.length * (w / Math.max(1, h - 170)))));
-      const rows = Math.ceil(ps.length / cols), cw = (w - 32) / cols, ch = Math.min(155, (h - 178) / Math.max(1, rows));
+      // 사람이 적으면 열을 줄여 카드를 큼직하게 (4명을 3열로 깔면 둘째 줄이 한 칸만 찬다)
+      const cols = ps.length <= 4 ? Math.max(1, Math.min(2, ps.length))
+        : ps.length <= 9 ? 3
+        : Math.max(2, Math.ceil(Math.sqrt(ps.length * (w / Math.max(1, h - 170)))));
+      const rows = Math.ceil(ps.length / cols), cw = (w - 32) / cols, ch = Math.min(300, (h - 202) / Math.max(1, rows));
+      const gridTop = 177 + Math.max(0, (h - 202 - ch * rows) / 2);   // 남는 세로는 위아래로 나눠 가운데에
       ps.forEach((r, i) => {
         const q = m.party.people.find(p => p.id === r[0]) || {}, meta = e.roster.get(r[0]) || {};
-        const x = 16 + i % cols * cw, y = 153 + Math.floor(i / cols) * ch;
+        const x = 16 + i % cols * cw, y = gridTop + Math.floor(i / cols) * ch;
         box(c, x + 4, y + 4, cw - 8, ch - 8, 13, '#143a50ed', q.stage === 'bite' ? '#ffd66f' : '#377886');
-        const icon = q.stage === 'bite' ? '❗' : q.stage === 'reel' ? '🎣' : q.event === 'treasure' ? '💎' : q.event === 'gold' ? '🐠' : q.event === 'fish' ? '🐟' : '🫧';
-        text(c, icon, x + cw / 2, y + ch * .35, Math.min(37, ch * .32));
-        text(c, meta.nick || '?', x + cw / 2, y + ch * .64, Math.min(17, cw / 8), '#fff');
-        text(c, r[5] + '점', x + cw / 2, y + ch * .83, Math.min(17, ch * .15), '#ffe09b');
+        // 누구 자리인지 한눈에 — 카드 왼쪽 위에 그 아이 캐릭터
+        const fim = e.character(meta.ci || 0);
+        if (fim && fim.complete && fim.naturalWidth) {
+          const fs2 = Math.min(64, ch * .3);
+          c.drawImage(fim, x + 16, y + 14, fs2, fs2);
+        }
+        // 지금 무슨 일이 벌어지는지 그림으로 (예전엔 전부 이모지라 멀리서 안 보였다)
+        const art2 = q.event === 'treasure' ? 'fishchest' : q.event === 'gold' ? 'fishgold'
+          : q.event === 'fish' ? 'fish' : q.stage === 'reel' ? 'fish' : 'bobber';
+        const isz = Math.min(64, ch * .46) * (q.stage === 'bite' ? 1.18 : 1);
+        const iy = y + ch * .34 + (q.stage === 'bite' ? Math.sin(e.now / 90) * 4 : 0);   // 입질이면 찌가 까딱거린다
+        if (!icon(c, art2, x + cw / 2, iy, isz)) {
+          text(c, q.stage === 'bite' ? '❗' : '🫧', x + cw / 2, iy, Math.min(37, ch * .32));
+        }
+        if (q.stage === 'bite') text(c, '❗', x + cw / 2 + isz * .5, iy - isz * .35, Math.min(26, ch * .2), '#ffd66f');
+        text(c, meta.nick || '?', x + cw / 2, y + ch * .68, Math.min(24, cw / 8), '#fff');
+        text(c, r[5] + '점', x + cw / 2, y + ch * .86, Math.min(22, ch * .13), '#ffe09b');
+        if (q.combo >= 2) text(c, `${q.combo}연속!`, x + cw - 20, y + 30, Math.min(16, cw / 12), '#ffd66f', 'right');
       });
       return;
     }
@@ -156,7 +200,14 @@ const PartyGames = (() => {
     cover(c, image('fishing'), x, y, pw, ph);
     c.fillStyle = '#09385366'; c.fillRect(x, y, pw, ph); c.restore();
     const icons = { treasure: '💎', gold: '🐠', fish: '🐟', early: '💨', escaped: '💨', miss: '💦' };
-    text(c, me && icons[me.event] || (stage === 'bite' ? '❗' : '🎣'), x + pw / 2, y + ph / 2, 74);
+    const bigArt = me && me.event === 'treasure' ? 'fishchest' : me && me.event === 'gold' ? 'fishgold'
+      : me && me.event === 'fish' ? 'fish' : (stage === 'wait' || stage === 'bite' || stage === 'ready') ? 'bobber' : null;
+    // 찌는 물 위에서 까딱, 입질이면 크게 흔들린다
+    const bob = stage === 'bite' ? Math.sin(e.now / 70) * 9 : Math.sin(e.now / 320) * 3;
+    if (!bigArt || !icon(c, bigArt, x + pw / 2, y + ph / 2 + bob, Math.min(150, ph * .78))) {
+      text(c, me && icons[me.event] || (stage === 'bite' ? '❗' : '🎣'), x + pw / 2, y + ph / 2, 74);
+    }
+    if (stage === 'bite') text(c, '❗', x + pw / 2 + 52, y + ph / 2 - 42 + bob, 46, '#ffd66f');
     const gy = short ? 128 : y + ph + 22, gh = 134;
     const panelX = short ? w * .4 + 8 : 16, panelW = short ? w - panelX - 156 : w - 32, mid = panelX + panelW / 2;
     box(c, panelX, gy, panelW, gh, 18, '#101e36f5', '#6298a9');

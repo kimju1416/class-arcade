@@ -12,6 +12,7 @@ const SUITES = [
   ['게임 규칙', './games.test'],
   ['통아저씨', './pirate.test'],
   ['꼬리별 규칙', './comet.test'],
+  ['결정적 순간', './climax.test'],
   ['배포 생존(스냅샷)', './snapshot.test'],
 ];
 

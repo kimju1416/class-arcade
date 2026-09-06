@@ -838,6 +838,23 @@ try {
   for (const [cat, rows] of Object.entries(EX.quizEasy)) (QUIZ_DATA[cat] = QUIZ_DATA[cat] || []).push(...rows);
   for (const [cat, rows] of Object.entries(EX.quizMore)) (QUIZ_MORE[cat] = QUIZ_MORE[cat] || []).push(...rows);
 } catch (e) { console.error('[추가 문제 로드 실패]', e.message); }
+// 2차 확충 — 난이도를 '중'·'상'으로 고르면 카테고리당 18문항뿐이라 한 판에 다 소진됐다
+try {
+  const EX2 = require('./data/quiz-extra2.js');
+  OX_MORE.push(...EX2.oxMore);
+  for (const [cat, rows] of Object.entries(EX2.quizMore)) (QUIZ_MORE[cat] = QUIZ_MORE[cat] || []).push(...rows);
+} catch (e) { console.error('[추가 문제2 로드 실패]', e.message); }
+// 문제를 여러 파일에서 합치다 보면 같은 문장이 두 번 들어갈 수 있다 — 한 번만 남긴다
+{
+  const uniq = (arr, keyOf) => {
+    const seen = new Set(), out = [];
+    for (const row of arr) { const k = keyOf(row); if (seen.has(k)) continue; seen.add(k); out.push(row); }
+    arr.length = 0; arr.push(...out);
+  };
+  uniq(OX_DATA, r => r[0]); uniq(OX_MORE, r => r[0]);
+  for (const cat of Object.keys(QUIZ_DATA)) uniq(QUIZ_DATA[cat], r => r[0]);
+  for (const cat of Object.keys(QUIZ_MORE)) uniq(QUIZ_MORE[cat], r => r[0]);
+}
 
 // 같은 방에서 이미 나온 문제는 피한다 — 풀이 바닥나면 그때 처음부터 다시.
 // key: 'quiz'|'ox' 처럼 종류별로 따로 기억한다. 방이 닫히면 같이 사라진다(세션 단위).
@@ -957,6 +974,7 @@ function crayBlocked(g, px, py, exemptBalloons) {
 
 function crayTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
 
   // 1. 이동 (트랩 중엔 못 움직임). 축 분리 이동으로 벽에 비벼도 미끄러지듯 지나간다.
   for (const p of room.players.values()) {
@@ -1087,6 +1105,9 @@ function crayTick(room, now, dt) {
     const teamsAlive = new Set(alive.map(p => p.crayTeam));
     if (teamsAlive.size <= 1 && g.startingCount >= 2) over = true;
   } else if ((g.startingCount >= 2 && alive.length <= 1) || alive.length === 0) over = true;
+  // 개인전 최후 1인은 잠깐 비춘다 (팀전은 승패가 팀 단위라 뜸을 들이지 않는다)
+  if (over && !g.teamMode && g.startingCount >= 2 && alive.length === 1
+      && !climaxHold(room, now, alive[0].id)) { sendState(room, now); return; }
   if (over) { endCray(room, now); return; }
   sendState(room, now);
 }
@@ -1960,6 +1981,7 @@ function endBomb(room, now) {
 // ---------- 감염 술래잡기 ----------
 function tagTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
   movePlayers(room, dt, p => p.infected ? SPEED * ZOMBIE_SPEED_MULT : SPEED);
 
   // 감염 판정: 좀비와 닿으면 감염
@@ -1975,6 +1997,12 @@ function tagTick(room, now, dt) {
   }
 
   const remaining = ps.filter(p => !p.infected).length;
+  // 전원 감염으로 끝나는 판은 "제일 오래 버틴 사람"을 잠깐 비춘다 (가장 늦게 감염된 사람)
+  if (remaining === 0 && ps.length >= 2) {
+    let last = null;
+    for (const p of ps) if (p.infected && !p.patientZero && (!last || (p.infectedAt || 0) > (last.infectedAt || 0))) last = p;
+    if (!climaxHold(room, now, last ? last.id : null)) { sendState(room, now); return; }
+  }
   if (now >= room.phaseEndAt || remaining === 0) { endTag(room, now); return; }
   sendState(room, now);
 }
@@ -2430,6 +2458,7 @@ function endGala(room, now) {
 // ---------- 탄막 서바이벌 ----------
 function dodgeTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
   const el = now - g.startedAt;              // 경과 시간 = 난이도
   const W = g.arenaW, H = g.arenaH;
   movePlayers(room, dt);
@@ -2485,6 +2514,12 @@ function dodgeTick(room, now, dt) {
   }
 
   const alive = [...room.players.values()].filter(p => p.alive);
+  // 끝나는 순간 한 명이 살아남아 있으면 그 사람을 비춘다 (전멸이면 마지막에 죽은 사람)
+  if ((now >= room.phaseEndAt || !alive.length) && g.startingCount >= 2) {
+    let win = alive.length === 1 ? alive[0] : null;
+    if (!win) { for (const p of room.players.values()) if (!p.waiting && (!win || (p.deadAt || 0) > (win.deadAt || 0))) win = p; }
+    if (!climaxHold(room, now, win ? win.id : null)) { sendState(room, now); return; }
+  }
   // 폭탄 피하기(최후 1인 종료)와 달리 혼자 남아도 계속 — 전멸하거나 시간이 다해야 끝난다
   if (now >= room.phaseEndAt || !alive.length) {
     endBomb(room, now);   // 순위 규칙이 폭탄 피하기와 같다 (생존자 → 늦게 죽은 순)
@@ -2555,6 +2590,7 @@ function sumoTick(room, now, dt) {
 // ---------- 의자 뺏기 ----------
 function chairTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
   // 의자에 앉은 사람은 그 자리에 고정
   movePlayers(room, dt, p => p.satChair != null ? 0 : SPEED);
 
@@ -2593,6 +2629,7 @@ function chairTick(room, now, dt) {
     if (allTaken || now >= g.grabEndAt) {
       for (const p of alive) if (p.satChair == null) { p.alive = false; p.deadAt = now; p.outRound = g.cRound; }
       const left = [...room.players.values()].filter(p => p.alive);
+      if (left.length <= 1 && !climaxHold(room, now, left[0] ? left[0].id : null)) { sendState(room, now); return; }
       if (left.length <= 1) { endChair(room); return; }
       g.cRound++;
       for (const p of left) p.satChair = null;
@@ -2779,6 +2816,7 @@ function startOxQ(room, now) {
 
 function oxTick(room, now, dt) {
   const g = room.game;
+  if (climaxFrozen(room, now)) { sendState(room, now); return; }
   movePlayers(room, dt);
   if (g.oxPhase === 'show') {
     if (now >= g.oxEndAt) {
@@ -2797,6 +2835,7 @@ function oxTick(room, now, dt) {
   } else if (g.oxPhase === 'reveal') {
     if (now >= g.revealEndAt) {
       const left = [...room.players.values()].filter(p => p.alive);
+      if (left.length === 1 && !climaxHold(room, now, left[0].id)) { sendState(room, now); return; }
       if (left.length <= 1 || g.oxIdx + 1 >= g.oxQs.length) { endOx(room); return; }
       g.oxIdx++;
       startOxQ(room, now);
@@ -3820,10 +3859,12 @@ function endScoreGame(room, unit) {
   const parts = [...room.players.values()].filter(p => !p.waiting);
   if (room.gameType === 'freeze') {
     // Survivors (including zero progress) always place ahead of eliminated players.
-    const score = p => p.alive ? 1 + (p.score || 0) : 0;
+    // 살아남은 사람이 먼저. 탈락자끼리는 걸리기 전까지 얼마나 갔는지로 가른다
+    // (예전엔 전원 탈락하면 전부 0점이라 "전원 1위"로 나왔다)
+    const score = p => p.alive ? 100000 + (p.score || 0) : (p.frzReach || 0);
     finishGame(room, parts.sort((a, b) => score(b) - score(a)),
       p => !p.alive ? '탈락' : `${p.party.finished ? '완주' : '생존'} · ${p.score}점`,
-      p => String(score(p)));
+      p => String(p.alive ? 1 + (p.score || 0) : 0));
     return;
   }
   const sorted = parts.sort((a, b) => (b.score || 0) - (a.score || 0));
