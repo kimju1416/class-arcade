@@ -150,7 +150,11 @@ module.exports = async () => {
       try {
         const result = await H.waitFor(() => H.last(r.host, 'result'), 18000, '무궁화 생존자 완주');
         t.ok(result.ranking[0].id === r.ids[1] && result.ranking[0].label.startsWith('완주'), '무궁화: 완주자가 우선 순위');
-        t.ok(result.ranking[1].id === r.ids[0] && result.ranking[1].label === '탈락', '무궁화: 탈락자 순위와 결과 표시');
+        // 라벨은 '탈락 · 34m'처럼 걸리기 전까지 간 거리가 붙는다 — 전원 탈락한 판에서
+        // 등수가 갈리는 근거를 화면에 보여 주기 위해서다(2026-09-07). 윗줄 완주 판정과 같은 방식으로 본다.
+        const outRow = result.ranking[1];
+        t.ok(outRow.id === r.ids[0] && outRow.label.startsWith('탈락'), '무궁화: 탈락자 순위와 결과 표시');
+        t.ok(/^탈락 · \d+m$/.test(outRow.label), `무궁화: 탈락 라벨에 도달 거리가 붙는다 (${outRow.label})`);
       } finally { clearInterval(drive); }
     }
     H.send(r.host, { type: 'back_to_lobby' });

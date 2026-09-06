@@ -83,7 +83,7 @@ function freezeTick(room, now, dt) {
       if (now - g.signalAt > 180 && moving(p)) {
         // 점수는 규칙대로 0 (부활·점수 유지 치팅 방지). 다만 그대로 두면 전원 탈락한 판이
         // "전원 동점 1위"가 된다 — 어디까지 갔는지는 순위용으로만 따로 남긴다.
-        p.frzReach = Math.round(clamp((900 - p.y) / 790, 0, 1) * 900);
+        p.frzReach = Math.round(clamp((900 - p.y) / 790, 0, 1) * 900);   // 순위용 — server.js endScoreGame이 쓴다
         p.alive = false; p.deadAt = now; p.score = 0;
         p.dirX = 0; p.dirY = 0;
         event(p, 'out', now);

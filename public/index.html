@@ -290,7 +290,10 @@
   body.kbopen #wordGame { justify-content: flex-start; padding-top: 8px; gap: 8px; }
   body.kbopen #wordGame #wordBig { font-size: 40px !important; }
   body.host #wordList { max-height: calc(100vh - 470px); overflow-y: auto; }
-  #btnWordAbort, #btnQuizAbort {
+  /* 중단 버튼은 어느 게임에서나 같은 자리(오른쪽 위)에 있어야 한다 —
+     사이먼·같은그림·블록배틀·그림퀴즈만 화면 한가운데 아래에 떠 있어서
+     무대 한복판에 회색 버튼이 놓인 꼴이었다(2026-09-07). */
+  #btnWordAbort, #btnQuizAbort, #btnSimonAbort, #btnPairsAbort, #btnTetAbort, #btnDrawAbort {
     position: fixed; top: 14px; right: 14px; z-index: 8; width: auto;
     background: rgba(35,44,77,.85); color: #93a0c4; font-size: 14px; padding: 9px 16px;
   }
@@ -496,10 +499,58 @@
   /* 25명 학급에서 순위가 길어져도 버튼이 화면 밖으로 나가지 않게 */
   body.host #rankList { overflow-y: auto; max-height: calc(100vh - 340px); width: 100%; }
   body.host #resultHost { width: 100%; align-items: center; }
+  /* ── TV 결과 화면: 세로로 쌓으면 25명이 안 들어간다 (2026-09-07 실측) ────────
+     720p TV에서 트로피+시상대+우승줄만으로 596px을 먹어, 순위판(380px)이 626px에서
+     시작했다 — 25명 중 두 명만 보였다. 공동우승이 많은 판(무궁화꽃 전원 탈락 등)은
+     우승자 이름 줄이 221px로 늘어 순위판이 아예 화면 밖(773px)으로 나갔다.
+     TV는 가로가 남으니 왼쪽에 우승 연출, 오른쪽에 전체 순위를 놓는다. */
+  @media (min-width: 900px) {
+    body.host #resultHost {
+      display: grid; grid-template-columns: minmax(280px, 34%) 1fr;
+      column-gap: 22px; row-gap: 8px; align-items: start; justify-items: center;
+      max-width: 1200px; margin: 0 auto;
+    }
+    /* 왼쪽 칸에 우승 연출을 순서대로 쌓는다 */
+    body.host #trophyImg, body.host #podiumFace, body.host #podium3,
+    body.host #podium, body.host #teamResult { grid-column: 1; }
+    /* 오른쪽 칸은 순위판이 세로를 전부 쓴다.
+       '오늘의 챔피언'이 순위판 옆에 붙으면 열 하나만큼 좁아지므로, 묶음을 풀어(display:contents)
+       챔피언은 왼쪽 우승 연출 아래로 보내고 순위판이 오른쪽 전체를 쓰게 한다. */
+    body.host #resultHost .result-cols { display: contents; }
+    body.host #rankList { grid-column: 2; grid-row: 1 / span 6; align-self: stretch; }
+    /* 왼쪽 칸에는 트로피·시상대·우승줄이 이미 있다 — 챔피언은 남은 높이에만 들어간다 */
+    body.host #champResult {
+      grid-column: 1; max-width: 100%; width: 100%;
+      max-height: calc(100vh - 620px); overflow: hidden;   /* 아래 버튼 줄(85px)에 가리지 않게 */
+    }
+    body.host #champResult .champ-head { font-size: 14px; padding-bottom: 2px; }
+    body.host #champResult .champ-rows > * { font-size: 13px; padding: 3px 8px; }
+    body.host .result-actions { grid-column: 1 / -1; }
+    /* 순위는 여러 열로 — 25명이 스크롤 없이 한눈에 들어와야 한다.
+       720p·25명이면 3열 9행으로 떨어진다(행 높이 약 46px). */
+    /* 뒤에 오는 `body.host .rank-list { max-width: 560px }`를 이겨야 해서 id를 함께 쓴다 */
+    body.host #resultHost .rank-list {
+      max-width: none; width: 100%; display: grid; align-content: start;
+      grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 6px;
+    }
+    body.host #resultHost .result-cols { width: 100%; flex-wrap: nowrap; }
+    body.host #rankList { max-height: calc(100vh - 150px); }
+    body.host #resultHost .rank-row { font-size: 15px; padding: 6px 10px; gap: 7px; border-radius: 10px; }
+    body.host #resultHost .rank-row .r { width: 42px; font-size: 14px; }
+    body.host #resultHost .rank-row .t { font-size: 12px; }
+    body.host #resultHost .rank-face { width: 22px; height: 22px; }
+    /* 트로피·우승자 얼굴이 세로를 다 먹지 않게 (720p에서 시상대가 잘렸다) */
+    body.host #trophyImg { max-height: 11vh; }
+    body.host #podiumFace { width: 110px; height: 110px; }
+    /* 왼쪽 칸이 좁아졌으니 우승자 줄도 그 폭에 맞춘다 (46px면 두 줄로 감겼다) */
+    body.host .podium { font-size: 26px; line-height: 1.35; }
+  }
   body.host .result-actions {
     position: sticky; bottom: 0; width: 100%; display: flex; gap: 12px;
     justify-content: center; padding: 14px 0 18px;
     background: linear-gradient(to top, #10162b 70%, rgba(16,22,43,0));
+    /* 학생 이모지 반응(#reactLayer z-index 45)이 화면 아래에서 떠올라 이 버튼 글자를 덮었다 */
+    z-index: 46;
   }
   body.host .result-actions .btn { max-width: 320px; }
   .podium {
@@ -889,7 +940,8 @@ body.host #teamResult .tr-line { font-size: 30px; }
   body.host .code-card .cc-lab { font-size: 15px; }
   .code-big { line-height: 1.05; }
   body.host #codeBig { grid-area: unset; }
-  body.host .code-card { grid-area: code; }
+  /* 이모지 반응이 떠오르며 방 코드를 덮었다 — 학생이 코드를 못 읽으면 입장을 못 한다 */
+  body.host .code-card { grid-area: code; position: relative; z-index: 46; }
   .qr-wrap { border-radius: 22px; padding: 14px; box-shadow: 0 18px 40px rgba(0,0,0,.45), 0 0 0 6px rgba(255,255,255,.06); }
   .chip {
     background: linear-gradient(180deg, rgba(48,58,102,.95), rgba(32,40,74,.95));
@@ -1216,6 +1268,30 @@ body.host #teamResult .tr-line { font-size: 30px; }
      버튼이 뜨는 판에서는 바를 버튼 왼쪽으로 물리고, 좁아진 폭에서는 상위 3명 줄을 접는다. */
   body.ingame:not(.host).hasbtn #phInfo { right: 146px; }
   body.ingame:not(.host).hasbtn #phInfo .pi-top { display: none; }
+  /* ── TV 명단은 여러 열로 (2026-09-07 실측) ──────────────────────────────
+     `.word-list`를 한 줄짜리 세로 목록으로 두니 25명 학급에서 낱말·초성은 5명,
+     같은 그림 6명, 퀴즈 리더보드는 4명까지만 보이고 나머지는 스크롤 안에 갇혔다.
+     교사도 학생도 TV를 스크롤하지 않는다 — 화면 아래는 텅 비어 있는데도 그랬다.
+     열 수는 폭에 맞춰 자동으로 잡고, 세로 여유도 실제 화면에 맞춰 늘린다. */
+  @media (min-width: 900px) {
+    body.host .word-list {
+      max-width: none; width: 100%; display: grid; align-content: start;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px;
+    }
+    body.host .word-list > * { font-size: 15px; padding: 7px 12px; }
+    body.host #wordList { max-height: calc(100vh - 300px); }
+    body.host #quizBoard { max-height: calc(100vh - 330px); }
+    /* 같은 그림은 진행 막대가 있어 한 칸이 넓어야 한다 */
+    body.host #pairsBoard {
+      max-width: none; display: grid; align-content: start;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 6px;
+      max-height: calc(100vh - 190px);
+    }
+    body.host .pairs-prow { font-size: 15px; padding: 7px 12px; gap: 8px; }
+    body.host .pairs-prow .pface { width: 30px; height: 30px; }
+    body.host .pairs-prow .pnm { min-width: 62px; }
+    body.host .pairs-prow .n { width: 104px; font-size: 13px; }
+  }
   /* 음소거 버튼도 오른쪽 아래에 붙어 있어서 액션 버튼 모서리를 40x32px 덮고 있었다.
      z-index가 60 대 6이라 «점프를 누르려다 소리가 꺼지는» 자리였다(실측).
      버튼이 뜨는 판에서는 비어 있는 오른쪽 위로 보낸다 (왼쪽 위는 방 코드 자리). */
@@ -3014,7 +3090,10 @@ function tetFit(n, compact) {
   const gap = compact ? 7 : 14;
   const padX = compact ? 12 : 20;    // .tet-mini 좌우 패딩
   const labelH = compact ? 26 : 42;  // 이름+점수 줄 높이
-  let best = { mini: 6, cols: 1 };
+  // 초기값을 6으로 두면 «어떤 열 수로도 6px이 안 나오는» 인원에서 아무 후보도 채택되지 않아
+  // cols가 1로 남는다 — 25명·720p TV에서 판이 세로로 쌓여 세 명만 보였다(실측 2026-09-07).
+  // 후보 선택과 최소 크기 보정은 분리해야 한다.
+  let best = { mini: 0, cols: 1 };
   for (let cols = 1; cols <= n; cols++) {
     const rows = Math.ceil(n / cols);
     const cellW = (gw - gap * (cols - 1)) / cols;
@@ -3022,15 +3101,16 @@ function tetFit(n, compact) {
     const mini = Math.floor(Math.min((cellW - padX) / TET_C_W, (cellH - labelH) / TET_C_H));
     if (mini > best.mini) best = { mini, cols };
   }
-  best.mini = Math.max(6, Math.min(40, best.mini));
+  best.mini = Math.max(4, Math.min(40, best.mini));   // 4px이면 25명이 5x5로 들어간다
   return best;
 }
 function renderTetHost(m) {
   const grid = $('tetHostGrid');
   const boards = m.boards || [];
   const n = boards.length;
-  // 27명 이상은 여백·로고를 줄여 스크롤 없이 전원 중계
-  const compact = n > 26;
+  // 사람이 많으면 여백·로고를 줄여 스크롤 없이 전원 중계.
+  // 기준이 27명이라 25명 학급이 여백을 다 쓰고도 못 들어갔다 — 16명부터 조인다.
+  const compact = n > 15;
   grid.classList.toggle('compact', compact);
   $('tetrisGame').classList.toggle('compactview', compact);
   // 미니보드 셀 크기를 인원수에 맞춰 화면을 꽉 채우게 계산 —
@@ -3382,7 +3462,8 @@ function enterGameView(keepInput) {
     show('wordGame');
     $('wordPlayerUI').style.display = isHost ? 'none' : 'flex';
     $('btnWordAbort').style.display = isHost ? 'block' : 'none';
-    $('wordList').style.display = isHost ? 'flex' : 'none';
+    // TV에서는 여러 열로 (25명이 한 줄짜리 목록에 안 들어간다) — 인라인 display가 CSS를 이기므로 여기서 정한다
+    $('wordList').style.display = isHost ? (innerWidth >= 900 ? 'grid' : 'flex') : 'none';
     if (!isHost) {
       $('wordInput').readOnly = false; $('btnWordSubmit').disabled = false;
       clearInput($('wordInput')); $('wordFeedback').textContent = '';
@@ -3913,13 +3994,21 @@ function showResult(ranking, champArr, team) {
     } else tr.style.display = 'none';
   }
   if (isHost) {
-    $('resultHost').style.display = 'flex';
+    // 넓은 화면(교실 TV)에서는 좌우 2단 — 세로로 쌓으면 25명 순위가 화면 밖으로 나간다.
+    // 인라인 style이 CSS를 이기므로 display 자체를 여기서 정한다.
+    $('resultHost').style.display = innerWidth >= 900 ? 'grid' : 'flex';
     $('resultPlayer').style.display = 'none';
     const top = ranking.filter(r => r.rank === 1);
     // 우승자 캐릭터를 크게 (여러 명 공동우승이면 첫 번째)
     const wf = $('podiumFace'), wsrc = top.length ? charSrc(top[0].ci) : '';
     if (wsrc) { wf.src = wsrc; wf.style.display = ''; } else wf.style.display = 'none';
-    $('podium').innerHTML = top.length ? `🏆 우승: ${top.map(r => esc(r.nick)).join(', ')}` : '게임 종료!';
+    // 공동우승이 많으면 이름을 다 적지 않는다 — 25명이 동점이면 이 줄만 221px로 늘어
+    // 시상대와 순위판을 화면 밖으로 밀어낸다(실측). 전원 이름은 아래 순위판에 어차피 있다.
+    const champNames = top.map(r => esc(r.nick));
+    const champTxt = champNames.length <= 3
+      ? champNames.join(', ')
+      : champNames.slice(0, 2).join(', ') + ' 외 ' + (champNames.length - 2) + '명';
+    $('podium').innerHTML = top.length ? `🏆 우승: ${champTxt}` : '게임 종료!';
     // 3단 포디움 (2위·1위·3위 순으로 배치) — 2명 이상일 때만, 그때는 큰 얼굴 하나짜리는 숨긴다
     const p3 = $('podium3');
     if (ranking.length >= 2) {
@@ -4897,6 +4986,17 @@ function drawCometGame(W, H, dpr) {
       ctx.textAlign = 'right';
       ctx.fillText('너무 작아 부스터 불가', W - pad, H - 4 * dpr);
     }
+  }
+  // 왼쪽 위 정보 — 전용 렌더러는 draw()의 공통 HUD 설정 앞에서 return하므로 여기서 직접 채운다.
+  // 이게 없어서 꼬리별만 TV에 방 코드 말고는 아무 정보가 없었다(2026-09-07 실측).
+  {
+    const rows = latest.players.filter(r => !r[4]);
+    const aliveN = rows.filter(r => r[3]).length;
+    const top = rows.reduce((a, r) => (r[7] || 0) > (a[7] || 0) ? r : a, rows[0] || []);
+    const topNm = top && top[0] != null ? (roster.get(top[0]) || { nick: '?' }).nick : '';
+    setText($('hudLeft'), isHost
+      ? `🌠 생존 ${aliveN}/${rows.length}` + (topNm ? ` · 선두 ${esc(topNm)} ${Math.round(top[7] || 0)}` : '')
+      : `🌠 생존 ${aliveN}` + (meRow ? ` · 내 몸집 ${Math.round(meRow[7] || 0)}` : ''));
   }
   drawOverlay(latest);
 }

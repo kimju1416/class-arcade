@@ -3862,9 +3862,11 @@ function endScoreGame(room, unit) {
     // 살아남은 사람이 먼저. 탈락자끼리는 걸리기 전까지 얼마나 갔는지로 가른다
     // (예전엔 전원 탈락하면 전부 0점이라 "전원 1위"로 나왔다)
     const score = p => p.alive ? 100000 + (p.score || 0) : (p.frzReach || 0);
+    // 등수 키도 같은 값을 써야 한다 — 예전엔 탈락자를 전부 '0'으로 묶어,
+    // 애써 frzReach로 정렬해 놓고도 «전원 공동 1위»가 나왔다(2026-09-07 실측: 25명 전원 1위).
     finishGame(room, parts.sort((a, b) => score(b) - score(a)),
-      p => !p.alive ? '탈락' : `${p.party.finished ? '완주' : '생존'} · ${p.score}점`,
-      p => String(p.alive ? 1 + (p.score || 0) : 0));
+      p => !p.alive ? `탈락 · ${Math.round((p.frzReach || 0) / 9)}m` : `${p.party.finished ? '완주' : '생존'} · ${p.score}점`,
+      p => String(score(p)));
     return;
   }
   const sorted = parts.sort((a, b) => (b.score || 0) - (a.score || 0));
