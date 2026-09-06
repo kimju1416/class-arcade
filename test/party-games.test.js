@@ -24,21 +24,34 @@ module.exports = async () => {
     P.tick(r, 1300, .05);
     t.eq(p.y, before, '무궁화: 빨강 전환 직후 네트워크 유예');
     P.tick(r, 1450, .05);
-    const penaltyY = p.y;
-    t.ok(penaltyY > before && p.party.event === 'oops', '무궁화: 빨강에 계속 움직이면 뒤로');
+    t.ok(!p.alive && p.deadAt === 1450 && p.party.event === 'out', '무궁화: 빨강에 한 번 걸리면 즉시 탈락');
+    t.eq(p.score, 0, '무궁화: 탈락 시 득점 취소');
+    t.ok(p.dirX === 0 && p.dirY === 0, '무궁화: 탈락 즉시 이동 입력 초기화');
     P.tick(r, 1500, .05);
-    t.eq(p.y, penaltyY, '무궁화: 빨강 한 번에 중복 벌칙 없음');
+    t.ok(p.y === before && p.party.seq === 1, '무궁화: 탈락 위치 고정 및 중복 판정 없음');
     p.dirY = 0; const p2 = r.players.get(2), y2 = p2.y;
     P.tick(r, 1600, .05);
-    t.eq(p2.y, y2, '무궁화: 멈춰 있는 학생은 벌칙 없음');
+    t.ok(p2.y === y2 && p2.alive, '무궁화: 멈춰 있는 학생은 생존');
     const publicState = P.state(r, 1600);
     t.ok(!JSON.stringify(publicState).includes('switchAt'), '무궁화: 다음 신호 전환 시각 미공개');
     g.signal = 'go'; g.switchAt = 99999;
-    for (const pp of r.players.values()) { pp.y = 105; pp.party.stunUntil = 0; }
-    t.ok(P.tick(r, 4000, .05), '무궁화: 전원 완주하면 종료');
-    t.ok(p.party.finished && p.score > 1000, '무궁화: 완주 + 남은 시간 보너스');
-    const score = p.score; P.tick(r, 4050, .05);
-    t.eq(p.score, score, '무궁화: 완주 보너스 중복 지급 없음');
+    p.dirY = -1; p.connected = false; p.connected = true;
+    P.tick(r, 3900, .05);
+    t.ok(!p.alive && p.y === before && p.score === 0, '무궁화: 재접속·초록불·재입력으로 부활 불가');
+    p2.y = 105;
+    t.ok(P.tick(r, 4000, .05), '무궁화: 남은 생존자가 모두 완주하면 종료');
+    t.ok(p2.party.finished && p2.score > 1000, '무궁화: 생존자 완주 + 남은 시간 보너스');
+    const score = p2.score;
+    g.signal = 'stop'; g.signalAt = 4000; p2.dirY = -1;
+    P.tick(r, 4500, .05);
+    t.ok(p2.alive && p2.score === score, '무궁화: 완주자는 이후 빨강 입력에도 완주 유지');
+  }
+  {
+    const r = room('freeze');
+    r.game.signal = 'stop'; r.game.signalAt = 1000; r.game.switchAt = 99999;
+    for (const p of r.players.values()) p.dirX = 1;
+    t.ok(P.tick(r, 1300, .05), '무궁화: 전원 탈락하면 즉시 종료');
+    t.ok([...r.players.values()].every(p => !p.alive), '무궁화: 같은 틱에 걸린 참가자 모두 탈락');
   }
   {
     const r = room('paint'), g = r.game, a = r.players.get(1), b = r.players.get(2);
@@ -115,12 +128,31 @@ module.exports = async () => {
     await H.waitFor(() => H.lastState(guest, key));
     t.ok(H.lastState(guest, key).players.some(p => p[0] === H.last(guest, 'join_ok').id && p[4] === 1), `${key}: 게임 중 입장은 대기`);
     guest.close();
+    if (key === 'freeze') {
+      await H.waitFor(() => H.lastState(r.bots[0], key).party.signal === 'stop');
+      H.send(r.bots[0], { type: 'input', x: 1, y: 0 });
+      await H.waitFor(() => !H.lastState(r.bots[0], key).players.find(p => p[0] === r.ids[0])[3]);
+      t.ok(true, '무궁화: 실제 소켓에서 첫 빨강 입력으로 탈락');
+    }
     const resumed = await H.mkClient('resume');
     H.send(resumed, { type: 'join', code: r.code, nick: '봇1', token: r.tokens[0] });
     await H.waitFor(() => H.last(resumed, 'join_ok'));
     await H.waitFor(() => H.lastState(resumed, key));
     t.eq(H.last(resumed, 'join_ok').id, r.ids[0], `${key}: 재접속 시 기존 학생 유지`);
     r.bots[0] = resumed;
+    if (key === 'freeze') {
+      t.eq(H.lastState(resumed, key).players.find(p => p[0] === r.ids[0])[3], 0, '무궁화: 실제 재접속에도 탈락 유지');
+      // The survivor advances only on green; the eliminated socket keeps trying to move.
+      const drive = setInterval(() => {
+        H.send(resumed, { type: 'input', x: 0, y: -1 });
+        H.send(r.bots[1], { type: 'input', x: 0, y: H.lastState(r.bots[1], key).party.signal === 'go' ? -1 : 0 });
+      }, 50);
+      try {
+        const result = await H.waitFor(() => H.last(r.host, 'result'), 18000, '무궁화 생존자 완주');
+        t.ok(result.ranking[0].id === r.ids[1] && result.ranking[0].label.startsWith('완주'), '무궁화: 완주자가 우선 순위');
+        t.ok(result.ranking[1].id === r.ids[0] && result.ranking[1].label === '탈락', '무궁화: 탈락자 순위와 결과 표시');
+      } finally { clearInterval(drive); }
+    }
     H.send(r.host, { type: 'back_to_lobby' });
     await H.waitRoom(r.code, x => x.state === 'lobby');
     H.clearFrames(r.host, ...r.bots);

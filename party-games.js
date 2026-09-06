@@ -23,8 +23,7 @@ function start(room, random = Math.random) {
   });
   if (room.gameType === 'freeze') {
     g.signal = 'ready'; g.signalAt = 0; g.switchAt = 0;
-    ps.forEach(p => { p.party.finished = false; p.party.stunUntil = 0; p.party.penaltyCycle = -1; });
-    g.cycle = 0;
+    ps.forEach(p => { p.party.finished = false; });
   } else if (room.gameType === 'paint') {
     g.cols = 20; g.rows = 14; g.cell = 50;
     g.tiles = Array(g.cols * g.rows).fill(0);
@@ -74,20 +73,20 @@ function freezeTick(room, now, dt) {
   if (now >= g.switchAt) {
     g.signal = g.signal === 'go' ? 'warn' : g.signal === 'warn' ? 'stop' : 'go';
     g.signalAt = now;
-    if (g.signal === 'stop') g.cycle++;
     g.switchAt = now + (g.signal === 'warn' ? 1000 : g.signal === 'stop' ? 1500 + g.partyRandom() * 1300 : 1800 + g.partyRandom() * 1700);
   }
   for (const p of active(room)) {
     const q = p.party;
     if (!q || q.finished) continue;
     if (g.signal === 'stop') {
-      // A visible 1s amber warning + 180ms network grace; one penalty per red light.
-      if (now - g.signalAt > 180 && moving(p) && q.penaltyCycle !== g.cycle) {
-        p.y = Math.min(900, p.y + 150);
-        q.stunUntil = now + 1100; q.penaltyCycle = g.cycle;
-        event(p, 'oops', now);
+      // Keep the visible amber warning and network grace, then eliminate on first catch.
+      if (now - g.signalAt > 180 && moving(p)) {
+        p.alive = false; p.deadAt = now; p.score = 0;
+        p.dirX = 0; p.dirY = 0;
+        event(p, 'out', now);
+        continue;
       }
-    } else if (now >= q.stunUntil) {
+    } else {
       move(p, dt, 210, g.arenaW, g.arenaH);
       p.y = Math.min(900, p.y);
     }
@@ -99,7 +98,7 @@ function freezeTick(room, now, dt) {
     }
   }
   const ps = active(room);
-  return ps.length > 0 && ps.every(p => p.party && p.party.finished);
+  return ps.every(p => p.party && p.party.finished);
 }
 
 function paintTick(room, now, dt) {
@@ -189,7 +188,7 @@ function state(room, now) {
         const q = p.party;
         return {
           id: p.id, seq: q.seq, event: now - q.eventAt < 1400 ? q.event : '',
-          done: !!q.finished, stun: Math.max(0, (q.stunUntil || 0) - now),
+          done: !!q.finished,
           cooldown: Math.max(0, q.readyAt - now),
           stage: q.stage, stageAt: q.stage === 'reel' ? q.stageAt : undefined,
           target: q.stage === 'reel' ? q.target : undefined,
