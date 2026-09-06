@@ -446,7 +446,24 @@
     background: linear-gradient(rgba(8,11,26,.3), rgba(8,11,26,.5)),
                 url('sprites/bg-pairs.jpg') center/cover no-repeat;
   }
-  .pairs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; width: 100%; max-width: min(88vw, 400px); }
+  /* 카드 20장은 4열 5행이다. 폭만 제한하면 세로가 짧은 폰(iPhone SE 375x667, 안드로이드 360x640)에서
+     마지막 줄이 아래 정보 바에 절반쯤 먹혀 «그림이 안 나온다»가 된다(실측: 640 화면에서 46% 가림).
+     그래서 세로로도 제한한다 — 카드 비율이 3:4이므로 그리드 폭 W에서
+     5행 높이 = 5(W-27)/3 + 36. 이게 «화면 − 위아래 UI»에 들어가도록 W를 거꾸로 푼 값이 아래 식이다.
+     차감 256px = 그리드 위 여백·제목·타이머(67) + 아래 점수줄(38) + 정보 바(107) + 여유(8+36). */
+  .pairs-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; width: 100%;
+    max-width: min(88vw, 400px);
+  }
+  /* 세로로 든 폰에서만 건다. 가로로 돌리면 세로가 375px밖에 안 돼서
+     같은 식이 카드를 18x24px까지 줄여 버린다(실측) — 가로는 예전 동작 그대로 둔다. */
+  @media (orientation: portrait) {
+    .pairs-grid { max-width: min(88vw, 400px, calc((100vh - 256px) * 0.6 + 27px)); }
+    /* 주소창이 접히고 펴지는 모바일에서는 100vh가 실제 보이는 높이보다 크다 — dvh로 정확히 잰다 */
+    @supports (height: 100dvh) {
+      .pairs-grid { max-width: min(88vw, 400px, calc((100dvh - 256px) * 0.6 + 27px)); }
+    }
+  }
   .pcard { aspect-ratio: 3/4; perspective: 700px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .pcard .inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .38s cubic-bezier(.3,1.4,.5,1); }
   .pcard.up .inner { transform: rotateY(180deg); }
@@ -1193,6 +1210,16 @@ body.host #teamResult .tr-line { font-size: 30px; }
   body.ingame:not(.host) #drawGame { padding-bottom: 132px; }
   /* 정보 바가 뜨는 화면에서는 음소거 버튼을 바 위로 올린다 (오른쪽 끝 카드를 가렸다) */
   body.phbar:not(.host) #btnMute { bottom: 116px; }
+  /* 조이스틱 게임의 오른쪽 아래는 액션 버튼 자리다(#btnAction 116px + right 22px = 138px).
+     정보 바는 화면 폭 전체를 쓰므로 그 위를 덮어 «버튼이 안 보인다»가 된다
+     — pointer-events:none이라 눌리기는 하지만 눈에 안 보이는 건 마찬가지다.
+     버튼이 뜨는 판에서는 바를 버튼 왼쪽으로 물리고, 좁아진 폭에서는 상위 3명 줄을 접는다. */
+  body.ingame:not(.host).hasbtn #phInfo { right: 146px; }
+  body.ingame:not(.host).hasbtn #phInfo .pi-top { display: none; }
+  /* 음소거 버튼도 오른쪽 아래에 붙어 있어서 액션 버튼 모서리를 40x32px 덮고 있었다.
+     z-index가 60 대 6이라 «점프를 누르려다 소리가 꺼지는» 자리였다(실측).
+     버튼이 뜨는 판에서는 비어 있는 오른쪽 위로 보낸다 (왼쪽 위는 방 코드 자리). */
+  body.joined.hasbtn:not(.host) #btnMute { top: 10px; bottom: auto; right: 14px; }
   /* 퀴즈·순간포착 폰: 선택지가 위 45%만 쓰고 아래가 비었다 — 남는 세로를 버튼이 먹게 */
   body:not(.host) .quiz-grid { flex: 1; grid-auto-rows: 1fr; max-height: 46vh; }
   body:not(.host) .quiz-choice { min-height: 0; font-size: 20px; }
@@ -1566,6 +1593,10 @@ const GAME_CAT_OF = {
   // 💧 물풍선 (전용 탭)
   cray: ['cray'],
 };
+// 학생 폰 오른쪽 아래에 큰 액션 버튼(#btnAction)이 뜨는 게임.
+// 버튼 표시와 «정보 바가 그 자리를 비켜 가기»가 같은 목록을 봐야 어긋나지 않는다.
+const ACTION_BTN_GAMES = { claw: 1, race: 1, gala: 1, sumo: 1, run: 1, cray: 1, kart: 1, pull: 1, comet: 1, paint: 1, fishing: 1 };
+function hasActionBtn(t) { return !isHost && !!ACTION_BTN_GAMES[t]; }
 // 게임 분류 → 배경음악 분위기
 function bgmMoodOf(key) {
   const cat = (GAME_CAT_OF[key] || [])[0];
@@ -3365,7 +3396,7 @@ function enterGameView(keepInput) {
     $('hudCode').textContent = '방 ' + roomCode;
     $('btnAbort').style.display = isHost ? 'block' : 'none';
     // 게임별 조작 방식: 이동(조이스틱) / 탭(모기·사다리·통) / 버튼(인형뽑기·부스터·발사·대시)
-    const hasBtn = !isHost && (gameType === 'claw' || gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet' || gameType === 'paint' || gameType === 'fishing');
+    const hasBtn = hasActionBtn(gameType);
     $('btnAction').style.display = hasBtn ? 'block' : 'none';
     $('btnAction').innerHTML = gameType === 'race' ? '부스터<br>🔥🔥🔥'
       : gameType === 'gala' ? '발사<br>🔸'
@@ -3395,6 +3426,9 @@ function enterGameView(keepInput) {
   snaps = [];                       // 이전 게임 스냅샷이 섞여 캐릭터가 튀는 것 방지
   FX.reset(); CLIMAX.reset(); CLIMAX._confetti = 0;
   document.body.classList.remove('phbar');
+  // 액션 버튼이 있는 판인지 — 정보 바가 그 자리를 비켜 가게 한다.
+  // DOM 게임(퀴즈·낱말·같은그림…)으로 넘어갈 때도 반드시 꺼져야 해서 공통 경로에서 처리한다.
+  document.body.classList.toggle('hasbtn', hasActionBtn(gameType));
   { const pb = $('phInfo'); if (pb) { pb.style.visibility = 'hidden'; pb.__me = pb.__top = ''; } } $('hudTime').classList.remove('low');
   dodgePrev.db = null; dodgeFlash = []; mosSwing.clear(); clawGotAt.clear();
   // 꼬리별: 이전 판의 먹이·자취가 남으면 유령이 되고 몸이 엉뚱하게 이어진다
@@ -4455,16 +4489,34 @@ setInterval(flushInput, 60);
 // "내 캐릭터"만 조이스틱 값으로 로컬에서 먼저 움직이고 서버 좌표로 부드럽게 수렴시킨다.
 // 판정은 여전히 서버가 한다 — 예측은 눈에 보이는 위치에만 쓴다.
 // 벽·넉백처럼 서버에서만 아는 힘이 있는 게임(물풍선·스모·의자)은 제외한다(예측이 어긋나 덜덜 떨린다).
-const PRED_SPEED = 230;          // 서버 SPEED와 같아야 한다
+// 관성·트랙 물리로 도는 게임(달리기·카트·설원러너·꼬리별)도 제외 — 조작이 곧 속도가 아니라 재현이 안 된다.
+//
+// 예측이 없으면 조작이 화면에 오기까지 «입력 묶음 70ms + 왕복 117ms(실측, 한국↔Render)
+// + 서버 틱 50ms + 보간 70ms ≈ 250ms»를 그대로 기다린다. 예측이 있으면 그 자리에서 움직인다.
+// 그래서 «서버 이동이 조이스틱 방향 × 고정 속도»인 게임은 빠짐없이 켜 둔다.
+// 값은 서버 이동 코드와 반드시 같아야 한다 — 다르면 벽에서 덜덜 떨거나 툭 끌려간다.
+//   spd  : 서버 이동 속도(유닛/초)
+//   r    : 아레나 클램프 반경 — 파티 게임(party-games.js move)은 24, 나머지는 PLAYER_R 16
+//   maxY : 서버가 따로 거는 세로 상한 (무궁화꽃은 결승선 위로 못 넘어간다)
 const PRED_ZOMBIE_MULT = 1.08;   // 서버 ZOMBIE_SPEED_MULT
-const PRED_GAMES = { bomb: 1, tag: 1, coin: 1, gala: 1, dodge: 1, ox: 1 };
+const PRED_GAMES = {
+  bomb:   { spd: 230, r: 16 },   // server.js movePlayers — SPEED
+  tag:    { spd: 230, r: 16 },
+  coin:   { spd: 230, r: 16 },
+  dodge:  { spd: 230, r: 16 },
+  ox:     { spd: 230, r: 16 },
+  gala:   { spd: 230, r: 15 },   // GALA_SHIP_R
+  paint:  { spd: 235, r: 24 },              // party-games.js paintTick  move(p, dt, 235, ...)
+  freeze: { spd: 210, r: 24, maxY: 900 },   // party-games.js freezeTick move(p, dt, 210, ...) + y 상한 900
+};
 let pred = null, predAt = 0;
 function predictMe(latest, sx, sy, infected) {
-  if (!PRED_GAMES[latest.mode] || isHost || phase !== 'playing') { pred = null; return null; }
+  const cfg = PRED_GAMES[latest.mode];
+  if (!cfg || isHost || phase !== 'playing') { pred = null; return null; }
   const t = performance.now();
   const dt = Math.min(0.05, pred ? (t - predAt) / 1000 : 0);
   predAt = t;
-  const sp = PRED_SPEED * (infected ? PRED_ZOMBIE_MULT : 1);
+  const sp = cfg.spd * (infected ? PRED_ZOMBIE_MULT : 1);
   if (!pred) { pred = { x: sx, y: sy }; return pred; }
   const d = keyDir() || curDir;
   pred.x += d.x * sp * dt;
@@ -4494,10 +4546,10 @@ function predictMe(latest, sx, sy, infected) {
   // 갤러그는 함선 반경도, 세로로 움직일 수 있는 구간도 다르다(아래쪽 45%만).
   const W2 = latest.arena ? latest.arena.w : 800, H2 = latest.arena ? latest.arena.h : 800;
   const gala = latest.mode === 'gala';
-  const R = gala ? 15 : 16;                       // 서버 GALA_SHIP_R / PLAYER_R
+  const R = cfg.r;
   pred.x = Math.max(R, Math.min(W2 - R, pred.x));
   pred.y = gala ? Math.max(H2 * 0.55, Math.min(H2 - 30, pred.y))
-                : Math.max(R, Math.min(H2 - R, pred.y));
+                : Math.max(R, Math.min((cfg.maxY || H2 - R), pred.y));
   return pred;
 }
 

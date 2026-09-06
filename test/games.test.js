@@ -247,6 +247,15 @@ module.exports = async function run() {
     }
     t.ok(!!src, '예측: predictMe 함수가 존재한다');
 
+    // 예측이 참고하는 «게임별 규칙 표»는 검사가 사본을 들고 있으면 안 된다.
+    // 2026-09-06에 실제로 겪었다: 표가 {게임:1}에서 {게임:{spd,r}}로 바뀌었는데
+    // 검사는 옛 사본을 그대로 넘겨 cfg.spd가 undefined → 좌표가 NaN이 됐다.
+    // 그래서 클라이언트 소스에서 표를 통째로 떼어 쓴다.
+    const tblSrc = (html.match(/const PRED_GAMES = \{[\s\S]*?\n\};/) || [])[0];
+    t.ok(!!tblSrc, '예측: 게임별 규칙 표(PRED_GAMES)를 클라 소스에서 읽었다');
+    const PRED_TBL = tblSrc ? new Function(`${tblSrc} return PRED_GAMES;`)() : {};
+    t.ok(!!(PRED_TBL.dodge && PRED_TBL.dodge.spd > 0), '예측: 피하기 규칙에 속도가 들어 있다');
+
     if (src) {
       let curDir = { x: 0, y: 0 }, pred = null, predAt = 0, inputLog = [], srvClock = 0, nowMs = 0;
       const ctx = {
@@ -256,13 +265,14 @@ module.exports = async function run() {
         get inputLog() { return inputLog; },
         serverNow: () => srvClock, keyDir: () => null,
         isHost: false, phase: 'playing', Math,
-        PRED_SPEED: 230, PRED_ZOMBIE_MULT: 1.08, PLAYER_R_CLIENT: 16,
-        PRED_GAMES: { bomb: 1, tag: 1, coin: 1, gala: 1, dodge: 1, ox: 1 },
+        PRED_ZOMBIE_MULT: 1.08, PLAYER_R_CLIENT: 16,
+        PRED_GAMES: PRED_TBL,
         performance: { now: () => nowMs },
       };
       const fn = new Function('ctx', `with (ctx) { return (${src.replace('function predictMe', 'function')}); }`)(ctx);
 
-      const SPEED = 230, DT = 1 / 60, LAG = 155, arena = { w: 900, h: 900 };
+      // 가상 서버도 표와 같은 속도로 움직여야 «예측이 맞는지»를 재는 검사가 된다
+      const SPEED = (PRED_TBL.dodge && PRED_TBL.dodge.spd) || 230, DT = 1 / 60, LAG = 155, arena = { w: 900, h: 900 };
       let truth = 450, maxErr = 0, firstMove = -1, flips = 0, prevSign = 0;
       const hist = [], startX = truth;
       for (let f = 0; f < 240; f++) {
@@ -537,6 +547,6 @@ module.exports = async function run() {
     r.close();
   }
 
-  t.ok(H.serverErrors().length === 0, '서버 예외 0건');
-  return t;
+  t.ok(H.serverErrors().length === 0, '서버 예외 0건');
+  return t;
 };
