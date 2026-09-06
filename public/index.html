@@ -664,7 +664,7 @@ body.host #tetLogo { height: 72px; }
 .tet-btn.rot:active { box-shadow: 0 1px 0 #5e1e8e, inset 0 2px 3px rgba(255,255,255,.3); }
 .tet-btn.drop { background: linear-gradient(#ff9b2e, #e86f00); box-shadow: 0 5px 0 #9c4a00, inset 0 2px 3px rgba(255,255,255,.5); font-size: 20px; }
 .tet-btn.drop:active { box-shadow: 0 1px 0 #9c4a00, inset 0 2px 3px rgba(255,255,255,.3); }
-#tetHostGrid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-content: flex-start;
+#tetHostGrid { display: flex; flex: 1; flex-wrap: wrap; gap: 14px; justify-content: center; align-content: center;
   width: 100%; max-width: 1500px; }
 /* 27명 이상: 여백을 줄여 3줄 안에 전원 중계 */
 #tetHostGrid.compact { gap: 7px; }
@@ -1135,6 +1135,31 @@ body.host #teamResult .tr-line { font-size: 30px; }
   body.host .q-wait { width: 96px; }
   body.host .q-wait img { width: 58px; height: 58px; }
   body.host .q-wait span { font-size: 14px; max-width: 88px; }
+
+  /* v3 C급: 같은 그림 찾기 — TV 진행 현황을 크게 (아래가 비어 있던 자리를 쓴다) */
+  body.host #pairsBoard { max-width: 900px; width: 100%; gap: 8px; display: flex; flex-direction: column; }
+  body.host .pairs-prow { font-size: 20px; padding: 12px 20px; border-radius: 14px; gap: 14px;
+    background: linear-gradient(180deg, rgba(34,43,82,.9), rgba(24,31,62,.9)); border: 1px solid var(--line); }
+  body.host .pairs-prow .bar { height: 16px; border-radius: 8px; }
+  body.host .pairs-prow .n { width: 150px; font-size: 16px; }
+  .pairs-prow .pr { width: 34px; font-weight: 900; color: #93a0c4; flex-shrink: 0; text-align: center; }
+  .pairs-prow .pface { width: 34px; height: 34px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0; }
+  .pairs-prow .pdot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .pairs-prow .pnm { min-width: 92px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.host .pairs-prow .pface { width: 46px; height: 46px; }
+  body.host .pairs-prow .pnm { min-width: 130px; }
+  .pairs-prow.lead { border-color: rgba(255,210,74,.5); }
+  .pairs-prow.lead .pr { color: #ffd24a; }
+  .pairs-prow.fin { border-color: rgba(61,220,132,.6); box-shadow: 0 0 0 1px rgba(61,220,132,.2); }
+  .pairs-prow.fin .bar > i { background: linear-gradient(90deg, #3ddc84, #9cf5c0); }
+  /* 블록 배틀: 공격받은 보드가 붉게 번쩍이고 흔들린다 */
+  .tet-mini.hit { animation: tetHit .45s ease-out; }
+  @keyframes tetHit {
+    0% { box-shadow: 0 0 0 3px rgba(255,90,90,.9), 0 0 26px rgba(255,90,90,.8); transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    55% { transform: translateX(5px); }
+    100% { box-shadow: 0 6px 16px rgba(0,0,0,.45); transform: translateX(0); }
+  }
 </style>
 </head>
 <body>
@@ -2453,7 +2478,14 @@ function renderFlash(m) {
 
   // 퀴즈쇼와 같은 이유 — 답변 창에서는 버튼 DOM을 재구성하지 않는다 (탭 씹힘 방지)
   const showing = m.fPhase === 'show';
-  if (isHost && showing) setText($('quizInfo'), `✋ ${m.answered}/${m.partCount}명 답함`);
+  if (isHost && showing) {
+    setText($('quizInfo'), `✋ ${m.answered}/${m.partCount}명 답함`);
+    const ans0 = new Set((m.scores || []).filter(sc => sc[2] === 1).map(sc => sc[0]));
+    for (const el of $('quizBoard').children) {
+      const on = ans0.has(el.dataset.pid);
+      if (el.__on !== on) { el.__on = on; el.classList.toggle('done', on); }
+    }
+  }
   const json = JSON.stringify([m.qIdx, m.fPhase, m.q,
     showing ? 0 : m.answered, showing ? null : m.counts, showing ? null : m.scores, myQAnswer, phase, !!flashScene]);
   if (json === lastQuizJson) return;
@@ -2498,6 +2530,13 @@ function renderFlash(m) {
       + (!reveal && myQAnswer >= 0 && myQAnswer !== i ? ' dim' : '');
     b.innerHTML = `<span class="shp">${QUIZ_SHAPES[i]}</span><span>${esc(c)}</span>`
       + (reveal && m.counts ? `<span class="cnt">${m.counts[i]}명</span>` : '');
+    if (reveal && m.counts) {   // 몇 명이 이 답을 골랐는지 막대로
+      const total = Math.max(1, m.counts.reduce((x, y) => x + y, 0));
+      const bar = document.createElement('i');
+      bar.className = 'qbar' + (i === m.correct ? ' ok' : '');
+      bar.style.width = (m.counts[i] / total * 100) + '%';
+      b.appendChild(bar);
+    }
     if (!isHost && !reveal && myQAnswer < 0 && m.fPhase === 'show' && phase === 'playing') {
       b.onclick = () => {
         myQAnswer = i;
@@ -2527,16 +2566,30 @@ function renderFlash(m) {
     }
   }
 
+  // 하단: 답하는 동안엔 "누가 답했는지", 공개 때는 상위 5명 (퀴즈쇼와 같은 규칙 — 예전엔 아래가 통째로 비었다)
+  const fqb = $('quizBoard');
   if (isHost && reveal && m.scores) {
     const top = [...m.scores].sort((a, b2) => b2[1] - a[1]).slice(0, 5);
-    $('quizBoard').innerHTML = top.map(([pid, sc2], i) => {
+    fqb.className = 'word-list';
+    fqb.innerHTML = top.map(([pid, sc2], i) => {
       const meta = roster.get(pid) || { nick: '?', ci: 0 };
-      return `<div class="word-row"><b>${i + 1}.</b>
-        <span style="width:10px;height:10px;border-radius:50%;background:${COLORS[meta.ci % COLORS.length]}"></span>
-        ${esc(meta.nick)}<span class="pts">${sc2}점</span></div>`;
+      const src = charSrc(meta.ci);
+      const face = src ? `<img class="chip-face" src="${src}" alt="">`
+        : `<span style="width:10px;height:10px;border-radius:50%;background:${COLORS[meta.ci % COLORS.length]}"></span>`;
+      return `<div class="word-row"><b>${i + 1}.</b>${face}${esc(meta.nick)}<span class="pts">${sc2}점</span></div>`;
+    }).join('');
+  } else if (isHost && showing) {
+    const ans = new Set((m.scores || []).filter(sc => sc[2] === 1).map(sc => sc[0]));
+    fqb.className = 'q-waitgrid';
+    fqb.innerHTML = [...roster.values()].filter(pl => pl.connected).map(pl => {
+      const src = charSrc(pl.ci);
+      return `<div class="q-wait${ans.has(pl.id) ? ' done' : ''}" data-pid="${pl.id}">`
+        + (src ? `<img src="${src}" alt="">` : `<i style="background:${COLORS[pl.ci % COLORS.length]}"></i>`)
+        + `<span>${esc(pl.nick)}</span></div>`;
     }).join('');
   } else if (isHost) {
-    $('quizBoard').innerHTML = '';
+    fqb.className = 'word-list';
+    fqb.innerHTML = '';
   }
 
   // 사운드 (교사 화면): 장면 등장 = 셔터, 문제 = 삑, 정답 공개 = 딩동
@@ -2710,13 +2763,18 @@ function renderPairs(m) {
   if (isHost) {
     const rows = (m.players || []).filter(r => !r[2])
       .sort((a, b) => (b[8] - a[8]) || (a[7] - b[7]));
-    $('pairsBoard').innerHTML = rows.map(r => {
+    // TV는 자기 보드가 없어 화면 아래가 통째로 비었다 — 진행 현황을 크게 키워 그 자리를 쓴다
+    $('pairsBoard').innerHTML = rows.map((r, i) => {
       const meta = roster.get(r[0]) || { nick: '?', ci: 0 };
-      return `<div class="pairs-prow">
-        <span style="width:10px;height:10px;border-radius:50%;background:${COLORS[meta.ci % COLORS.length]};flex-shrink:0"></span>
-        <span style="min-width:70px">${esc(meta.nick)}${r[9] ? ' 🏁' : ''}</span>
+      const src = charSrc(meta.ci);
+      const face = src ? `<img class="pface" src="${src}" alt="">`
+        : `<span class="pdot" style="background:${COLORS[meta.ci % COLORS.length]}"></span>`;
+      const rank = r[9] ? '🏁' : i === 0 ? '👑' : `${i + 1}`;
+      return `<div class="pairs-prow${r[9] ? ' fin' : ''}${i === 0 && !r[9] ? ' lead' : ''}">
+        <span class="pr">${rank}</span>${face}
+        <span class="pnm">${esc(meta.nick)}</span>
         <span class="bar"><i style="width:${Math.min(100, r[8] * 10)}%"></i></span>
-        <span class="n">${r[8]}쌍 · ${r[3]}점</span></div>`;
+        <span class="n">${r[8]}/10쌍 · ${r[3]}점</span></div>`;
     }).join('');
     const total = rows.reduce((s, r) => s + r[8], 0);
     if (sndPrev.pairsSum >= 0 && total > sndPrev.pairsSum) SFX.coin();
@@ -2848,7 +2906,7 @@ function renderTetris(m) {
 // → 사람이 적으면 큰 보드, 많으면 작은 보드로 TV를 꽉 채운다.
 function tetFit(n, compact) {
   if (n <= 0) return { mini: 16, cols: 1 };
-  const gw = Math.min(1500, window.innerWidth - 24);
+  const gw = Math.min(1900, window.innerWidth - 24);   // 예전 1500 상한 탓에 큰 TV에서 보드가 작았다
   const availH = Math.max(240, window.innerHeight - (compact ? 96 : 150));
   const gap = compact ? 7 : 14;
   const padX = compact ? 12 : 20;    // .tet-mini 좌우 패딩
@@ -2903,6 +2961,14 @@ function renderTetHost(m) {
       clearTimeout(el._ft); el._ft = setTimeout(() => el.classList.remove('flash'), 450);
       SFX.clear(fx);
     }
+    // 공격받음: 채워진 칸이 한 줄(10칸) 이상 갑자기 늘면 쓰레기 줄이 들어온 것
+    let filled = 0;
+    for (let ci = 0; ci < board.length; ci++) if (board.charCodeAt(ci) !== 48) filled++;
+    if (el.__filled != null && filled - el.__filled >= TET_C_W && alive) {
+      el.classList.add('hit');
+      clearTimeout(el._ht); el._ht = setTimeout(() => el.classList.remove('hit'), 460);
+    }
+    el.__filled = filled;
     if (tetPrevAlive[id] === 1 && !alive) SFX.boom();   // 탈락 순간
     tetPrevAlive[id] = alive;
   }
@@ -5278,6 +5344,19 @@ function draw() {
     const sec = Math.ceil((pullPick.pl.left || 0) / 1000);
     ctx.strokeText(`걸어가서 팀을 고르세요 · ${sec}초`, ox + aw / 2, oy + ah * 0.93);
     ctx.fillStyle = '#ffd24a'; ctx.fillText(`걸어가서 팀을 고르세요 · ${sec}초`, ox + aw / 2, oy + ah * 0.93);
+    // 가운데에 밧줄과 손수건을 미리 깔아 둔다 — 무엇을 하러 모이는지 한눈에
+    if (PULL_ART.rope) {
+      const ry = oy + ah * 0.52, rh = 26 * scale;
+      ctx.save(); ctx.globalAlpha = 0.5;
+      const pat = ctx.createPattern(PULL_ART.rope, 'repeat-x');
+      if (pat) { ctx.fillStyle = pat; ctx.translate(ox, ry - rh / 2); ctx.fillRect(0, 0, aw, rh); }
+      ctx.restore();
+    } else {
+      ctx.strokeStyle = 'rgba(216,180,120,.5)'; ctx.lineWidth = 12 * scale;
+      ctx.beginPath(); ctx.moveTo(ox + aw * 0.08, oy + ah * 0.52); ctx.lineTo(ox + aw * 0.92, oy + ah * 0.52); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,230,120,.75)';
+    ctx.beginPath(); ctx.arc(midX, oy + ah * 0.52, 13 * scale, 0, 7); ctx.fill();
   }
   // 경기장 테두리: 네온 글로우 프레임 (v2)
   if (climaxCam) ctx.restore();
