@@ -1400,7 +1400,7 @@ body.host #teamResult .tr-line { font-size: 30px; }
 <div id="reactLayer"></div>
 <canvas id="bgfx"></canvas>
 
-<script src="party-games.js?v=20260906-1"></script>
+<script src="party-games.js?v=20260906-2"></script>
 <script>
 // ============================================================
 // 교실 아케이드 — 클라이언트 (교사 TV 모드 + 학생 폰 모드 겸용)
@@ -1416,7 +1416,7 @@ document.addEventListener('gesturechange', e => e.preventDefault());
 document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 const GAMES_META = {
-  freeze: { icon: '🌼', name: '무궁화 꽃이 피었습니다', desc: '초록에 전진, 노랑에 손 떼기, 빨강에 정지! 걸리면 뒤로 물러나 다시 도전. 빨리 완주할수록 높은 점수.', badge: 'NEW · 75초', rule: '조이스틱으로 위쪽 꽃밭까지 이동!\n노랑에 손 떼기 · 빨강에 움직이면 뒤로!' },
+  freeze: { icon: '🌼', name: '무궁화 꽃이 피었습니다', desc: '초록에 전진, 노랑에 손 떼기, 빨강에 정지! 한 번 걸리면 즉시 탈락하고 관전해요. 빨리 완주할수록 높은 점수.', badge: 'NEW · 75초', rule: '조이스틱으로 위쪽 꽃밭까지 이동!\n노랑에 손 떼기 · 빨강에 움직이면 즉시 아웃!' },
   paint: { icon: '🎨', name: '색 땅따먹기', desc: '이동하며 내 색으로 칠하고 상대 땅을 빼앗자! 7초마다 넓게 칠하기. 마지막에 차지한 칸 수로 승부.', badge: 'NEW · 70초', rule: '왼손: 이동하며 색칠 · 오른손: 넓게 칠하기\n마지막에 내 색으로 남은 칸이 점수!' },
   fishing: { icon: '🎣', name: '보물 낚시', desc: '입질에 챔질! 움직이는 바늘이 초록 띠에 들어오면 낚아 올리기. 연속 성공 보너스와 황금 물고기·보물을 노려라!', badge: 'NEW · 60초', rule: '입질이 오면 챔질 버튼!\n바늘이 초록 띠에 들어오면 한 번 더!' },
   bomb: { icon: '💣', name: '폭탄 피하기', desc: '떨어지는 폭탄을 피해 최후의 1인이 되자! 빨간 원은 1초 뒤 폭발.', badge: '최대 90초', rule: '조이스틱으로 폭탄을 피하세요!' },
@@ -1461,7 +1461,7 @@ const GAME_CATS = [
 ];
 // 게임당 분류 하나 — 여러 탭에 걸치면 같은 게임이 중복으로 보여 헷갈린다 (갤러그가 두 탭에 뜨던 문제)
 const GAME_CAT_OF = {
-  freeze: ['score'], paint: ['score'], fishing: ['score'],
+  freeze: ['sur'], paint: ['score'], fishing: ['score'],
   // ⚔️ 서바이벌: 탈락이 있고 최후 생존을 다투는 게임
   bomb: ['sur'], tag: ['sur'], dodge: ['sur'], sumo: ['sur'], chair: ['sur'], gala: ['sur'], tetris: ['sur'],
   // 🏆 점수 경쟁: 탈락 없이 점수·기록으로 겨루는 게임
@@ -4037,7 +4037,7 @@ function initInput() {
       || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
       || gameType === 'sumo' || gameType === 'chair' || gameType === 'ox' || gameType === 'run'
       || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet';
-    if (!usesStick) return;
+    if (!usesStick || freezeSpectating()) return;
     if ((gameType === 'race' || gameType === 'gala' || gameType === 'sumo' || gameType === 'run' || gameType === 'cray' || gameType === 'kart' || gameType === 'pull' || gameType === 'comet') && e.clientX > innerWidth * 0.62) return; // 오른쪽은 버튼 영역
     // 한 손가락이 이미 조이스틱을 잡고 있으면 두 번째 손가락은 무시 (멀티터치 먹통 방지)
     if (stickPid !== null) return;
@@ -4174,6 +4174,13 @@ function keyDir() {
 const INPUT_MIN_MS = 70;     // 초당 약 14회 상한
 let inputSentAt = 0, inputPending = null;
 let inputLog = [];           // 예측 보정용 입력 기록 {서버시각, x, y}
+function freezeSpectating() {
+  if (gameType !== 'freeze') return false;
+  const st = snaps.length ? snaps[snaps.length - 1].m : null;
+  if (!st || st.mode !== 'freeze' || !st.party) return false;
+  const row = st.players.find(p => p[0] === myId);
+  return !!(row && (!row[3] || row[4] || st.party.people.some(p => p.id === myId && p.done)));
+}
 function inputMoves() {
   return gameType === 'freeze' || gameType === 'paint' || gameType === 'bomb' || gameType === 'tag' || gameType === 'coin'
     || gameType === 'race' || gameType === 'gala' || gameType === 'dodge'
@@ -4182,6 +4189,7 @@ function inputMoves() {
 }
 function flushInput() {
   if (isHost || !inputMoves() || (phase !== 'playing' && phase !== 'countdown')) return;
+  if (freezeSpectating()) { resetInputState(); return; }
   const d = keyDir() || curDir;
   if (d.x === sentDir.x && d.y === sentDir.y) return;
   const t = performance.now(), wait = INPUT_MIN_MS - (t - inputSentAt);

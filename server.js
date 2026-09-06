@@ -3780,6 +3780,14 @@ function drawRelay(room, drawerId, obj) {
 // 점수순 공통 종료 (침팬지·순간 포착)
 function endScoreGame(room, unit) {
   const parts = [...room.players.values()].filter(p => !p.waiting);
+  if (room.gameType === 'freeze') {
+    // Survivors (including zero progress) always place ahead of eliminated players.
+    const score = p => p.alive ? 1 + (p.score || 0) : 0;
+    finishGame(room, parts.sort((a, b) => score(b) - score(a)),
+      p => !p.alive ? '탈락' : `${p.party.finished ? '완주' : '생존'} · ${p.score}점`,
+      p => String(score(p)));
+    return;
+  }
   const sorted = parts.sort((a, b) => (b.score || 0) - (a.score || 0));
   finishGame(room, sorted, p => `${p.score}${unit}`, p => String(p.score || 0));
 }

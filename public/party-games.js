@@ -65,20 +65,24 @@ const PartyGames = (() => {
   function leaders(e, rows, unit) {
     const w = e.W / e.dpr, h = e.H / e.dpr;
     if (!e.host || w <= 900) return;
-    const c = e.ctx, sorted = rows.filter(r => !r[4]).slice().sort((a, b) => b[5] - a[5]);
+    const c = e.ctx, sorted = rows.filter(r => !r[4]).slice().sort((a, b) =>
+      (e.m.mode === 'freeze' ? b[3] - a[3] : 0) || b[5] - a[5]);
     const count = Math.min(sorted.length, Math.floor((h - 208) / 42));
     box(c, w - 236, 154, 220, 56 + count * 42, 18, '#111b36ef', '#59779c');
     text(c, '실시간 순위', w - 126, 183, 18, '#ffda87');
     sorted.slice(0, count).forEach((r, i) => {
       const nick = (e.roster.get(r[0]) || {}).nick || '?';
       text(c, `${i + 1}. ${nick}`, w - 220, 226 + i * 42, 14, '#eef3ff', 'left');
-      text(c, r[5] + unit, w - 32, 226 + i * 42, 14, '#8fe5e5', 'right');
+      text(c, e.m.mode === 'freeze' && !r[3] ? '탈락' : r[5] + unit, w - 32, 226 + i * 42, 14, '#8fe5e5', 'right');
     });
   }
   function freeze(e, m) {
     const c = e.ctx, pg = m.party, sig = pg.signal;
-    const labels = { ready: ['준비! 결승선을 향해', '초록에 이동 · 노랑에 손 떼기 · 빨강에 멈춤', '#a8edbb'], go: ['▶ 무궁화 꽃이 피었습니다!', '지금 앞으로! 위쪽 꽃밭에 도착하면 완주', '#9af0bd'], warn: ['△ 곧 돌아봐요!', '조이스틱에서 손을 떼고 멈출 준비!', '#ffdb7e'], stop: ['■ 멈춰요!', '움직이면 뒤로! 탈락 없이 다시 도전해요', '#ff8e95'] };
-    header(e, ...labels[sig || 'ready']);
+    const labels = { ready: ['준비! 결승선을 향해', '초록에 이동 · 빨강에 움직이면 즉시 탈락', '#a8edbb'], go: ['▶ 무궁화 꽃이 피었습니다!', '지금 앞으로! 위쪽 꽃밭에 도착하면 완주', '#9af0bd'], warn: ['△ 곧 돌아봐요!', '조이스틱에서 손을 떼고 멈출 준비!', '#ffdb7e'], stop: ['■ 멈춰요!', '한 번이라도 움직이면 아웃!', '#ff8e95'] };
+    const ownRow = m.players.find(r => r[0] === e.id);
+    const out = !e.host && ownRow && !ownRow[4] && !ownRow[3];
+    if (out) header(e, '아웃! 이번 판은 관전해요', '빨간불에 걸렸어요 · 다음 판에 다시 도전!', '#ff8e95');
+    else header(e, ...labels[sig || 'ready']);
     const b = board(e, .9), sx = b.w / 900, sy = b.h / 1000;
     c.fillStyle = '#c0dea1'; c.fillRect(b.x, b.y, b.w, b.h);
     for (let i = 0; i < 10; i++) {
@@ -93,12 +97,12 @@ const PartyGames = (() => {
     const infos = new Map(pg.people.map(p => [p.id, p]));
     for (const r of m.players.filter(r => !r[4])) {
       const q = infos.get(r[0]) || {};
-      player(e, r, b.x + r[1] * sx, b.y + r[2] * sy, Math.max(e.host ? 16 : 13, 25 * sx), q.done ? '✓' : q.stun ? '앗!' : '');
+      player(e, r, b.x + r[1] * sx, b.y + r[2] * sy, Math.max(e.host ? 16 : 13, 25 * sx), !r[3] ? '✕ 아웃' : q.done ? '✓' : '');
     }
     const me = infos.get(e.id);
     if (!e.host) {
       const y = Math.min(e.H / e.dpr - 15, b.y + b.h + 28);
-      text(c, me && me.done ? '🎉 완주! 친구들을 응원해 주세요' : me && me.stun ? '앗, 걸렸어요! 잠깐 뒤에 다시 출발' : '화면을 누르고 위로 밀어 이동 ↑', e.W / e.dpr / 2, y, 13, '#fff');
+      text(c, out ? '탈락했어요. 남은 친구들을 응원해 주세요!' : me && me.done ? '🎉 완주! 친구들을 응원해 주세요' : !ownRow || ownRow[4] ? '다음 판부터 함께해요' : '화면을 누르고 위로 밀어 이동 ↑', e.W / e.dpr / 2, y, 13, '#fff');
     }
     leaders(e, m.players, '점');
   }
@@ -187,7 +191,7 @@ const PartyGames = (() => {
     c.restore();
     const row = m.players.find(p => p[0] === e.id), q = m.party.people.find(p => p.id === e.id);
     const status = document.getElementById('hudLeft');
-    const label = e.host ? `${m.players.filter(p => !p[4]).length}명 참가` : row && !row[4] ? `내 기록 ${row[5]}${m.mode === 'paint' ? '칸' : '점'}` : '다음 판부터 함께해요';
+    const label = e.host ? (m.mode === 'freeze' ? `생존 ${m.players.filter(p => !p[4] && p[3]).length} / ${m.players.filter(p => !p[4]).length}명` : `${m.players.filter(p => !p[4]).length}명 참가`) : row && !row[4] ? m.mode === 'freeze' && !row[3] ? '탈락 · 관전 중' : `내 기록 ${row[5]}${m.mode === 'paint' ? '칸' : '점'}` : '다음 판부터 함께해요';
     if (status.textContent !== label) status.textContent = label;
     const time = document.getElementById('hudTime'), timeText = Math.ceil(m.timeLeft / 1000) + '초';
     if (time.textContent !== timeText) time.textContent = timeText;
