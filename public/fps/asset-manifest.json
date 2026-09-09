@@ -1,0 +1,35 @@
+{
+  "generator": "Codex built-in imagegen",
+  "assets": [
+    {
+      "file": "depot.png",
+      "use": "메뉴 전장 배경",
+      "prompt": "Photoreal cinematic abandoned military shipping container depot at blue hour, wet concrete, dusty olive and muted blue containers, industrial warehouse, sparse amber lamps, haze, small distant tactical silhouette on right, dark left half, no text or logos."
+    },
+    {
+      "file": "concrete.png",
+      "use": "실제 전장 바닥과 벽 베이스컬러",
+      "prompt": "Seamless tileable worn gray industrial concrete, orthographic flat surface, tiny cracks stains pits, neutral diffuse lighting, no perspective, objects, text or borders."
+    },
+    {
+      "file": "sky-depot.png",
+      "use": "360도 산업단지 환경 배경과 반사광",
+      "prompt": "2048x1024 equirectangular 360 environment panorama of industrial shipping depot skyline at overcast late afternoon, abandoned warehouses cranes far perimeter, gray-blue clouds warm horizon, no foreground objects no text."
+    },
+    {
+      "file": "steel-blue.png",
+      "use": "컨테이너 금속 표면",
+      "prompt": "Square tileable weathered painted blue steel container surface base-color, realistic scratches rust flecks grunge flat orthographic evenly lit, no perspective logos or text."
+    },
+    {
+      "file": "wood-crate.png",
+      "use": "엄폐물 목재 표면",
+      "prompt": "Square seamless weathered wooden military crate planks albedo, brown-gray dry wood detailed splinters faded grain nail holes, flat orthographic neutral light no text."
+    },
+    {
+      "file": "rifle-chroma.png",
+      "use": "1인칭 총기와 장갑 뷰모델, 런타임 크로마키 합성",
+      "prompt": "Transparent first-person fictional tan tactical assault rifle held by realistic olive tactical-gloved hands and forearms, lower right composition, barrel points toward upper left/center, realistic diffuse afternoon viewmodel lighting, no text insignia branding. Genuine alpha transparency. Corrective edit: preserve rifle and hands; replace background with solid vivid magenta for runtime chroma key."
+    }
+  ]
+}

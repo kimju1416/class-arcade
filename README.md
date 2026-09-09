@@ -131,3 +131,5 @@ Tab으로 선택 후 Enter/Space로도 누를 수 있다.
 - `public/fps/depot.png`는 내장 이미지 생성으로 만든 전장 메뉴 에셋. 3D 총기/캐릭터/전장은 코드 제작 모델입니다. Three.js MIT 라이선스는 같은 폴더에 있습니다.
 
 추가 에셋: `public/fps/concrete.png` — 게임 바닥과 벽의 베이스컬러 텍스처. 내장 이미지 생성 프롬프트: Seamless tileable material texture for a 3D game map, square 1024×1024. Worn gray industrial concrete, orthographic flat surface filling the square edge to edge, seamlessly tileable on both axes. Subtle tiny cracks, restrained stains, small pits, realistic fine grain, evenly distributed detail. Neutral diffuse flat lighting suitable as base color, no directional shadows or highlights. No perspective, objects, text, borders, or watermark.
+
+그래픽 개선: 생성한 산업단지 파노라마, 컨테이너 금속과 목재 텍스처, 투명 1인칭 총기 에셋을 적용합니다. 환경 반사광과 SSAO, 창고 철골·배관·창문·배수구·물웅덩이를 추가했습니다. 생성 프롬프트와 사용 위치는 `public/fps/asset-manifest.json`에 기록했습니다. 1인칭 총기는 생성된 2D 뷰모델이며, 다른 플레이어와 전장은 3D로 렌더링됩니다.
