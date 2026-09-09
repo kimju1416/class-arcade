@@ -1,11 +1,11 @@
-import {createWeaponAudio} from './weapon-audio.js?v=detail-3';
+import {createWeaponAudio} from './weapon-audio.js?v=detail-4';
 const weaponAudio=createWeaponAudio();
-import {createControls} from './controls.js?v=detail-3';
-import {createHuman} from './human.js?v=detail-3';
-import {createViewmodel} from './viewmodel.js?v=detail-3';
+import {createControls} from './controls.js?v=detail-4';
+import {createHuman} from './human.js?v=detail-4';
+import {createViewmodel} from './viewmodel.js?v=detail-4';
 import {enhanceDepot} from './environment.js';
 import * as T from './three.module.js';
-import {Arena,BOXES,clamp,rayBox,wallDistance} from './core.js?v=detail-3';
+import {Arena,BOXES,clamp,rayBox,wallDistance} from './core.js?v=detail-4';
 const $=s=>document.getElementById(s);let mode='tdm',arena=null,ws=null,myId='',state=null,active=false,yaw=0,pitch=0,fire=false,aim=false,last=performance.now(),acc=0,recoil=0,lastHP=100,feed=[],hitUntil=0,frame=0;const mobile=matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0&&innerWidth<1100;const keys={};$('practice').disabled=true;$('online').disabled=true;T.DefaultLoadingManager.onProgress=(url,n,total)=>{$('status').textContent=`전장 에셋 불러오는 중 ${n} / ${total}`};T.DefaultLoadingManager.onLoad=()=>{$('practice').disabled=false;$('online').disabled=false;$('status').textContent='전투 준비 완료 · 모바일 터치 / PC 키보드 지원'};
 let renderer;try{renderer=new T.WebGLRenderer({canvas:$('scene'),antialias:!mobile})}catch(error){$('status').textContent='3D 그래픽을 시작할 수 없습니다. 브라우저의 하드웨어 가속을 켜고 다시 접속하세요.';throw error}renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1:1.25));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=false;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
 const scene=new T.Scene();scene.background=new T.Color('#7a929d');scene.fog=new T.FogExp2('#8998a1',.008);const camera=new T.PerspectiveCamera(78,innerWidth/innerHeight,.05,170);camera.rotation.order='YXZ';scene.add(camera);scene.add(new T.HemisphereLight('#dceaff','#555340',2.4));const sun=new T.DirectionalLight('#ffe5b0',3.1);sun.position.set(-18,30,16);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-35,right:35,top:35,bottom:-35,far:100});sun.shadow.bias=-.001;scene.add(sun);
