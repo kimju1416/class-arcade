@@ -12,12 +12,13 @@ function clearPath(a,b){let n=Math.ceil(Math.hypot(a.x-b.x,a.z-b.z)/.25);for(let
 for(let a of navNodes)for(let b of navNodes)if(a!==b&&Math.hypot(a.x-b.x,a.z-b.z)<2.9&&clearPath(a,b))a.links.push(b);
 function route(a,b){const nearest=p=>navNodes.reduce((best,n)=>Math.hypot(n.x-p.x,n.z-p.z)<Math.hypot(best.x-p.x,best.z-p.z)?n:best,navNodes[0]);const start=nearest(a),end=nearest(b),queue=[start],prev=new Map([[start,null]]);for(let i=0;i<queue.length;i++){const n=queue[i];if(n===end)break;for(const next of n.links)if(!prev.has(next)){prev.set(next,n);queue.push(next)}}if(!prev.has(end))return [];let path=[];for(let n=end;n&&n!==start;n=prev.get(n))path.push({x:n.x,z:n.z});path.reverse();if(path.length&&!clearPath(a,path[0]))path.unshift({x:start.x,z:start.z});return path;}
 const brains=new WeakMap();
-function botInput(p,all,mode,dt){let brain=brains.get(p);if(!brain){brain={timer:0,path:[]};brains.set(p,brain)}const target=all.filter(q=>q.id!==p.id&&q.hp>0&&(mode==='ffa'||q.team!==p.team)).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];if(!target)return {yaw:p.yaw};
+function botInput(p,all,mode,dt){let brain=brains.get(p);if(!brain){brain={timer:0,path:[],seen:0,target:null};brains.set(p,brain)}const target=all.filter(q=>q.id!==p.id&&q.hp>0&&(mode==='ffa'||q.team!==p.team)).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];if(!target)return {yaw:p.yaw};
  const distance=Math.hypot(target.x-p.x,target.z-p.z),visible=wallDistance([p.x,p.y,p.z],[(target.x-p.x)/Math.max(distance,.001),0,(target.z-p.z)/Math.max(distance,.001)])>distance;
+ if(!visible||brain.target!==target.id)brain.seen=0;else brain.seen+=dt;brain.target=target.id;
  brain.timer-=dt;if(brain.timer<=0){brain.timer=.8;brain.path=visible&&clearPath(p,target)?[]:route(p,target)}while(brain.path.length&&Math.hypot(brain.path[0].x-p.x,brain.path[0].z-p.z)<.25)brain.path.shift();
  const goal=visible&&clearPath(p,target)?target:brain.path[0]||target;const wanted=Math.atan2(p.x-goal.x,p.z-goal.z),delta=Math.atan2(Math.sin(wanted-p.yaw),Math.cos(wanted-p.yaw)),yaw=p.yaw+clamp(delta,-dt*2.4,dt*2.4);
  // Stop and shoulder the rifle when in range; turn before advancing around cover.
- return {yaw,pitch:visible?Math.atan2(target.y-p.y,distance):0,f:visible&&distance<15?0:Math.abs(delta)<.55?.65:0,s:0,fire:visible&&distance<32&&Math.abs(delta)<.08&&p.shield===0,reload:p.ammo===0,weapon:'rifle'};
+ return {yaw,pitch:visible?Math.atan2(target.y-.5-p.y,distance):0,f:visible&&distance<15?0:Math.abs(delta)<.55?.5:0,s:0,fire:visible&&brain.seen>1.2&&(brain.seen-1.2)%2.8<.85&&distance<27&&Math.abs(delta)<.08&&p.shield===0,reload:p.ammo===0,weapon:'rifle'};
 }
 
 export class Arena {
@@ -38,11 +39,11 @@ export class Arena {
    if(!blocked(p.x+dx,p.z))p.x+=dx;if(!blocked(p.x,p.z+dz))p.z+=dz;if(i.jump&&p.y<=1.65)p.vy=5;p.vy-=15*dt;p.y=Math.max(1.65,p.y+p.vy*dt);if(p.y===1.65)p.vy=0;
    if(i.reload&&p.ammo<weapon.mag&&p.reload<=0){p.reload=weapon.reload;p.pendingShot=false}
    const wantsShot=p.weapon==='sniper'?p.pendingShot:i.fire||p.pendingShot;
-   if(wantsShot&&!i.sprint&&p.cool===0&&p.reload<=0&&p.ammo>0){p.pendingShot=false;p.shield=0;p.ammo--;p.magazines[p.weapon]=p.ammo;p.cool=p.bot?.3:weapon.interval;
-    let cp=Math.cos(p.pitch),d=[-Math.sin(p.yaw)*cp,Math.sin(p.pitch),-Math.cos(p.yaw)*cp],o=[p.x,p.y,p.z],nearest=wallDistance(o,d),hit=null;
+   if(wantsShot&&!i.sprint&&p.cool===0&&p.reload<=0&&p.ammo>0){p.pendingShot=false;p.shield=0;p.ammo--;p.magazines[p.weapon]=p.ammo;p.cool=p.bot?.65:weapon.interval;
+    let shotYaw=p.yaw+(p.bot?(Math.random()-.5)*.12:0),shotPitch=p.pitch+(p.bot?(Math.random()-.5)*.08:0),cp=Math.cos(shotPitch),d=[-Math.sin(shotYaw)*cp,Math.sin(shotPitch),-Math.cos(shotYaw)*cp],o=[p.x,p.y,p.z],nearest=wallDistance(o,d),hit=null;
     for(let q of all){if(q.id===p.id||q.hp<=0||q.shield>0||(this.mode==='tdm'&&q.team===p.team))continue;let dist=rayBox(o,d,[q.x-.34,q.y-1.65,q.z-.34],[q.x+.34,q.y+.2,q.z+.34]);if(dist<nearest){nearest=dist;hit=q}}
     this.events.push({type:'shot',id:p.id,weapon:p.weapon,o,d,distance:Math.min(nearest,100),hit:hit?.id});
-    if(hit){let head=o[1]+d[1]*nearest>hit.y-.24;hit.hp=Math.max(0,hit.hp-(head?weapon.head:weapon.damage));if(!hit.hp){p.kills++;hit.deaths++;hit.respawn=3;this.scores[p.team]++;this.events.push({type:'kill',name:p.name,victim:hit.name,head,team:p.team})}}
+    if(hit){let head=o[1]+d[1]*nearest>hit.y-.24;hit.hp=Math.max(0,hit.hp-(p.bot?(head?18:12):(head?weapon.head:weapon.damage)));if(!hit.hp){p.kills++;hit.deaths++;hit.respawn=3;this.scores[p.team]++;this.events.push({type:'kill',name:p.name,victim:hit.name,head,team:p.team})}}
    }
   }
   if(this.time<=0||(this.mode==='tdm'?Math.max(...this.scores)>=50:all.some(p=>p.kills>=25))){this.over=true;this.restart=8}

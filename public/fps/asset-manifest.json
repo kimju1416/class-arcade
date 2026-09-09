@@ -35,6 +35,14 @@
       "file": "sniper-chroma.png",
       "use": "단발 저격총 뷰모델",
       "prompt": "Photoreal first-person fictional bolt-action sniper rifle with scope, tan body, olive gloves/forearms, lower-right composition, muzzle upper-left near center, solid magenta chroma-key background, no text or logos."
+    },
+    {
+      "file": "bot-carbine-chroma.png",
+      "use": "Generated carbine side art on extruded 3D bot rifle; runtime chroma-key removal",
+      "prompts": [
+        "Use case: stylized-concept. Asset type: production game rifle side texture/cutout for a 3D third-person soldier weapon. Generate ONE realistic modern compact infantry carbine, strict orthographic left side profile, muzzle pointing LEFT, stock RIGHT, barrel perfectly horizontal. Whole rifle fits with 5 percent padding. Matte dark graphite steel receiver, olive polymer handguard and adjustable stock, curved magazine, pistol grip, iron sights. Physically coherent proportions, realistic fine machining and restrained weathering. No hands, no person, no straps, no floating parts, no text or logos, no shadow on backdrop. Genuine transparent background with clean alpha edges. Wide landscape image. Single object centered, neutral evenly lit game-ready texture, sharp silhouette.",
+        "Edit target: supplied rifle side profile. Preserve the exact rifle design, shape, all component locations, horizontal left-facing orientation and framing. Replace ONLY ALL checkerboard background, including inside holes and the trigger guard and stock, with a perfectly uniform solid chroma-key magenta RGB(255,0,255). Absolutely no checkerboard remaining, no shadow, no gradients in background, no change to rifle. This is a game texture requiring reliable chroma-key removal."
+      ]
     }
   ],
   "externalAssets": [
