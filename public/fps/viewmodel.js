@@ -1,4 +1,4 @@
-import {weaponLayout} from './weapon-layout.js?v=trooper-5';
+import {weaponLayout} from './weapon-layout.js?v=combat-7';
 import * as T from './three.module.js';
 export function createViewmodel(renderer){
  const scene=new T.Scene(),camera=new T.OrthographicCamera(-1,1,1,-1,0,10);camera.position.z=2;

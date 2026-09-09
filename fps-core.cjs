@@ -23,32 +23,33 @@ function botInput(p,all,mode,dt){let brain=brains.get(p);if(!brain){brain={timer
 
 class Arena {
  constructor(mode='tdm',bots=0){this.mode=mode;this.players={};this.time=300;this.scores=[0,0];this.events=[];this.over=false;this.restart=0;for(let i=0;i<bots;i++)this.add('bot'+i,['GHOST','VIPER','NOVA','REAPER','ECHO','FALCON'][i],true)}
- add(id,name,bot=false){let p={id,name:String(name||'ROOKIE').slice(0,16),bot,team:Object.values(this.players).filter(p=>p.team===0).length<=Object.values(this.players).filter(p=>p.team===1).length?0:1,x:0,z:0,y:1.65,vy:0,yaw:0,pitch:0,hp:100,weapon:'rifle',ammo:30,magazines:{rifle:30,sniper:5},kills:0,deaths:0,cool:0,reload:0,respawn:0,shield:2,input:{},triggerSeen:0,pendingShot:false,wasFire:false};this.players[id]=p;this.spawn(p);return p}
- spawn(p){let spots=this.mode==='tdm'?SPAWNS.filter((_,i)=>i%2===p.team):SPAWNS,s=spots[Math.floor(Math.random()*spots.length)];Object.assign(p,{x:s[0],z:s[1],yaw:Math.atan2(s[0],s[1]),y:1.65,vy:0,hp:100,ammo:WEAPONS[p.weapon].mag,magazines:{rifle:30,sniper:5},respawn:0,reload:0,cool:0,shield:2,pendingShot:false,wasFire:false})}
+ add(id,name,bot=false){let p={id,name:String(name||'ROOKIE').slice(0,16),bot,team:Object.values(this.players).filter(p=>p.team===0).length<=Object.values(this.players).filter(p=>p.team===1).length?0:1,x:0,z:0,y:1.65,vy:0,yaw:0,pitch:0,hp:100,weapon:'rifle',ammo:30,magazines:{rifle:30,sniper:5},kills:0,deaths:0,cool:0,reload:0,respawn:0,shield:2,input:{},triggerSeen:0,reloadSeen:0,pendingReload:false,pendingShot:false,wasFire:false};this.players[id]=p;this.spawn(p);return p}
+ spawn(p){let spots=this.mode==='tdm'?SPAWNS.filter((_,i)=>i%2===p.team):SPAWNS,s=spots[Math.floor(Math.random()*spots.length)];Object.assign(p,{x:s[0],z:s[1],yaw:Math.atan2(s[0],s[1]),y:1.65,vy:0,hp:100,ammo:WEAPONS[p.weapon].mag,magazines:{rifle:30,sniper:5},respawn:0,reload:0,cool:0,shield:2,pendingReload:false,pendingShot:false,wasFire:false})}
  input(id,i){let p=this.players[id];if(!p||!i||typeof i!=='object')return;
+  const reloadTrigger=Number.isSafeInteger(i.reloadTrigger)&&i.reloadTrigger>=0?i.reloadTrigger:0;if(reloadTrigger>p.reloadSeen){p.pendingReload=!i.cancelFire;p.reloadSeen=reloadTrigger}if(i.cancelFire)p.pendingReload=false;
   const trigger=Number.isSafeInteger(i.trigger)&&i.trigger>=0?i.trigger:0;if(trigger>p.triggerSeen){p.pendingShot=true;p.triggerSeen=trigger}
   if(i.fire&&!p.wasFire)p.pendingShot=true;p.wasFire=!!i.fire;if(i.cancelFire)p.pendingShot=false;
   p.input={f:clamp(Number(i.f)||0,-1,1),s:clamp(Number(i.s)||0,-1,1),yaw:Number.isFinite(i.yaw)?i.yaw:0,pitch:clamp(Number(i.pitch)||0,-1.45,1.45),fire:!!i.fire,reload:!!i.reload,jump:!!i.jump,sprint:!!i.sprint,aim:!!i.aim,weapon:i.weapon==='sniper'?'sniper':'rifle'};
  }
  step(dt){this.events=[];if(this.over){this.restart-=dt;if(this.restart<=0){this.over=false;this.time=300;this.scores=[0,0];for(let p of Object.values(this.players)){p.kills=0;p.deaths=0;this.spawn(p)}}return}this.time-=dt;let all=Object.values(this.players);
   for(let p of all){p.cool=Math.max(0,p.cool-dt);p.shield=Math.max(0,p.shield-dt);if(p.hp<=0){p.respawn-=dt;if(p.respawn<=0)this.spawn(p);continue}
-   if(p.reload>0){p.reload-=dt;if(p.reload<=0){p.ammo=WEAPONS[p.weapon].mag;p.magazines[p.weapon]=p.ammo}}
+   if(p.reload>0){p.reload=Math.max(0,p.reload-dt);if(p.reload<=0){p.ammo=WEAPONS[p.weapon].mag;p.magazines[p.weapon]=p.ammo}}
    if(p.bot)p.input=botInput(p,all,this.mode,dt);
    let i=p.input;if(i.weapon&&i.weapon!==p.weapon){p.magazines[p.weapon]=p.ammo;p.weapon=i.weapon;p.ammo=p.magazines[p.weapon];p.reload=0;p.cool=Math.max(p.cool,.35)}let weapon=WEAPONS[p.weapon];
    p.yaw=i.yaw||0;p.pitch=i.pitch||0;let f=i.f||0,s=i.s||0,n=Math.max(1,Math.hypot(f,s)),speed=i.sprint?7:4.6,dx=(-Math.sin(p.yaw)*f+Math.cos(p.yaw)*s)/n*speed*dt,dz=(-Math.cos(p.yaw)*f-Math.sin(p.yaw)*s)/n*speed*dt;
    if(!blocked(p.x+dx,p.z))p.x+=dx;if(!blocked(p.x,p.z+dz))p.z+=dz;if(i.jump&&p.y<=1.65)p.vy=5;p.vy-=15*dt;p.y=Math.max(1.65,p.y+p.vy*dt);if(p.y===1.65)p.vy=0;
-   if(i.reload&&p.ammo<weapon.mag&&p.reload<=0){p.reload=weapon.reload;p.pendingShot=false}
+   if(i.reload||p.pendingReload){p.pendingReload=false;if(p.ammo<weapon.mag&&p.reload<=0){p.reload=weapon.reload;p.pendingShot=false}}
    const wantsShot=p.weapon==='sniper'?p.pendingShot:i.fire||p.pendingShot;
    if(wantsShot&&!i.sprint&&p.cool===0&&p.reload<=0&&p.ammo>0){p.pendingShot=false;p.shield=0;p.ammo--;p.magazines[p.weapon]=p.ammo;p.cool=p.bot?.65:weapon.interval;
     let shotYaw=p.yaw+(p.bot?(Math.random()-.5)*.12:0),shotPitch=p.pitch+(p.bot?(Math.random()-.5)*.08:0),cp=Math.cos(shotPitch),d=[-Math.sin(shotYaw)*cp,Math.sin(shotPitch),-Math.cos(shotYaw)*cp],o=[p.x,p.y,p.z],nearest=wallDistance(o,d),hit=null;
     for(let q of all){if(q.id===p.id||q.hp<=0||q.shield>0||(this.mode==='tdm'&&q.team===p.team))continue;let dist=rayBox(o,d,[q.x-.34,q.y-1.65,q.z-.34],[q.x+.34,q.y+.2,q.z+.34]);if(dist<nearest){nearest=dist;hit=q}}
     this.events.push({type:'shot',id:p.id,weapon:p.weapon,o,d,distance:Math.min(nearest,100),hit:hit?.id});
-    if(hit){let head=o[1]+d[1]*nearest>hit.y-.24;hit.hp=Math.max(0,hit.hp-(p.bot?(head?18:12):(head?weapon.head:weapon.damage)));if(!hit.hp){p.kills++;hit.deaths++;hit.respawn=3;this.scores[p.team]++;this.events.push({type:'kill',name:p.name,victim:hit.name,head,team:p.team})}}
+    if(hit){let head=o[1]+d[1]*nearest>hit.y-.24;hit.hp=Math.max(0,hit.hp-(p.bot?(head?18:12):(head?weapon.head:weapon.damage)));if(!hit.hp){p.kills++;hit.deaths++;hit.respawn=3;this.scores[p.team]++;this.events.push({type:'kill',killerId:p.id,victimId:hit.id,name:p.name,victim:hit.name,head,team:p.team})}}
    }
   }
   if(this.time<=0||(this.mode==='tdm'?Math.max(...this.scores)>=50:all.some(p=>p.kills>=25))){this.over=true;this.restart=8}
  }
- snapshot(){return {mode:this.mode,time:this.time,scores:this.scores,over:this.over,restart:this.restart,events:this.events,players:Object.values(this.players).map(({input,triggerSeen,pendingShot,wasFire,...p})=>p)}}
+ snapshot(){return {mode:this.mode,time:this.time,scores:this.scores,over:this.over,restart:this.restart,events:this.events,players:Object.values(this.players).map(({input,triggerSeen,reloadSeen,pendingReload,pendingShot,wasFire,...p})=>p)}}
 }
 
 module.exports={Arena,BOXES,SPAWNS,blocked,rayBox,wallDistance,WEAPONS};
