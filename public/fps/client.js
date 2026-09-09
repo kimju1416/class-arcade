@@ -1,6 +1,6 @@
 import {Recoil} from './recoil.js?v=trooper-5';
 const recoilMotion=new Recoil();
-import {createWeaponAudio} from './weapon-audio.js?v=trooper-5';
+import {createWeaponAudio} from './weapon-audio.js?v=sniper-boom-6';
 const weaponAudio=createWeaponAudio();
 import {createControls} from './controls.js?v=trooper-5';
 import {createHuman} from './human.js?v=trooper-5';
