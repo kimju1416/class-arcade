@@ -133,3 +133,13 @@ Tab으로 선택 후 Enter/Space로도 누를 수 있다.
 추가 에셋: `public/fps/concrete.png` — 게임 바닥과 벽의 베이스컬러 텍스처. 내장 이미지 생성 프롬프트: Seamless tileable material texture for a 3D game map, square 1024×1024. Worn gray industrial concrete, orthographic flat surface filling the square edge to edge, seamlessly tileable on both axes. Subtle tiny cracks, restrained stains, small pits, realistic fine grain, evenly distributed detail. Neutral diffuse flat lighting suitable as base color, no directional shadows or highlights. No perspective, objects, text, borders, or watermark.
 
 그래픽 개선: 생성한 산업단지 파노라마, 컨테이너 금속과 목재 텍스처, 투명 1인칭 총기 에셋을 적용합니다. 환경 반사광과 SSAO, 창고 철골·배관·창문·배수구·물웅덩이를 추가했습니다. 생성 프롬프트와 사용 위치는 `public/fps/asset-manifest.json`에 기록했습니다. 1인칭 총기는 생성된 2D 뷰모델이며, 다른 플레이어와 전장은 3D로 렌더링됩니다.
+
+### 모바일·조준·저격총 업데이트
+- 멀티터치 이동 조이스틱, 드래그 시점, 사격/조준/장전/점프/달리기 버튼.
+- AR-4 연사 / SR-7 단발 저격총. 무기별 탄창 보존, 서버 발사 간격, 5발 탄창, 확대 스코프.
+- 중앙 조준점은 서버 발사 방향과 일치하며 실제 보이는 적을 겨누면 빨간색과 이름/거리를 표시.
+- 사람 캐릭터는 Three.js 공식 예제의 Soldier.glb (원 모델: Mixamo) 사용. Idle/Walk/Run 스켈레톤 애니메이션과 전환을 적용. 사용자 본인 얼굴을 복제한 모델은 아닙니다.
+  출처: https://threejs.org/examples/webgl_animation_skinning_blending.html
+  파일: https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb
+- SSAO/후처리, 실시간 그림자 제거. 모바일 조명/픽셀 비율 축소, 저프레임에서 동적 해상도 하향, 비활성 페이지 렌더 중단. 실제 성능은 기기에 따라 다릅니다.
+- sniper-chroma.png: 내장 이미지 생성으로 만든 저격총 에셋. 프롬프트: Photoreal first-person fictional bolt-action sniper rifle with scope, tan body, olive gloves/forearms, lower-right composition, muzzle upper-left near center, solid magenta chroma-key background, no text or logos.
