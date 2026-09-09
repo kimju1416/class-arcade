@@ -1,3 +1,4 @@
+import {weaponLayout} from './weapon-layout.js?v=detail-3';
 import * as T from './three.module.js';
 export function createViewmodel(renderer){
  const scene=new T.Scene(),camera=new T.OrthographicCamera(-1,1,1,-1,0,10);camera.position.z=2;
@@ -7,5 +8,5 @@ export function createViewmodel(renderer){
  material.fragmentShader=material.fragmentShader.replace(';#include',';\n#include');
  const mesh=new T.Mesh(new T.PlaneGeometry(1.5,1),material);scene.add(mesh);
  const flash=new T.Mesh(new T.CircleGeometry(.07,7),new T.MeshBasicMaterial({color:'#ffe5a6',transparent:true,opacity:.85,depthTest:false}));scene.add(flash);flash.position.z=.1;let flashTime=0;
- return {get ready(){return loaded===2},shot(){flashTime=.06},render(p,dt,now,aim,sprint,recoil,moving){if(loaded!==2||!p||p.hp<=0)return;material.uniforms.map.value=textures[p.weapon]||textures.rifle;let a=innerWidth/innerHeight;camera.left=-a;camera.right=a;camera.updateProjectionMatrix();let scale=a*(matchMedia('(pointer: coarse)').matches?.75:.88)*(aim?1.07:1);mesh.scale.setScalar(scale);mesh.position.set(a*(aim?.22:.38),-.60+(p.reload>0?-.9:sprint?-.3:0)+(moving?Math.sin(now*.013)*.012:0),0);mesh.rotation.z=p.reload>0?-.3:sprint?-.1:recoil*.18;flashTime-=dt;flash.visible=flashTime>0;flash.position.x=mesh.position.x-scale*.25;flash.position.y=mesh.position.y+scale*.28;flash.rotation.z=Math.random()*6;let auto=renderer.autoClear;renderer.autoClear=false;renderer.clearDepth();renderer.render(scene,camera);renderer.autoClear=auto}}
+ return {get ready(){return loaded===2},shot(){flashTime=.06},render(p,dt,now,aim,sprint,recoil,moving){if(loaded!==2||!p||p.hp<=0)return;material.uniforms.map.value=textures[p.weapon]||textures.rifle;let a=innerWidth/innerHeight;camera.left=-a;camera.right=a;camera.updateProjectionMatrix();const layout=weaponLayout(p.weapon,a,aim,p.reload,sprint,recoil);mesh.scale.setScalar(layout.scale);mesh.position.set(layout.x,layout.y,0);mesh.rotation.z=layout.angle;flashTime-=dt;flash.visible=flashTime>0&&!sprint&&p.reload<=0;flash.position.set(0,0,.1);flash.rotation.z=Math.random()*6;let auto=renderer.autoClear;renderer.autoClear=false;renderer.clearDepth();renderer.render(scene,camera);renderer.autoClear=auto}}
 }

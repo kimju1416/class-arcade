@@ -1,0 +1,8 @@
+const assert=require('node:assert/strict');const fs=require('fs');const {Arena,blocked}=require('../fps-core.cjs');
+(async()=>{
+ const source=fs.readFileSync('public/fps/weapon-layout.js','utf8');const {weaponLayout,MUZZLES}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ for(const weapon of ['rifle','sniper'])for(const aspect of [.48,1.78,2.16])for(const aim of [false,true])for(const recoil of [0,.075]){const l=weaponLayout(weapon,aspect,aim,0,false,recoil),a=MUZZLES[weapon],x=(a.x-.5)*1.5*l.scale,y=(.5-a.y)*l.scale;assert(Math.abs(l.x+x*Math.cos(l.angle)-y*Math.sin(l.angle))<1e-9);assert(Math.abs(l.y+x*Math.sin(l.angle)+y*Math.cos(l.angle))<1e-9)}
+ const arena=new Arena('ffa'),bot=arena.add('bot0','BOT',true),target=arena.add('target','TARGET');Object.assign(bot,{x:-10,z:-18,yaw:0,shield:100});Object.assign(target,{x:-10,z:1,shield:100});let travelled=0,closest=100,previous={x:bot.x,z:bot.z,yaw:bot.yaw};
+ for(let i=0;i<900;i++){arena.step(1/30);assert(!blocked(bot.x,bot.z),'bot cannot enter cover');let delta=Math.atan2(Math.sin(bot.yaw-previous.yaw),Math.cos(bot.yaw-previous.yaw));assert(Math.abs(delta)<=2.4/30+1e-8,'bounded turn rate');travelled+=Math.hypot(bot.x-previous.x,bot.z-previous.z);closest=Math.min(closest,Math.hypot(bot.x-target.x,bot.z-target.z));previous={x:bot.x,z:bot.z,yaw:bot.yaw}}
+ assert(travelled>10,'bot should navigate around container');assert(closest<16,'bot must reach firing range');console.log('PASS: muzzle alignment across weapons/aspects/recoil; bot cover avoidance, turn rate and navigation');
+})().catch(e=>{console.error(e);process.exitCode=1});
