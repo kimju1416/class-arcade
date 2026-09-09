@@ -1289,6 +1289,8 @@ const server = http.createServer((req, res) => {
     }))));
     return;
   }
+  if (url === '/fps') { res.writeHead(302, { Location: '/fps/' }); res.end(); return; }
+  if (url === '/fps/') url = '/fps/index.html';
   if (url === '/') url = '/index.html';
   const safe = path.normalize(url).replace(/^(\.\.[\/\\])+/, '');
   const root = path.join(__dirname, 'public');
@@ -4412,7 +4414,14 @@ function backToLobby(room) {
 // ---------- WebSocket ----------
 // maxPayload: 한 메시지 16KB 제한 (기본값 100MB라 대용량 도배에 무방비.
 // 4KB였으나 퀴즈쇼 커스텀 문제 20개가 한글 UTF-8로 4KB를 넘을 수 있어 상향 — rate limit이 도배는 막는다)
-const wss = new WebSocketServer({ server, maxPayload: 16384 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16384 });
+const fpsWss = require('./fps-server')(WebSocketServer);
+server.on('upgrade', (req, socket, head) => {
+  let pathname;
+  try { pathname = new URL(req.url, 'http://localhost').pathname; } catch { socket.destroy(); return; }
+  const target = pathname === '/fps/ws' ? fpsWss : wss;
+  target.handleUpgrade(req, socket, head, (client) => target.emit('connection', client, req));
+});
 wss.on('error', (e) => console.error('[wss 오류]', e.message));
 server.on('error', (e) => console.error('[http 오류]', e.message));
 // 서버가 죽으면 수업 중인 모든 방이 날아간다. 예상 못 한 예외는 로그만 남기고 계속 산다.

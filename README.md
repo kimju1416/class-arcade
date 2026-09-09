@@ -117,3 +117,17 @@ Tab으로 선택 후 Enter/Space로도 누를 수 있다.
 
 `npm test`로 기존 게임을 포함한 전체 회귀 검사를 실행한다.
 새 게임만 확인하려면 `node test/run.js party-games`를 실행한다.
+
+## IRON SECTOR FPS
+
+`https://game.kimju.kr/fps/` 경로에 PC용 1인칭 슈팅 게임을 추가했습니다.
+- 팀 데스매치 / 개인 데스매치, 5분 라운드, 최대 16명, 5명 봇 연습.
+- 같은 모드와 방 코드를 입력하면 함께 경기합니다.
+- WASD 이동, 마우스 사격, 우클릭 조준, R 재장전, Shift 달리기, Space 점프, Tab 점수판.
+- 기존 Render의 `npm install` / `node server.js` 설정을 그대로 사용합니다. 추가 서비스나 포트가 필요하지 않습니다.
+- FPS WebSocket은 `/fps/ws`, 기존 아케이드 WebSocket은 기존 주소를 유지합니다.
+- 방 상태는 단일 인스턴스 메모리에 저장되어 재배포하면 초기화됩니다.
+- 검증: `node test/fps-integration.test.js`, 기존 회귀 테스트 `npm test`.
+- `public/fps/depot.png`는 내장 이미지 생성으로 만든 전장 메뉴 에셋. 3D 총기/캐릭터/전장은 코드 제작 모델입니다. Three.js MIT 라이선스는 같은 폴더에 있습니다.
+
+추가 에셋: `public/fps/concrete.png` — 게임 바닥과 벽의 베이스컬러 텍스처. 내장 이미지 생성 프롬프트: Seamless tileable material texture for a 3D game map, square 1024×1024. Worn gray industrial concrete, orthographic flat surface filling the square edge to edge, seamlessly tileable on both axes. Subtle tiny cracks, restrained stains, small pits, realistic fine grain, evenly distributed detail. Neutral diffuse flat lighting suitable as base color, no directional shadows or highlights. No perspective, objects, text, borders, or watermark.
