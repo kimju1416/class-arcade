@@ -43,6 +43,14 @@
         "Use case: stylized-concept. Asset type: production game rifle side texture/cutout for a 3D third-person soldier weapon. Generate ONE realistic modern compact infantry carbine, strict orthographic left side profile, muzzle pointing LEFT, stock RIGHT, barrel perfectly horizontal. Whole rifle fits with 5 percent padding. Matte dark graphite steel receiver, olive polymer handguard and adjustable stock, curved magazine, pistol grip, iron sights. Physically coherent proportions, realistic fine machining and restrained weathering. No hands, no person, no straps, no floating parts, no text or logos, no shadow on backdrop. Genuine transparent background with clean alpha edges. Wide landscape image. Single object centered, neutral evenly lit game-ready texture, sharp silhouette.",
         "Edit target: supplied rifle side profile. Preserve the exact rifle design, shape, all component locations, horizontal left-facing orientation and framing. Replace ONLY ALL checkerboard background, including inside holes and the trigger guard and stock, with a perfectly uniform solid chroma-key magenta RGB(255,0,255). Absolutely no checkerboard remaining, no shadow, no gradients in background, no change to rifle. This is a game texture requiring reliable chroma-key removal."
       ]
+    },
+    {
+      "file": "factory-wall-v2.png",
+      "prompt": "Use case: stylized-concept. Asset type: seamless game environment wall base-color texture. Photoreal abandoned industrial factory exterior wall, gray-green aged reinforced concrete and worn horizontal precast seams, subtle darker water streaks, small chipped aggregate, restrained rust stains, gritty detailed realistic FPS military depot material. Strict front-on orthographic flat surface, neutral diffuse lighting, seamless tileable all edges, no windows, no doors, no pipes, no writing, no logos, no objects, no perspective, no cast shadows. Square high quality texture."
+    },
+    {
+      "file": "depot-ground-v2.png",
+      "prompt": "Use case: stylized-concept. Asset type: seamless game environment ground base-color texture. Photoreal weathered industrial loading-yard asphalt mixed with old concrete aggregate, dark gray stone with gray-brown dust, fine hairline cracks, subtle tire scuffs and tiny worn patches. Detailed realistic tactical FPS depot material. Flat orthographic directly overhead, evenly diffuse light, seamless tileable all edges. No yellow or white road paint, no objects, no puddles, no large repeating cracks, no dramatic baked shadows. Square texture."
     }
   ],
   "externalAssets": [
