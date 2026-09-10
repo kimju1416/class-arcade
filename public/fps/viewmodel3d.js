@@ -1,13 +1,13 @@
-import {realWeapon} from './weapon-model.js?v=hands-1';
+import {realWeapon} from './weapon-model.js?v=photo-4';
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=hands-1';
+import {weaponPose,RIGS} from './weapon-pose.js?v=photo-4';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
 
 // 전술장갑 원단 사진. 같은 그림을 요철로도 써서 짜임이 빛을 받는다.
 let fabricTex=null;
 if(typeof document!=='undefined'){
- fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=hands-1');
+ fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=photo-4');
  fabricTex.colorSpace=T.SRGBColorSpace;
  fabricTex.wrapS=fabricTex.wrapT=T.MirroredRepeatWrapping;
  fabricTex.repeat.set(3.2,3.2);fabricTex.anisotropy=4;
@@ -95,6 +95,24 @@ function gripHand(parent,mats,pos,rot,elbow,tight=1,mirror=false){
  return g;
 }
 
+// 사진 팔. 빠나나로 뽑은 실사 장갑 팔을, 마젠타 배경을 «미리» 지워 진짜 알파로 구웠다
+// (남은 자주색 0픽셀 확인). 예전 스프라이트는 이걸 실시간 셰이더로 하다 테두리가 남았다.
+// 총 그룹 안에 두므로 흔들림·반동·재장전 기울기를 그대로 따라간다.
+const armTex={};
+// anchor = 사진 속 주먹 자리(0~1, 왼쪽 위 기준). 판을 그 점이 원점이 되게 옮겨 두므로,
+// pos에 주먹이 오고 판을 키워도 주먹은 제자리다. 사진에 조명이 구워져 있어 무조명·톤매핑 제외.
+function photoArm(parent,file,w,h,anchor,pos,rot){
+ if(typeof document==='undefined')return null;
+ let tex=armTex[file];
+ if(!tex){tex=armTex[file]=new T.TextureLoader().load(file+'?v=photo-4');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4}
+ const mat=new T.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.02,side:T.DoubleSide,toneMapped:false,color:'#cfcfc8'});
+ const geo=new T.PlaneGeometry(w,h);geo.translate(-(anchor[0]-.5)*w,-(.5-anchor[1])*h,0);
+ const arm=new T.Mesh(geo,mat);
+ arm.position.set(pos[0],pos[1],pos[2]);arm.rotation.set(rot[0],rot[1],rot[2]);
+ parent.add(arm);
+ return arm;
+}
+
 function buildRifle(mats){
  const m=realWeapon('rifle'),g=m.group;
  const sy=RIGS.rifle.sight.y;
@@ -103,8 +121,10 @@ function buildRifle(mats){
  for(const z of [-.034,.034]){const ring=new T.Mesh(new T.TorusGeometry(.026,.003,10,40),mats.blued);ring.position.set(0,sy,z);g.add(ring)}
  const glass=new T.Mesh(new T.CircleGeometry(.024,40),new T.MeshBasicMaterial({color:'#8dcbd5',transparent:true,opacity:.09,depthWrite:false,side:T.DoubleSide}));glass.position.set(0,sy,-.03);g.add(glass);
  const dot=new T.Mesh(new T.CircleGeometry(.0014,16),new T.MeshBasicMaterial({color:'#ff3928',depthTest:false,depthWrite:false}));dot.position.set(0,sy,-.031);dot.renderOrder=3;g.add(dot);
- gripHand(g,mats,[.031,-.082,.036],[.30,.06,-.16],[.20,-.30,.26],.92);
- gripHand(g,mats,[-.046,.030,-.252],[1.42,.10,.12],[-.15,-.33,.09],1.05,true);
+ // 오른팔: 사진 속 손이 권총손잡이(0,-.085,+.036)에 오고 팔뚝이 오른쪽 아래로 빠진다.
+ photoArm(g,'arm-right.webp',.30,.277,[.08,.12],[.020,-.056,.034],[0,0,0]);   // 주먹을 권총손잡이 오른쪽에
+ // 왼팔: 손가락이 총열덮개(0,+.03,-.25) 왼쪽 위를 감고 팔뚝이 왼쪽 아래로 빠진다.
+ photoArm(g,'arm-left.webp',.46,.46,[.84,.20],[-.026,.030,-.272],[0,0,0]);   // 주먹을 총열덮개 왼쪽 위에, 소매는 화면 밖까지
  return m;
 }
 function buildSniper(mats){
@@ -120,8 +140,8 @@ function buildSniper(mats){
  for(const z of [-.20,0]){cy(g,mats,'dark',.027,.027,.018,0,sy,z,'z',32);bx(g,mats,'dark',.025,.045,.024,0,sy-.035,z)}
  cy(g,mats,'blued',.013,.013,.018,0,sy+.033,-.06,'y',24);
  cy(g,mats,'blued',.012,.012,.018,.033,sy,-.06,'x',24);
- gripHand(g,mats,[.031,-.082,.036],[.30,.06,-.16],[.20,-.30,.26],.92);
- gripHand(g,mats,[-.046,.028,-.30],[1.42,.10,.12],[-.15,-.35,.05],1.05,true);
+ photoArm(g,'arm-right.webp',.30,.277,[.08,.12],[.020,-.056,.034],[0,0,0]);   // 주먹을 권총손잡이 오른쪽에
+ photoArm(g,'arm-left.webp',.46,.46,[.84,.20],[-.026,.028,-.322],[0,0,0]);   // 긴 총열이라 왼손을 더 앞으로
  return m;
 }
 

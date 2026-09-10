@@ -1,4 +1,4 @@
-import {createRecordedAudio} from './recorded-audio.js?v=hands-1';
+import {createRecordedAudio} from './recorded-audio.js?v=photo-4';
 // Reusable, layered weapon transients. No audio buffers allocated per shot.
 export function createWeaponAudio(){
  let ctx,noise,sniperBus;const recorded=createRecordedAudio();

@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {createBotRifle} from './bot-rifle.js?v=hands-1';
+import {createBotRifle} from './bot-rifle.js?v=photo-4';
 // Lightweight third-person rifle, with a two-handed aiming pose on the soldier skeleton.
 export function tacticalRig(group,body){
  const rifle=createBotRifle();
