@@ -14,13 +14,25 @@ function clearPath(a,b){let n=Math.ceil(Math.hypot(a.x-b.x,a.z-b.z)/.25);for(let
 for(let a of navNodes)for(let b of navNodes)if(a!==b&&Math.hypot(a.x-b.x,a.z-b.z)<2.9&&clearPath(a,b))a.links.push(b);
 function route(a,b){const nearest=p=>navNodes.reduce((best,n)=>Math.hypot(n.x-p.x,n.z-p.z)<Math.hypot(best.x-p.x,best.z-p.z)?n:best,navNodes[0]);const start=nearest(a),end=nearest(b),queue=[start],prev=new Map([[start,null]]);for(let i=0;i<queue.length;i++){const n=queue[i];if(n===end)break;for(const next of n.links)if(!prev.has(next)){prev.set(next,n);queue.push(next)}}if(!prev.has(end))return [];let path=[];for(let n=end;n&&n!==start;n=prev.get(n))path.push({x:n.x,z:n.z});path.reverse();if(path.length&&!clearPath(a,path[0]))path.unshift({x:start.x,z:start.z});return path;}
 const brains=new WeakMap();
-function botInput(p,all,mode,dt){let brain=brains.get(p);if(!brain){brain={timer:0,path:[],seen:0,target:null};brains.set(p,brain)}const target=all.filter(q=>q.id!==p.id&&q.hp>0&&(mode==='ffa'||q.team!==p.team)).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];if(!target)return {yaw:p.yaw};
+function botInput(p,all,mode,dt){let brain=brains.get(p);if(!brain){brain={timer:0,path:[],seen:0,target:null,range:8+Math.random()*5,strafe:Math.random()<.5?1:-1,weave:.9+Math.random()*1.2};brains.set(p,brain)}const target=all.filter(q=>q.id!==p.id&&q.hp>0&&(mode==='ffa'||q.team!==p.team)).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];if(!target)return {yaw:p.yaw};
  const distance=Math.hypot(target.x-p.x,target.z-p.z),visible=wallDistance([p.x,p.y,p.z],[(target.x-p.x)/Math.max(distance,.001),0,(target.z-p.z)/Math.max(distance,.001)])>distance;
  if(!visible||brain.target!==target.id)brain.seen=0;else brain.seen+=dt;brain.target=target.id;
  brain.timer-=dt;if(brain.timer<=0){brain.timer=.8;brain.path=visible&&clearPath(p,target)?[]:route(p,target)}while(brain.path.length&&Math.hypot(brain.path[0].x-p.x,brain.path[0].z-p.z)<.25)brain.path.shift();
  const goal=visible&&clearPath(p,target)?target:brain.path[0]||target;const wanted=Math.atan2(p.x-goal.x,p.z-goal.z),delta=Math.atan2(Math.sin(wanted-p.yaw),Math.cos(wanted-p.yaw)),yaw=p.yaw+clamp(delta,-dt*2.4,dt*2.4);
- // Stop and shoulder the rifle when in range; turn before advancing around cover.
- return {yaw,pitch:visible?Math.atan2(target.y-.5-p.y,distance):0,f:visible&&distance<15?0:Math.abs(delta)<.55?.5:0,s:0,fire:visible&&brain.seen>1.2&&(brain.seen-1.2)%2.8<.85&&distance<27&&Math.abs(delta)<.08&&p.shield===0,reload:p.ammo===0,weapon:'rifle'};
+ // 교전 중에는 제자리에 서지 않는다. 서 있으면 그냥 과녁이다.
+ // 봇마다 선호 거리가 달라서, 가까우면 물러서고 멀면 붙는다. 그 사이에서는 좌우로 흔든다.
+ // 선호 거리는 16m를 넘지 않는다 — 더 멀면 사거리 안으로 아예 안 붙는다(fps-map 검사).
+ let forward=0,side=0;
+ if(visible){
+  forward=distance>brain.range+1.5?.55:distance<brain.range-2.5?-.45:0;
+  brain.weave-=dt;
+  const sx=Math.cos(yaw)*brain.strafe,sz=-Math.sin(yaw)*brain.strafe;   // 옆으로 한 걸음 갈 자리
+  if(brain.weave<=0||blocked(p.x+sx*.9,p.z+sz*.9)){brain.strafe=-brain.strafe;brain.weave=.9+Math.random()*1.2}
+  side=brain.strafe*.75;
+ }else{
+  forward=Math.abs(delta)<.55?.5:0;                                      // 엄폐물을 돌 때는 몸을 먼저 돌린다
+ }
+ return {yaw,pitch:visible?Math.atan2(target.y-.5-p.y,distance):0,f:forward,s:side,fire:visible&&brain.seen>1.2&&(brain.seen-1.2)%2.8<.85&&distance<27&&Math.abs(delta)<.08&&p.shield===0,reload:p.ammo===0||(!visible&&p.ammo<9),weapon:'rifle'};
 }
 
 class Arena {

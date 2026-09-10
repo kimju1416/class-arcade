@@ -25,5 +25,12 @@ const assert=require('node:assert/strict');const fs=require('fs');const {Arena,b
  assert(reloadMotion(.95).drop===0,'볼트 전진 단계엔 탄창이 물려 있어야 한다');
  const arena=new Arena('ffa'),bot=arena.add('bot0','BOT',true),target=arena.add('target','TARGET');Object.assign(bot,{x:-10,z:-18,yaw:0,shield:100});Object.assign(target,{x:-10,z:1,shield:100});let travelled=0,closest=100,previous={x:bot.x,z:bot.z,yaw:bot.yaw};
  for(let i=0;i<900;i++){arena.step(1/30);assert(!blocked(bot.x,bot.z),'bot cannot enter cover');let delta=Math.atan2(Math.sin(bot.yaw-previous.yaw),Math.cos(bot.yaw-previous.yaw));assert(Math.abs(delta)<=2.4/30+1e-8,'bounded turn rate');travelled+=Math.hypot(bot.x-previous.x,bot.z-previous.z);closest=Math.min(closest,Math.hypot(bot.x-target.x,bot.z-target.z));previous={x:bot.x,z:bot.z,yaw:bot.yaw}}
- assert(travelled>10,'bot should navigate around container');assert(closest<16,'bot must reach firing range');console.log('PASS: 정조준 조준선 정렬, 자세 범위, 재장전 단계; bot cover avoidance, turn rate and navigation');
+ assert(travelled>10,'bot should navigate around container');assert(closest<16,'bot must reach firing range');
+ // 교전 중에 서 있으면 그냥 과녁이다 — 좌우로 흔드는지 잰다.
+ {const arena=new Arena('ffa'),bot=arena.add('bot0','BOT',true),foe=arena.add('foe','FOE');
+  Object.assign(bot,{x:19,z:20,yaw:0,shield:999});Object.assign(foe,{x:19,z:8,shield:999});
+  let minX=99,maxX=-99;
+  for(let i=0;i<400;i++){arena.step(1/30);assert(!blocked(bot.x,bot.z),'교전 중에도 엄폐물에 안 들어간다');minX=Math.min(minX,bot.x);maxX=Math.max(maxX,bot.x)}
+  assert(maxX-minX>3,'봇은 교전 중 좌우로 흔들어야 한다: '+(maxX-minX).toFixed(2)+'m');
+  assert(Math.hypot(bot.x-foe.x,bot.z-foe.z)<17,'그러면서도 사거리는 유지한다');}console.log('PASS: 정조준 조준선 정렬, 자세 범위, 재장전 단계; 봇 회피·회전속도·경로·교전 중 좌우 이동');
 })().catch(e=>{console.error(e);process.exitCode=1});
