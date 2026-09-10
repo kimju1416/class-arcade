@@ -1,8 +1,8 @@
 import * as T from './three.module.js';
 export function enhanceDepot(scene,mats,box,boxes){
- const loader=new T.TextureLoader();let sky=loader.load('sky-depot.png');sky.mapping=T.EquirectangularReflectionMapping;sky.colorSpace=T.SRGBColorSpace;scene.background=sky;scene.environment=sky;scene.environmentIntensity=.45;
- const steel=loader.load('steel-blue.png');steel.colorSpace=T.SRGBColorSpace;steel.wrapS=steel.wrapT=T.RepeatWrapping;steel.repeat.set(2,1);for(let name of ['blue','red','olive']){mats[name].map=steel;mats[name].metalness=.45;mats[name].roughness=.73;mats[name].needsUpdate=true}
- let wood=loader.load('wood-crate.png');wood.colorSpace=T.SRGBColorSpace;wood.wrapS=wood.wrapT=T.RepeatWrapping;mats.crate.map=wood;mats.crate.needsUpdate=true;
+ const loader=new T.TextureLoader();let sky=loader.load('sky-depot.webp');sky.mapping=T.EquirectangularReflectionMapping;sky.colorSpace=T.SRGBColorSpace;scene.background=sky;scene.environment=sky;scene.environmentIntensity=.45;
+ const steel=loader.load('steel-blue.webp');steel.colorSpace=T.SRGBColorSpace;steel.wrapS=steel.wrapT=T.RepeatWrapping;steel.repeat.set(2,1);for(let name of ['blue','red','olive']){mats[name].map=steel;mats[name].metalness=.45;mats[name].roughness=.73;mats[name].needsUpdate=true}
+ let wood=loader.load('wood-crate.webp');wood.colorSpace=T.SRGBColorSpace;wood.wrapS=wood.wrapT=T.RepeatWrapping;mats.crate.map=wood;mats.crate.needsUpdate=true;
  const rust=new T.MeshStandardMaterial({color:'#65594a',metalness:.7,roughness:.74}),dark=new T.MeshStandardMaterial({color:'#263135',metalness:.6,roughness:.6}),glass=new T.MeshStandardMaterial({color:'#627b83',metalness:.5,roughness:.2}),light=new T.MeshBasicMaterial({color:'#ffe5ac'});
  function cylinder(radius,length,x,y,z,material=rust,axis='y'){let mesh=new T.Mesh(new T.CylinderGeometry(radius,radius,length,12),material);if(axis==='x')mesh.rotation.z=Math.PI/2;if(axis==='z')mesh.rotation.x=Math.PI/2;mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;scene.add(mesh);return mesh}
  // Warehouse shell, drainage pipes, door surrounds and recessed glazing.

@@ -1,6 +1,6 @@
 import * as T from './three.module.js';
 export function upgradeDepot(scene,mats,box,boxes){
- const loader=new T.TextureLoader(),wall=loader.load('factory-wall-v2.png'),ground=loader.load('depot-ground-v2.png');
+ const loader=new T.TextureLoader(),wall=loader.load('factory-wall-v2.webp'),ground=loader.load('depot-ground-v2.webp');
  for(const texture of [wall,ground]){texture.colorSpace=T.SRGBColorSpace;texture.wrapS=texture.wrapT=T.RepeatWrapping;texture.anisotropy=2}wall.repeat.set(5,2);ground.repeat.set(9,10);mats.wall.map=wall;mats.wall.color.set('#a0aaa5');mats.wall.needsUpdate=true;mats.ground.map=ground;mats.ground.color.set('#a6aaa1');mats.ground.needsUpdate=true;mats.barrier.map=wall;mats.barrier.roughness=1;
  const orange=new T.MeshLambertMaterial({color:'#c78835'}),steel=new T.MeshLambertMaterial({color:'#38484b'}),glass=new T.MeshLambertMaterial({color:'#759ba0'}),stripe=new T.MeshLambertMaterial({color:'#dcc47d'});
  // Freight gantry beyond the north wall: visible above the warehouse roof, outside playable bounds.

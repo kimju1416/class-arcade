@@ -1,18 +1,18 @@
-import {upgradeDepot} from './depot-upgrade.js?v=combat3d-1';
-import {createTacticalMap} from './tactical-map.js?v=combat3d-1';
-import {createCombatFeedback} from './combat-feedback.js?v=combat3d-1';
-import {Recoil} from './recoil.js?v=combat3d-1';
+import {upgradeDepot} from './depot-upgrade.js?v=combat3d-2';
+import {createTacticalMap} from './tactical-map.js?v=combat3d-2';
+import {createCombatFeedback} from './combat-feedback.js?v=combat3d-2';
+import {Recoil} from './recoil.js?v=combat3d-2';
 const recoilMotion=new Recoil();
-import {createWeaponAudio} from './weapon-audio.js?v=combat3d-1';
+import {createWeaponAudio} from './weapon-audio.js?v=combat3d-2';
 const weaponAudio=createWeaponAudio();
 const combatFeedback=createCombatFeedback(weaponAudio);
-import {createControls} from './controls.js?v=combat3d-1';
-import {createHuman} from './human.js?v=combat3d-1';
-import {createViewmodel3D} from './viewmodel3d.js?v=combat3d-1';
-import {createImpacts} from './impacts.js?v=combat3d-1';
+import {createControls} from './controls.js?v=combat3d-2';
+import {createHuman} from './human.js?v=combat3d-2';
+import {createViewmodel3D} from './viewmodel3d.js?v=combat3d-2';
+import {createImpacts} from './impacts.js?v=combat3d-2';
 import {enhanceDepot} from './environment.js';
 import * as T from './three.module.js';
-import {Arena,BOXES,clamp,rayBox,wallDistance} from './core.js?v=combat3d-1';
+import {Arena,BOXES,clamp,rayBox,wallDistance} from './core.js?v=combat3d-2';
 const $=s=>document.getElementById(s);let mode='tdm',arena=null,ws=null,myId='',state=null,active=false,yaw=0,pitch=0,fire=false,aim=false,last=performance.now(),acc=0,lastHP=100,feed=[],hitUntil=0,frame=0;const mobile=matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0&&innerWidth<1100;const keys={};$('practice').disabled=true;$('online').disabled=true;T.DefaultLoadingManager.onProgress=(url,n,total)=>{$('status').textContent=`전장 에셋 불러오는 중 ${n} / ${total}`};T.DefaultLoadingManager.onLoad=()=>{$('practice').disabled=false;$('online').disabled=false;$('status').textContent='전투 준비 완료 · 모바일 터치 / PC 키보드 지원'};
 let renderer;try{renderer=new T.WebGLRenderer({canvas:$('scene'),antialias:!mobile})}catch(error){$('status').textContent='3D 그래픽을 시작할 수 없습니다. 브라우저의 하드웨어 가속을 켜고 다시 접속하세요.';throw error}renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1:1.25));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=!mobile;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.24;
 const scene=new T.Scene();scene.background=new T.Color('#7a929d');scene.fog=new T.FogExp2('#8998a1',.008);const camera=new T.PerspectiveCamera(78,innerWidth/innerHeight,.05,170);camera.rotation.order='YXZ';scene.add(camera);// 그림자를 켜면 지붕 아래가 통째로 그늘이 된다. 그늘에서도 읽히도록 환경광을 올린다.
@@ -20,7 +20,7 @@ scene.add(new T.HemisphereLight('#dceaff','#5d5b46',2.95));const sun=new T.Direc
 Object.assign(sun.shadow.camera,{left:-19,right:19,top:19,bottom:-19,near:1,far:78});sun.shadow.bias=-.0009;sun.shadow.normalBias=.02;scene.add(sun);scene.add(sun.target);const SUN_OFFSET=new T.Vector3(-16,26,14);
 const viewmodel=createViewmodel3D(renderer);
 const mats={};for(let [k,c]of Object.entries({wall:'#737971',blue:'#395d68',red:'#865b49',olive:'#737259',crate:'#6e5640',metal:'#303b3c',black:'#191e1c',tan:'#a69b70',ground:'#787b6b',glove:'#4b5345',barrier:'#b4b09a'}))mats[k]=new T.MeshStandardMaterial({color:c,roughness:k==='metal'?.55:.87,metalness:k==='metal'?.6:.1});
-const concrete=new T.TextureLoader().load('concrete.png');concrete.wrapS=concrete.wrapT=T.RepeatWrapping;concrete.repeat.set(12,12);concrete.colorSpace=T.SRGBColorSpace;concrete.anisotropy=Math.min(2,renderer.capabilities.getMaxAnisotropy());mats.ground.map=concrete;const wallTexture=concrete.clone();wallTexture.repeat.set(4,2);mats.wall.map=wallTexture;
+const concrete=new T.TextureLoader().load('concrete.webp');concrete.wrapS=concrete.wrapT=T.RepeatWrapping;concrete.repeat.set(12,12);concrete.colorSpace=T.SRGBColorSpace;concrete.anisotropy=Math.min(2,renderer.capabilities.getMaxAnisotropy());mats.ground.map=concrete;const wallTexture=concrete.clone();wallTexture.repeat.set(4,2);mats.wall.map=wallTexture;
 function box(w,h,d,mat,x,y,z,parent=scene){let m=new T.Mesh(new T.BoxGeometry(w,h,d),typeof mat==='string'?mats[mat]:mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 box(50,.3,54,'ground',0,-.16,0);for(const b of BOXES){box(b[3],b[4],b[5],b[6],b[0],b[1],b[2]);if(['blue','red','olive'].includes(b[6])){for(let x=-b[3]/2+.15;x<b[3]/2;x+=.45)for(let side of [-1,1])box(.065,b[4]-.16,.06,'metal',b[0]+x,b[1],b[2]+side*(b[5]/2+.02));for(let z=-b[5]/2+.15;z<b[5]/2;z+=.45)for(let side of [-1,1])box(.06,b[4]-.16,.065,'metal',b[0]+side*(b[3]/2+.02),b[1],b[2]+z);for(let s of [-1,1])box(b[3]+.1,.12,b[5]+.1,'metal',b[0],b[1]+s*b[4]/2,b[2]);}if(b[6]==='crate')for(let s of [-1,1])box(b[3]+.04,.15,b[5]+.04,'tan',b[0],b[1]+s*(b[4]/2-.3),b[2]);}
 for(let z=-24;z<25;z+=6){box(.25,8,.25,'metal',-22,4,z);box(.25,8,.25,'metal',22,4,z);box(45,.25,.25,'metal',0,8,z)}box(13,.2,52,'metal',-17,8.1,0);box(13,.2,52,'metal',17,8.1,0);const lamp=new T.MeshBasicMaterial({color:'#fff0bc'});for(let z=-22;z<24;z+=8)for(let x of [-17,17])box(1.3,.04,.13,lamp,x,7.85,z);for(let z=-24;z<24;z+=3)for(let x of [-4,4])box(.1,.014,1.4,'tan',x,.01,z);
