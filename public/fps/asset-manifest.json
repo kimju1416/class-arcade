@@ -27,16 +27,6 @@
       "prompt": "Square seamless weathered wooden military crate planks albedo, brown-gray dry wood detailed splinters faded grain nail holes, flat orthographic neutral light no text."
     },
     {
-      "file": "rifle-chroma.png",
-      "use": "1인칭 총기와 장갑 뷰모델, 런타임 크로마키 합성",
-      "prompt": "Transparent first-person fictional tan tactical assault rifle held by realistic olive tactical-gloved hands and forearms, lower right composition, barrel points toward upper left/center, realistic diffuse afternoon viewmodel lighting, no text insignia branding. Genuine alpha transparency. Corrective edit: preserve rifle and hands; replace background with solid vivid magenta for runtime chroma key."
-    },
-    {
-      "file": "sniper-chroma.png",
-      "use": "단발 저격총 뷰모델",
-      "prompt": "Photoreal first-person fictional bolt-action sniper rifle with scope, tan body, olive gloves/forearms, lower-right composition, muzzle upper-left near center, solid magenta chroma-key background, no text or logos."
-    },
-    {
       "file": "bot-carbine-chroma.png",
       "use": "Generated carbine side art on extruded 3D bot rifle; runtime chroma-key removal",
       "prompts": [
@@ -64,5 +54,6 @@
         "Run"
       ]
     }
-  ]
+  ],
+  "notes": []
 }
