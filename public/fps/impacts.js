@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {BOXES} from './core.js?v=warm-3';
+import {BOXES} from './core.js?v=gun-1';
 
 // 총알이 닿은 자리의 반응 — 불똥, 먼지, 탄흔, 피격 분출.
 // 모두 미리 만들어 두고 돌려 쓴다. 한 발마다 새로 만들면 연사에서 프레임이 끊긴다.

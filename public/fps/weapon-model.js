@@ -1,6 +1,6 @@
 import * as T from './three.module.js';
 import {GLTFLoader} from './addons/loaders/GLTFLoader.js';
-import {RIGS} from './weapon-pose.js?v=warm-3';
+import {RIGS} from './weapon-pose.js?v=gun-1';
 const textures=new T.TextureLoader();
 // 폰은 GPU 메모리가 좁다 — 2048² PBR 네 장(85MB)이 게임 시작·첫 조준 멈칫의 주범이었다. 폰은 1024² 두 장만, 거칠기·금속은 값으로.
 const mobileGPU=typeof matchMedia!=='undefined'&&(matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0&&innerWidth<1100);

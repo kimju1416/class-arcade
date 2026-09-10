@@ -19,3 +19,16 @@ low-frequency rumble filter and tail fade. Playback includes slight pitch variat
 distance filtering, stereo positioning and a peak-control compressor.
 
 real-10 stereo editions: rifle-real-1/2 use the same AR-15 source at 0.686/5.637 seconds, 1.65 seconds long; sniper-real-1/2 use the same Mosin source at 1.018/5.008 seconds, 2.45 seconds long. Original stereo retained at 48 kHz/16-bit PCM, tail fade, peak limiter; sniper pre-gain 1.45. No pitch randomization or low-frequency removal. Playback compressor relaxed to 3:1.
+
+heavy editions (2026-09-10) — rifle-heavy-1/2.wav, sniper-heavy-1/2.wav (the files the game now plays):
+  Layered offline mix, 48 kHz/16-bit stereo:
+  1) Transient/crack: the CC0 recordings above (rifle-real-1/2 = AR-15, sniper-real-1/2 = Mosin Nagant),
+     low shelf trimmed below 90 Hz so the crack stays crisp.
+  2) Body/tail layer: ElevenLabs Sound Effects generated via the owner's BBANANA account
+     (rifle: single close-range shot in a concrete warehouse; sniper: heavy bolt-action boom with rolling echo),
+     onset-aligned 1 ms behind the crack, high-frequency roll-off above ~3.5 kHz; sniper layer given an
+     exponential decay (1.8/s) so it reads as one shot instead of a sustained rumble.
+  3) Synthesized sub-bass thump (pitch drop 68->44 Hz rifle, 58->36 Hz sniper).
+  Loudness: soft tanh saturation to average -16 dBFS (rifle) / -14.5 dBFS (sniper), peaks held at -0.8 dBFS.
+  Original recordings averaged -32 / -35.6 dBFS with ~4% energy below 150 Hz, which is why they sounded thin.
+  Playback: brick-wall style limiter (threshold -3 dB, ratio 16:1) instead of the 3:1 compressor.
