@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=gun3d-1';
+import {weaponPose,RIGS} from './weapon-pose.js?v=combat3d-1';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
 

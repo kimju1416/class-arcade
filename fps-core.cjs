@@ -3,7 +3,9 @@ const SPAWNS=[[-19,21],[19,-21],[19,21],[-19,-21],[0,22],[0,-22],[-20,0],[20,0]]
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 function blocked(x,z){return Math.abs(x)>22.5||Math.abs(z)>24.5||BOXES.some(b=>Math.abs(x-b[0])<b[3]/2+.35&&Math.abs(z-b[2])<b[5]/2+.35)}
 function rayBox(o,d,min,max){let lo=0,hi=100;for(let i=0;i<3;i++){if(Math.abs(d[i])<1e-8){if(o[i]<min[i]||o[i]>max[i])return Infinity;}else{let a=(min[i]-o[i])/d[i],b=(max[i]-o[i])/d[i];lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b));if(hi<lo)return Infinity}}return lo}
-function wallDistance(o,d){return Math.min(...BOXES.map(b=>rayBox(o,d,[b[0]-b[3]/2,b[1]-b[4]/2,b[2]-b[5]/2],[b[0]+b[3]/2,b[1]+b[4]/2,b[2]+b[5]/2])))}
+// 바닥은 BOXES에 없다. 넣지 않으면 바닥을 쏜 총알이 100m를 날아가 아무 반응도 안 남긴다.
+function groundDistance(o,d){return d[1]<-1e-6?-o[1]/d[1]:Infinity}
+function wallDistance(o,d){return Math.min(groundDistance(o,d),...BOXES.map(b=>rayBox(o,d,[b[0]-b[3]/2,b[1]-b[4]/2,b[2]-b[5]/2],[b[0]+b[3]/2,b[1]+b[4]/2,b[2]+b[5]/2])))}
 const WEAPONS={rifle:{name:'AR-4',mag:30,interval:.105,reload:1.8,damage:28,head:70},sniper:{name:'SR-7',mag:5,interval:1.25,reload:2.6,damage:100,head:150}};
 
 // Walkable 2 m grid, built once. Routes are recomputed at most once per second per bot.
