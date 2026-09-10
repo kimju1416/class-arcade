@@ -1,4 +1,4 @@
-import {createRecordedAudio} from './recorded-audio.js?v=gun-1';
+import {createRecordedAudio} from './recorded-audio.js?v=ik-3';
 // Reusable, layered weapon transients. No audio buffers allocated per shot.
 export function createWeaponAudio(){
  let ctx,noise,sniperBus;const recorded=createRecordedAudio();
@@ -20,6 +20,11 @@ export function createWeaponAudio(){
 if(kind==='mag-out'){tap(0,.075,1700,.23);tap(.1,.14,600,.15)}else if(kind==='mag-in'){tap(0,.09,650,.30);tap(.055,.06,2500,.2)}else if(kind==='bolt'){tap(0,.13,3200,.2);tap(.14,.08,1800,.27)}else if(kind==='ready'){tap(0,.055,1500,.12)}else{tap(0,.09,kind==='headshot'?1400:1050,.14,true);tap(.085,.15,kind==='headshot'?1900:1500,.1,true)}
 }catch{}},
  // 발소리. 내 발소리는 가운데서, 남의 발소리는 방향을 실어 낸다.
+ // 맞힘·피격 효과음. 부를 때마다 버퍼를 새로 채우고 오디오 엔진을 따로 하나 더 쓰던 것을, 총소리 엔진과 그 소음 버퍼로 돌려 쓴다.
+ tick(freq,duration,volume,isNoise=false){try{init();const t=ctx.currentTime,g=ctx.createGain();g.gain.setValueAtTime(volume,t);g.gain.exponentialRampToValueAtTime(.001,t+duration);g.connect(ctx.destination);
+  if(isNoise){const src=ctx.createBufferSource(),lp=ctx.createBiquadFilter();src.buffer=noise;lp.type='lowpass';lp.frequency.value=Math.max(220,freq*6);src.connect(lp);lp.connect(g);src.start(t,Math.random()*1.5,duration);src.onended=()=>{src.disconnect();lp.disconnect();g.disconnect()}}
+  else{const osc=ctx.createOscillator();osc.frequency.value=freq;osc.connect(g);osc.start(t);osc.stop(t+duration);osc.onended=()=>{osc.disconnect();g.disconnect()}}
+ }catch{}},
  step(volume=1,pan=0,muffle=0){try{init();const t=ctx.currentTime,out=placed(pan,muffle)||ctx.destination;
   const s=ctx.createBufferSource(),f=ctx.createBiquadFilter(),g=ctx.createGain();
   s.buffer=noise;f.type='bandpass';f.frequency.value=430+Math.random()*260;f.Q.value=1.1;

@@ -1,13 +1,13 @@
-import {realWeapon} from './weapon-model.js?v=gun-1';
+import {realWeapon} from './weapon-model.js?v=ik-3';
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=gun-1';
+import {weaponPose,RIGS} from './weapon-pose.js?v=ik-3';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
 
 // 전술장갑 원단 사진. 같은 그림을 요철로도 써서 짜임이 빛을 받는다.
 let fabricTex=null;
 if(typeof document!=='undefined'){
- fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=gun-1');
+ fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=ik-3');
  fabricTex.colorSpace=T.SRGBColorSpace;
  fabricTex.wrapS=fabricTex.wrapT=T.MirroredRepeatWrapping;
  fabricTex.repeat.set(3.2,3.2);fabricTex.anisotropy=4;
@@ -104,7 +104,7 @@ const armTex={};
 function photoArm(parent,file,w,h,anchor,pos,rot,ext){
  if(typeof document==='undefined')return null;
  let tex=armTex[file];
- if(!tex){tex=armTex[file]=new T.TextureLoader().load(file+'?v=gun-1');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4}
+ if(!tex){tex=armTex[file]=new T.TextureLoader().load(file+'?v=ik-3');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4}
  const mat=new T.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.02,side:T.DoubleSide,toneMapped:false,color:'#cfcfc8'});
  // ext=[왼,아래,오른]: 사진 밖으로 판을 늘릴 비율. 늘어난 자리는 가장자리 픽셀이 번져 채워진다(ClampToEdge) —
  // 소매가 사진 끝에서 뚝 끊기거나 흐려지지 않고 화면 밖까지 이어진다. 원래 사진 영역의 UV는 그대로 0~1.
