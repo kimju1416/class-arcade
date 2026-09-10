@@ -1,33 +1,15 @@
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=real-4';
+import {weaponPose,RIGS} from './weapon-pose.js?v=combat3d-2';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
 
-// 실사 재질 사진. 같은 그림을 요철(bumpMap)로도 써서 결이 빛을 받게 한다.
-// 거울 반복이라 아무리 붙여도 이음매가 안 보인다.
-const loader=typeof document!=='undefined'?new T.TextureLoader():null;
-function surface(file,repeat){
- if(!loader)return null;
- const tex=loader.load(file);
- tex.colorSpace=T.SRGBColorSpace;
- tex.wrapS=tex.wrapT=T.MirroredRepeatWrapping;
- tex.repeat.set(repeat,repeat);tex.anisotropy=4;
- return tex;
-}
-const STEEL=surface('gun-steel.webp?v=real-4',3.4),
-      POLYMER=surface('gun-polymer.webp?v=real-4',3),
-      GLOVE=surface('gun-glove.webp?v=real-4',2.4);
-function skin(base,tex,bump){
- if(tex){base.map=tex;base.bumpMap=tex;base.bumpScale=bump}
- return new T.MeshStandardMaterial(base);
-}
 const M={
- polymer:()=>skin({color:'#9a8560',roughness:.7,metalness:.05},POLYMER,.006),
- dark:()=>skin({color:'#4a5157',roughness:.58,metalness:.4},STEEL,.006),
- steel:()=>skin({color:'#8d969c',roughness:.31,metalness:.92},STEEL,.004),
- blued:()=>skin({color:'#5d666e',roughness:.28,metalness:.95},STEEL,.0045),
- glove:()=>skin({color:'#5a6349',roughness:.9,metalness:.02},GLOVE,.008),
- sleeve:()=>skin({color:'#646b4c',roughness:.95,metalness:0},GLOVE,.009),
+ polymer:()=>new T.MeshStandardMaterial({color:'#9c8869',roughness:.74,metalness:.06}),
+ dark:()=>new T.MeshStandardMaterial({color:'#343a3e',roughness:.58,metalness:.18}),
+ steel:()=>new T.MeshStandardMaterial({color:'#5b6165',roughness:.34,metalness:.88}),
+ blued:()=>new T.MeshStandardMaterial({color:'#414850',roughness:.28,metalness:.92}),
+ glove:()=>new T.MeshStandardMaterial({color:'#4a5142',roughness:.94,metalness:.02}),
+ sleeve:()=>new T.MeshStandardMaterial({color:'#5c6046',roughness:.97,metalness:0}),
  brass:()=>new T.MeshStandardMaterial({color:'#b8933f',roughness:.32,metalness:.9}),
  lens:()=>new T.MeshStandardMaterial({color:'#12303f',roughness:.08,metalness:.4,emissive:'#0d3550',emissiveIntensity:.5})
 };
@@ -61,25 +43,17 @@ function hand(parent,mats,x,y,z,rz,ry,elbowX,elbowY,elbowZ){
 
 function buildRifle(mats){
  const g=new T.Group(),parts={};
- // 총몸 — 위쪽 모서리를 둥글려 «상자»에서 벗어난다.
- bx(g,mats,'dark',.062,.05,.30,0,.031,-.03);                     // 상부 총몸
- cy(g,mats,'dark',.031,.031,.30,0,.056,-.03,'z',14);             // 상부 총몸 둥근 등
+ bx(g,mats,'dark',.062,.056,.30,0,.034,-.03);                    // 상부 총몸
  bx(g,mats,'dark',.056,.052,.17,0,-.008,.035);                   // 하부 총몸
- bx(g,mats,'dark',.05,.012,.47,0,.076,-.135);                    // 상부 레일 바닥
- for(let z=-.35;z<.09;z+=.0235)bx(g,mats,'blued',.052,.016,.011,0,.086,z); // 레일 홈
- // 총열 덮개 — 팔각 관에 M-LOK 슬롯. 둥근 단면이 손맛의 절반이다.
- cy(g,mats,'polymer',.032,.032,.27,0,.03,-.27,'z',8);
- for(const side of [-1,1])for(let z=-.38;z<-.17;z+=.055)bx(g,mats,'blued',.006,.014,.036,side*.031,.03,z);
- for(let z=-.38;z<-.17;z+=.055)bx(g,mats,'blued',.014,.006,.036,0,-.0005,z);
- bx(g,mats,'blued',.04,.011,.27,0,.056,-.27);                    // 덮개 위 레일 이음
- cy(g,mats,'blued',.0125,.0125,.055,0,.03,-.415,'z',12);         // 총열 노출부
- cy(g,mats,'blued',.0105,.0105,.14,0,.03,-.49,'z',12);           // 가늘어진 총열
- // 소염기 — 포트를 뚫어 실루엣을 깬다.
- cy(g,mats,'steel',.019,.0205,.058,0,.03,-.575,'z',12);
- for(let i=0;i<3;i++)for(const s of [-1,1])bx(g,mats,'dark',.006,.03,.011,s*.014,.038,-.588+i*.019,0,0,s*.3);
- cy(g,mats,'dark',.013,.013,.062,0,.03,-.575,'z',10);            // 소염기 안쪽 구멍
- bx(g,mats,'blued',.028,.026,.036,0,.052,-.40);                  // 가스 블록
- cy(g,mats,'blued',.0065,.0065,.30,0,.049,-.30,'z',8);           // 가스관
+ bx(g,mats,'dark',.05,.013,.46,0,.068,-.13);                     // 상부 레일
+ for(let z=-.34;z<.07;z+=.026)bx(g,mats,'blued',.052,.017,.012,0,.074,z); // 레일 홈
+ bx(g,mats,'polymer',.058,.054,.25,0,.03,-.25);                  // 총열 덮개
+ for(const side of [-1,1])for(let z=-.35;z<-.14;z+=.035)cy(g,mats,'blued',.009,.009,.06,side*.03,.03,z,'x',7); // 방열 구멍
+ cy(g,mats,'blued',.0115,.0115,.19,0,.03,-.45,'z',10);           // 총열
+ cy(g,mats,'steel',.019,.019,.052,0,.03,-.556,'z',10);           // 소염기
+ for(let i=0;i<3;i++)bx(g,mats,'dark',.042,.006,.008,0,.049,-.545+i*.016);
+ bx(g,mats,'blued',.03,.028,.042,0,.052,-.375);                  // 가스 블록
+ cy(g,mats,'blued',.007,.007,.30,0,.048,-.29,'z',8);             // 가스관
  // 접어 둔 기계식 가늠쇠 — 실제 조준은 위의 도트 사이트로 한다.
  bx(g,mats,'blued',.028,.026,.012,0,.087,-.397);
  cy(g,mats,'steel',.0032,.0032,.022,0,.076,-.397,'y',6);
@@ -97,33 +71,20 @@ function buildRifle(mats){
  halo.position.set(0,dotY,-.0785);halo.renderOrder=2;g.add(halo);
  // 탄창 — 두 토막을 살짝 꺾어 곡선을 흉내낸다.
  const mag=new T.Group();mag.position.set(RIGS.rifle.mag.x,RIGS.rifle.mag.y,RIGS.rifle.mag.z);g.add(mag);parts.mag=mag;
- bx(mag,mats,'polymer',.038,.062,.055,0,.026,.004,.06);
- bx(mag,mats,'polymer',.037,.055,.053,0,-.028,-.006,.17);
- bx(mag,mats,'polymer',.036,.05,.05,0,-.078,-.024,.29);
- bx(mag,mats,'dark',.04,.011,.056,0,-.106,-.034,.29);
- for(let i=0;i<3;i++)bx(mag,mats,'blued',.04,.005,.052,0,.002-i*.026,-.002-i*.008,.17);
- // 탄창실 — 앞으로 살짝 기울어야 탄창 각도와 맞는다.
- bx(g,mats,'dark',.05,.062,.062,0,-.042,.008,.09);
- bx(g,mats,'blued',.054,.008,.066,0,-.012,.006,.09);             // 탄창실 테두리
- bx(g,mats,'blued',.008,.016,.016,.03,-.03,.036);                // 탄창 멈치 단추
- bx(g,mats,'blued',.008,.02,.012,-.03,-.024,.036);               // 노리쇠 멈치
- bx(g,mats,'blued',.01,.012,.012,.031,-.004,.062,0,0,.6);        // 안전장치 레버
- // 손잡이 — 손가락 홈을 내면 «막대»가 아니게 된다.
- bx(g,mats,'dark',.036,.10,.05,0,-.078,.084,.31);
- for(let i=0;i<3;i++)cy(g,mats,'blued',.005,.005,.038,0,-.048-i*.026,.063+i*.009,'x',6);
- bx(g,mats,'dark',.036,.022,.042,0,-.128,.098,.31);              // 손잡이 밑동
- // 방아쇠울 — 둥근 앞테
- bx(g,mats,'dark',.028,.008,.06,0,-.044,.05);
- bx(g,mats,'dark',.028,.03,.008,0,-.03,.079);
- cy(g,mats,'dark',.018,.018,.028,0,-.032,.026,'x',12);
- bx(g,mats,'steel',.008,.023,.007,0,-.03,.046,-.22);             // 방아쇠
- // 개머리판 — 버퍼튜브에 얹혀 뒤로 갈수록 가늘어진다.
- cy(g,mats,'blued',.021,.021,.16,0,.012,.16,'z',12);             // 버퍼튜브
- for(let z=.10;z<.235;z+=.026)cy(g,mats,'dark',.0235,.0235,.008,0,.012,z,'z',12); // 조절 홈
- bx(g,mats,'dark',.046,.062,.11,0,-.004,.205);                   // 개머리판 몸통
- bx(g,mats,'dark',.05,.028,.09,0,.032,.196);                     // 뺨 받침
- bx(g,mats,'dark',.05,.082,.016,0,-.008,.262,-.09);              // 개머리판 고무
- bx(g,mats,'dark',.03,.03,.062,0,-.046,.19,.24);                 // 아래 지지대
+ bx(mag,mats,'polymer',.038,.10,.055,0,.01,0,.09);
+ bx(mag,mats,'polymer',.037,.07,.052,0,-.072,-.012,.22);
+ bx(mag,mats,'dark',.04,.012,.058,0,-.108,-.02,.22);
+ bx(g,mats,'dark',.044,.03,.062,0,-.05,.012);                    // 탄창 멈치 주변
+ // 손잡이·방아쇠울
+ bx(g,mats,'polymer',.038,.105,.052,0,-.078,.082,.3);
+ bx(g,mats,'dark',.03,.008,.062,0,-.042,.05);
+ for(const s of [-1,1])bx(g,mats,'dark',.03,.032,.008,0,-.026,.05+s*.031);
+ bx(g,mats,'steel',.008,.024,.008,0,-.028,.048,-.2);             // 방아쇠
+ // 개머리판
+ bx(g,mats,'dark',.03,.042,.10,0,.006,.16);
+ bx(g,mats,'polymer',.05,.072,.10,0,-.002,.20);
+ bx(g,mats,'dark',.052,.086,.018,0,-.006,.253);
+ bx(g,mats,'polymer',.026,.036,.07,0,-.048,.20,.15);             // 뺨 받침 아래 지지대
  // 장전 손잡이 — 볼트 동작 때 뒤로 당겨진다.
  const bolt=new T.Group();bolt.position.set(0,.062,.093);g.add(bolt);parts.bolt=bolt;
  bx(bolt,mats,'steel',.056,.016,.042,0,0,0);
@@ -214,8 +175,6 @@ export function createViewmodel3D(renderer){
  const pos=new T.Vector3(),ejectOffset=new T.Vector3();
 
  return {
-  // 본편 하늘을 뷰모델 씬의 반사원으로 빌려 온다. 금속이 하늘을 비춰야 «쇠»로 보인다.
-  setEnvironment(tex){scene.environment=tex;scene.environmentIntensity=.55},
   ready:true,
   // 사격 순간: 반동을 밀어 넣고 화염·탄피를 낸다.
   shot(weapon='rifle'){
