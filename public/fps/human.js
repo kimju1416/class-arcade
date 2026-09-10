@@ -1,4 +1,4 @@
-import {tacticalRig} from './tactical-rig.js?v=combat3d-2';
+import {tacticalRig} from './tactical-rig.js?v=real-4';
 import * as T from './three.module.js';
 import {GLTFLoader} from './addons/loaders/GLTFLoader.js';
 import {clone} from './addons/utils/SkeletonUtils.js';

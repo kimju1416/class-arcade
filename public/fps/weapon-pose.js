@@ -7,8 +7,8 @@
 // adsZ = 정조준 시 총몸 원점까지의 거리. 개머리판 끝이 카메라 바로 뒤로 빠지는 값이라야
 // 어깨에 붙인 것처럼 보이고, 총몸이 화면 아래 3분의 1만 차지한다.
 export const RIGS={
- rifle:{scale:.6,hip:[.115,-.115,-.55],hipRot:[.02,-.055,.03],sight:{x:0,y:.115},adsZ:-.30,adsFov:52,bob:1,kick:.075,rise:.045,mag:{x:0,y:-.085,z:.015}},
- sniper:{scale:.6,hip:[.112,-.122,-.58],hipRot:[.025,-.05,.035],sight:{x:0,y:.108},adsZ:-.30,adsFov:26,bob:.8,kick:.14,rise:.085,mag:{x:0,y:-.07,z:.03}}
+ rifle:{scale:.6,hip:[.115,-.115,-.55],hipRot:[.03,.14,.05],sight:{x:0,y:.115},adsZ:-.30,adsFov:52,bob:1,kick:.075,rise:.045,mag:{x:0,y:-.085,z:.015}},
+ sniper:{scale:.6,hip:[.112,-.122,-.58],hipRot:[.035,.13,.055],sight:{x:0,y:.108},adsZ:-.30,adsFov:26,bob:.8,kick:.14,rise:.085,mag:{x:0,y:-.07,z:.03}}
 };
 export const RELOAD_STAGES=[.3,.72];
 export const clamp01=n=>n<0?0:n>1?1:n;

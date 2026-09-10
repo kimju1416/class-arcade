@@ -1,18 +1,18 @@
-import {upgradeDepot} from './depot-upgrade.js?v=combat3d-2';
-import {createTacticalMap} from './tactical-map.js?v=combat3d-2';
-import {createCombatFeedback} from './combat-feedback.js?v=combat3d-2';
-import {Recoil} from './recoil.js?v=combat3d-2';
+import {upgradeDepot} from './depot-upgrade.js?v=real-4';
+import {createTacticalMap} from './tactical-map.js?v=real-4';
+import {createCombatFeedback} from './combat-feedback.js?v=real-4';
+import {Recoil} from './recoil.js?v=real-4';
 const recoilMotion=new Recoil();
-import {createWeaponAudio} from './weapon-audio.js?v=combat3d-2';
+import {createWeaponAudio} from './weapon-audio.js?v=real-4';
 const weaponAudio=createWeaponAudio();
 const combatFeedback=createCombatFeedback(weaponAudio);
-import {createControls} from './controls.js?v=combat3d-2';
-import {createHuman} from './human.js?v=combat3d-2';
-import {createViewmodel3D} from './viewmodel3d.js?v=combat3d-2';
-import {createImpacts} from './impacts.js?v=combat3d-2';
+import {createControls} from './controls.js?v=real-4';
+import {createHuman} from './human.js?v=real-4';
+import {createViewmodel3D} from './viewmodel3d.js?v=real-4';
+import {createImpacts} from './impacts.js?v=real-4';
 import {enhanceDepot} from './environment.js';
 import * as T from './three.module.js';
-import {Arena,BOXES,clamp,rayBox,wallDistance} from './core.js?v=combat3d-2';
+import {Arena,BOXES,clamp,rayBox,wallDistance} from './core.js?v=real-4';
 const $=s=>document.getElementById(s);let mode='tdm',arena=null,ws=null,myId='',state=null,active=false,yaw=0,pitch=0,fire=false,aim=false,last=performance.now(),acc=0,lastHP=100,feed=[],hitUntil=0,frame=0;const mobile=matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0&&innerWidth<1100;const keys={};$('practice').disabled=true;$('online').disabled=true;T.DefaultLoadingManager.onProgress=(url,n,total)=>{$('status').textContent=`전장 에셋 불러오는 중 ${n} / ${total}`};T.DefaultLoadingManager.onLoad=()=>{$('practice').disabled=false;$('online').disabled=false;$('status').textContent='전투 준비 완료 · 모바일 터치 / PC 키보드 지원'};
 let renderer;try{renderer=new T.WebGLRenderer({canvas:$('scene'),antialias:!mobile})}catch(error){$('status').textContent='3D 그래픽을 시작할 수 없습니다. 브라우저의 하드웨어 가속을 켜고 다시 접속하세요.';throw error}renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1:1.25));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=!mobile;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.24;
 const scene=new T.Scene();scene.background=new T.Color('#7a929d');scene.fog=new T.FogExp2('#8998a1',.008);const camera=new T.PerspectiveCamera(78,innerWidth/innerHeight,.05,170);camera.rotation.order='YXZ';scene.add(camera);// 그림자를 켜면 지붕 아래가 통째로 그늘이 된다. 그늘에서도 읽히도록 환경광을 올린다.
@@ -25,7 +25,7 @@ function box(w,h,d,mat,x,y,z,parent=scene){let m=new T.Mesh(new T.BoxGeometry(w,
 box(50,.3,54,'ground',0,-.16,0);for(const b of BOXES){box(b[3],b[4],b[5],b[6],b[0],b[1],b[2]);if(['blue','red','olive'].includes(b[6])){for(let x=-b[3]/2+.15;x<b[3]/2;x+=.45)for(let side of [-1,1])box(.065,b[4]-.16,.06,'metal',b[0]+x,b[1],b[2]+side*(b[5]/2+.02));for(let z=-b[5]/2+.15;z<b[5]/2;z+=.45)for(let side of [-1,1])box(.06,b[4]-.16,.065,'metal',b[0]+side*(b[3]/2+.02),b[1],b[2]+z);for(let s of [-1,1])box(b[3]+.1,.12,b[5]+.1,'metal',b[0],b[1]+s*b[4]/2,b[2]);}if(b[6]==='crate')for(let s of [-1,1])box(b[3]+.04,.15,b[5]+.04,'tan',b[0],b[1]+s*(b[4]/2-.3),b[2]);}
 for(let z=-24;z<25;z+=6){box(.25,8,.25,'metal',-22,4,z);box(.25,8,.25,'metal',22,4,z);box(45,.25,.25,'metal',0,8,z)}box(13,.2,52,'metal',-17,8.1,0);box(13,.2,52,'metal',17,8.1,0);const lamp=new T.MeshBasicMaterial({color:'#fff0bc'});for(let z=-22;z<24;z+=8)for(let x of [-17,17])box(1.3,.04,.13,lamp,x,7.85,z);for(let z=-24;z<24;z+=3)for(let x of [-4,4])box(.1,.014,1.4,'tan',x,.01,z);
 function label(text,x,z){const c=document.createElement('canvas');c.width=256;c.height=128;const ctx=c.getContext('2d');ctx.fillStyle='#273536';ctx.fillRect(0,0,256,128);ctx.font='bold 52px Arial';ctx.fillStyle='#c4d2bd';ctx.textAlign='center';ctx.fillText(text,128,86);let m=new T.Mesh(new T.PlaneGeometry(3,1.5),new T.MeshBasicMaterial({map:new T.CanvasTexture(c),side:T.DoubleSide}));m.position.set(x,2,z);scene.add(m)}label('SECTOR A',-10,-2.96);label('SECTOR B',10,15.04);
-enhanceDepot(scene,mats,box,BOXES);upgradeDepot(scene,mats,box,BOXES);let lightIndex=0;for(const light of [...scene.children])if(light.isPointLight&&(mobile||lightIndex++%3!==0))scene.remove(light);if(mobile)scene.environment=null;
+enhanceDepot(scene,mats,box,BOXES);upgradeDepot(scene,mats,box,BOXES);viewmodel.setEnvironment(scene.environment);let lightIndex=0;for(const light of [...scene.children])if(light.isPointLight&&(mobile||lightIndex++%3!==0))scene.remove(light);if(mobile)scene.environment=null;
 // Batch repeated static warehouse parts without changing cover geometry.
 const batches=new Map();for(let mesh of [...scene.children]){if(!mesh.isMesh||mesh.geometry.type!=='BoxGeometry'||mesh.material.transparent)continue;let key=mesh.material.uuid+JSON.stringify(mesh.geometry.parameters);if(!batches.has(key))batches.set(key,[]);batches.get(key).push(mesh)}for(let list of batches.values()){if(list.length<3)continue;let batch=new T.InstancedMesh(list[0].geometry,list[0].material,list.length);list.forEach((mesh,i)=>{mesh.updateMatrix();batch.setMatrixAt(i,mesh.matrix);scene.remove(mesh);if(i>0)mesh.geometry.dispose()});batch.castShadow=true;batch.receiveShadow=true;batch.computeBoundingSphere();scene.add(batch)}
 

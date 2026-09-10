@@ -1,5 +1,5 @@
 {
-  "generator": "Codex built-in imagegen",
+  "generator": "Codex built-in imagegen / BBANANA Nano Banana 2",
   "assets": [
     {
       "file": "depot.webp",
@@ -33,6 +33,21 @@
     {
       "file": "depot-ground-v2.webp",
       "prompt": "Use case: stylized-concept. Asset type: seamless game environment ground base-color texture. Photoreal weathered industrial loading-yard asphalt mixed with old concrete aggregate, dark gray stone with gray-brown dust, fine hairline cracks, subtle tire scuffs and tiny worn patches. Detailed realistic tactical FPS depot material. Flat orthographic directly overhead, evenly diffuse light, seamless tileable all edges. No yellow or white road paint, no objects, no puddles, no large repeating cracks, no dramatic baked shadows. Square texture."
+    },
+    {
+      "file": "gun-steel.webp",
+      "use": "1인칭 총기 금속 표면(알베도 겸 요철)",
+      "prompt": "Macro material swatch: one single uniform continuous surface of matte black phosphate-coated firearm steel filling the entire frame edge to edge... (BBANANA Nano Banana 2, 512px·평균밝기 132로 정규화)"
+    },
+    {
+      "file": "gun-polymer.webp",
+      "use": "1인칭 총기 폴리머(총열덮개·탄창) 표면",
+      "prompt": "Macro material swatch: one single uniform continuous surface of flat dark earth tan firearm polymer... (BBANANA Nano Banana 2, 512px·평균밝기 158·채도 0.55)"
+    },
+    {
+      "file": "gun-glove.webp",
+      "use": "1인칭 장갑·소매 원단 표면",
+      "prompt": "Macro material swatch: one single uniform continuous surface of olive drab tactical glove nylon... (BBANANA Nano Banana 2, 512px·평균밝기 140·채도 0.7)"
     }
   ],
   "externalAssets": [
