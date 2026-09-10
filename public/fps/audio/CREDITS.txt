@@ -1,0 +1,21 @@
+The Free Firearm Sound Library — CC0 1.0 Universal
+Recorded by Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney.
+Source: https://opengameart.org/node/21826
+License: https://creativecommons.org/publicdomain/zero/1.0/
+Archive: https://opengameart.org/sites/default/files/Prepared%20SFX%20Library.7z
+
+rifle-1.wav and rifle-2.wav:
+  Prepared SFX Library/AR-15/D_32P.wav
+  Source metadata: AR-15/M4, .223/5.56x45, near distance, front of shooter, left/right stereo.
+  Excerpts starting at 0.686 and 5.637 seconds, 1.0 second duration.
+
+sniper-1.wav and sniper-2.wav:
+  Prepared SFX Library/Mosin Nagant/M_21P.wav
+  Source metadata: Mosin Nagant bolt-action rifle, 7.62x54, near distance, front of shooter, left/right stereo.
+  Excerpts starting at 1.018 and 5.008 seconds, 1.5 second duration.
+
+Edits: isolated individual shots, mono downmix, 48 kHz/16-bit PCM,
+low-frequency rumble filter and tail fade. Playback includes slight pitch variation,
+distance filtering, stereo positioning and a peak-control compressor.
+
+real-10 stereo editions: rifle-real-1/2 use the same AR-15 source at 0.686/5.637 seconds, 1.65 seconds long; sniper-real-1/2 use the same Mosin source at 1.018/5.008 seconds, 2.45 seconds long. Original stereo retained at 48 kHz/16-bit PCM, tail fade, peak limiter; sniper pre-gain 1.45. No pitch randomization or low-frequency removal. Playback compressor relaxed to 3:1.

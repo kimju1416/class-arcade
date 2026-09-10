@@ -33,6 +33,10 @@
     {
       "file": "depot-ground-v2.webp",
       "prompt": "Use case: stylized-concept. Asset type: seamless game environment ground base-color texture. Photoreal weathered industrial loading-yard asphalt mixed with old concrete aggregate, dark gray stone with gray-brown dust, fine hairline cracks, subtle tire scuffs and tiny worn patches. Detailed realistic tactical FPS depot material. Flat orthographic directly overhead, evenly diffuse light, seamless tileable all edges. No yellow or white road paint, no objects, no puddles, no large repeating cracks, no dramatic baked shadows. Square texture."
+    },
+    {
+      "file": "loading-bay-v3.webp",
+      "prompt": "Use case: stylized-concept. Asset type: high fidelity game environment texture, applied directly onto an existing warehouse wall in a realistic tactical FPS. A complete closed industrial loading-bay facade, strict straight-on orthographic elevation, no perspective: wide weathered blue-gray corrugated roller shutter centered, chunky concrete jambs and metal lintel, dark rubber dock bumper at base, narrow yellow-black caution strips on jambs, worn steel electrical junction box and conduit on right, a small warm utility lamp above. Beautifully detailed realistic metal, scuffs, chipped concrete, subtle grime and bolts. Neutral daylight, restrained soft baked ambient occlusion, no dramatic shadows, no people, no guns, no readable text, no logos. Square image, facade fills edge to edge, no ground foreground, no sky, no empty margin. Designed to look physically real at eye level."
     }
   ],
   "externalAssets": [
@@ -45,6 +49,42 @@
         "Walk",
         "Run"
       ]
+    },
+    {
+      "files": [
+        "audio/rifle-1.wav",
+        "audio/rifle-2.wav",
+        "audio/sniper-1.wav",
+        "audio/sniper-2.wav"
+      ],
+      "source": "https://opengameart.org/node/21826",
+      "license": "CC0 1.0",
+      "credit": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+      "notes": "AR-15 D_32P and Mosin Nagant M_21P field recordings, individual shots extracted; see audio/CREDITS.txt"
+    },
+    {
+      "files": [
+        "weapons/m4a1.glb",
+        "weapons/m4-color.webp",
+        "weapons/m4-normal.webp",
+        "weapons/m4-rough.webp",
+        "weapons/m4-metal.webp"
+      ],
+      "source": "https://opengameart.org/content/m4a1-assault-rifle",
+      "license": "CC0",
+      "credit": "3DModelsCC0, submitted by nisu",
+      "notes": "Converted and adapted; see weapons/CREDITS.txt"
+    },
+    {
+      "files": [
+        "audio/rifle-real-1.wav",
+        "audio/rifle-real-2.wav",
+        "audio/sniper-real-1.wav",
+        "audio/sniper-real-2.wav"
+      ],
+      "source": "https://opengameart.org/node/21826",
+      "license": "CC0",
+      "notes": "Longer stereo source excerpts; no pitch randomization. See audio/CREDITS.txt"
     }
   ],
   "notes": []
