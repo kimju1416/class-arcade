@@ -1,9 +1,13 @@
 import * as T from './three.module.js';
 import {GLTFLoader} from './addons/loaders/GLTFLoader.js';
-import {RIGS} from './weapon-pose.js?v=photo-4';
+import {RIGS} from './weapon-pose.js?v=warm-3';
 const textures=new T.TextureLoader();
-function tex(name,color=false){const t=textures.load('weapons/m4-'+name+'.webp');t.flipY=true;t.anisotropy=4;if(color)t.colorSpace=T.SRGBColorSpace;return t}
-const material=new T.MeshStandardMaterial({map:tex('color',true),normalMap:tex('normal'),roughnessMap:tex('rough'),metalnessMap:tex('metal'),roughness:1,metalness:1,normalScale:new T.Vector2(.65,.65)});
+// 폰은 GPU 메모리가 좁다 — 2048² PBR 네 장(85MB)이 게임 시작·첫 조준 멈칫의 주범이었다. 폰은 1024² 두 장만, 거칠기·금속은 값으로.
+const mobileGPU=typeof matchMedia!=='undefined'&&(matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0&&innerWidth<1100);
+function tex(name,color=false){const t=textures.load('weapons/m4-'+name+(mobileGPU?'-1k':'')+'.webp');t.flipY=true;t.anisotropy=mobileGPU?1:4;if(color)t.colorSpace=T.SRGBColorSpace;return t}
+const material=mobileGPU
+ ?new T.MeshStandardMaterial({map:tex('color',true),normalMap:tex('normal'),roughness:.55,metalness:.75,normalScale:new T.Vector2(.65,.65)})
+ :new T.MeshStandardMaterial({map:tex('color',true),normalMap:tex('normal'),roughnessMap:tex('rough'),metalnessMap:tex('metal'),roughness:1,metalness:1,normalScale:new T.Vector2(.65,.65)});
 const pending=[];let template;
 new GLTFLoader().load('weapons/m4a1.glb',g=>{template=g.scene;for(const mount of pending)mount();pending.length=0});
 // Artist-authored CC0 M4A1, adapted to the existing viewmodel coordinate system.

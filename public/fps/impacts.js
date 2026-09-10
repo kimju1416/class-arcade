@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {BOXES} from './core.js?v=photo-4';
+import {BOXES} from './core.js?v=warm-3';
 
 // 총알이 닿은 자리의 반응 — 불똥, 먼지, 탄흔, 피격 분출.
 // 모두 미리 만들어 두고 돌려 쓴다. 한 발마다 새로 만들면 연사에서 프레임이 끊긴다.
@@ -94,7 +94,7 @@ export function createImpacts(scene){
  }
  function puff(x,y,z,tex,size,grow,life){
   const d=dusts[dustAt=(dustAt+1)%DUSTS];
-  d.sprite.material.map=tex;d.sprite.material.needsUpdate=true;
+  d.sprite.material.map=tex; /* 같은 종류 텍스처끼리 바꿀 땐 needsUpdate가 필요 없다 — 매 발 재질 재평가(getParameters)를 부르던 원인 */
   d.sprite.position.set(x,y,z);d.sprite.scale.setScalar(size);
   d.sprite.visible=true;d.sprite.material.opacity=.75;
   d.ttl=d.life=life;d.grow=grow;
@@ -102,6 +102,9 @@ export function createImpacts(scene){
 
  return {
   // point = 맞은 자리, dir = 총알이 날아온 방향, flesh = 사람을 맞혔는가
+  // 멈칫 방지: 먼지·탄흔을 잠깐 켜고 «실제로 한 번 그린다». compile()만으로는 링크 확인·유니폼 준비가 첫 실사용(=첫 사격)으로 미뤄진다.
+  // 로딩 중엔 메뉴가 캔버스를 가리고 있어 이 한 장은 보이지 않는다.
+  prewarm(renderer,scene,camera){const on=[...dusts.map(d=>d.sprite),...decals.map(d=>d.mesh)];for(const o of on){o.visible=true;o.frustumCulled=false}try{renderer.compile(scene,camera);renderer.render(scene,camera)}catch{}for(const o of on)o.frustumCulled=true;for(const d of dusts)d.sprite.visible=d.ttl>0;for(const d of decals)d.mesh.visible=d.ttl>0},
   hit(point,dir,flesh){
    const x=point.x,y=point.y,z=point.z;
    if(flesh){

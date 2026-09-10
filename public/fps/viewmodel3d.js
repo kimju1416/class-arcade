@@ -1,13 +1,13 @@
-import {realWeapon} from './weapon-model.js?v=photo-4';
+import {realWeapon} from './weapon-model.js?v=warm-3';
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=photo-4';
+import {weaponPose,RIGS} from './weapon-pose.js?v=warm-3';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
 
 // 전술장갑 원단 사진. 같은 그림을 요철로도 써서 짜임이 빛을 받는다.
 let fabricTex=null;
 if(typeof document!=='undefined'){
- fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=photo-4');
+ fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=warm-3');
  fabricTex.colorSpace=T.SRGBColorSpace;
  fabricTex.wrapS=fabricTex.wrapT=T.MirroredRepeatWrapping;
  fabricTex.repeat.set(3.2,3.2);fabricTex.anisotropy=4;
@@ -101,12 +101,17 @@ function gripHand(parent,mats,pos,rot,elbow,tight=1,mirror=false){
 const armTex={};
 // anchor = 사진 속 주먹 자리(0~1, 왼쪽 위 기준). 판을 그 점이 원점이 되게 옮겨 두므로,
 // pos에 주먹이 오고 판을 키워도 주먹은 제자리다. 사진에 조명이 구워져 있어 무조명·톤매핑 제외.
-function photoArm(parent,file,w,h,anchor,pos,rot){
+function photoArm(parent,file,w,h,anchor,pos,rot,ext){
  if(typeof document==='undefined')return null;
  let tex=armTex[file];
- if(!tex){tex=armTex[file]=new T.TextureLoader().load(file+'?v=photo-4');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4}
+ if(!tex){tex=armTex[file]=new T.TextureLoader().load(file+'?v=warm-3');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4}
  const mat=new T.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.02,side:T.DoubleSide,toneMapped:false,color:'#cfcfc8'});
- const geo=new T.PlaneGeometry(w,h);geo.translate(-(anchor[0]-.5)*w,-(.5-anchor[1])*h,0);
+ // ext=[왼,아래,오른]: 사진 밖으로 판을 늘릴 비율. 늘어난 자리는 가장자리 픽셀이 번져 채워진다(ClampToEdge) —
+ // 소매가 사진 끝에서 뚝 끊기거나 흐려지지 않고 화면 밖까지 이어진다. 원래 사진 영역의 UV는 그대로 0~1.
+ const e=ext||[0,0,0],W=w*(1+e[0]+e[2]),H=h*(1+e[1]);
+ const geo=new T.PlaneGeometry(W,H),uv=geo.attributes.uv;
+ for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*(1+e[0]+e[2])-e[0],uv.getY(i)*(1+e[1])-e[1]);
+ geo.translate(w*(e[2]-e[0])/2-(anchor[0]-.5)*w,-h*e[1]/2-(.5-anchor[1])*h,0);
  const arm=new T.Mesh(geo,mat);
  arm.position.set(pos[0],pos[1],pos[2]);arm.rotation.set(rot[0],rot[1],rot[2]);
  parent.add(arm);
@@ -128,25 +133,17 @@ function buildRifle(mats){
  return m;
 }
 function buildSniper(mats){
- const m=realWeapon('sniper'),g=m.group,sy=RIGS.sniper.sight.y;
- // Scoped precision variant of the imported receiver, with a free-floating long barrel.
- cy(g,mats,'blued',.0125,.0125,.29,0,.03,-.715,'z',32);
- cy(g,mats,'steel',.021,.021,.045,0,.03,-.85,'z',32);
- cy(g,mats,'blued',.024,.024,.28,0,sy,-.11,'z',40);
- cy(g,mats,'blued',.035,.024,.075,0,sy,-.285,'z',40);
- cy(g,mats,'blued',.030,.025,.06,0,sy,.05,'z',40);
- cy(g,mats,'lens',.031,.031,.003,0,sy,-.324,'z',40);
- cy(g,mats,'lens',.026,.026,.003,0,sy,.081,'z',40);
- for(const z of [-.20,0]){cy(g,mats,'dark',.027,.027,.018,0,sy,z,'z',32);bx(g,mats,'dark',.025,.045,.024,0,sy-.035,z)}
- cy(g,mats,'blued',.013,.013,.018,0,sy+.033,-.06,'y',24);
- cy(g,mats,'blued',.012,.012,.018,.033,sy,-.06,'x',24);
- photoArm(g,'arm-right.webp',.30,.277,[.08,.12],[.020,-.056,.034],[0,0,0]);   // 주먹을 권총손잡이 오른쪽에
- photoArm(g,'arm-left.webp',.46,.46,[.84,.20],[-.026,.028,-.322],[0,0,0]);   // 긴 총열이라 왼손을 더 앞으로
- return m;
+ // 저격총은 M4 몸통을 빌리지 않는다 — 처음 판처럼 «완전히 다른 총»(탄색 볼트액션·대형 조준경)을 실사 사진으로.
+ // 사진 속 기준점(좌우 반전 후): 손잡이 .47,.78 / 앞총대 .27,.37 / 총구 .005,.087
+ const g=new T.Group(),mag=new T.Group(),bolt=new T.Group();g.add(mag,bolt);
+ photoArm(g,'sniper-photo.webp',.62,.385,[.47,.78],[0,-.085,.030],[0,0,0]);
+ photoArm(g,'arm-right.webp',.30,.277,[.08,.12],[.020,-.056,.036],[0,0,0]);
+ photoArm(g,'arm-left.webp',.34,.34,[.84,.20],[-.120,.070,.036],[0,0,0]);
+ return {group:g,parts:{mag,bolt},muzzle:new T.Vector3(-.288,.182,.030)};
 }
 
 export function createViewmodel3D(renderer){
- const scene=new T.Scene();const env=new T.TextureLoader().load('sky-depot.webp');env.mapping=T.EquirectangularReflectionMapping;env.colorSpace=T.SRGBColorSpace;scene.environment=env;scene.environmentIntensity=.85;
+ const scene=new T.Scene();/* 폰은 환경맵(PMREM 생성)을 건너뛴다 — 본편도 폰에선 끄고 있다 */if(!(typeof matchMedia!=='undefined'&&(matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0&&innerWidth<1100))){const env=new T.TextureLoader().load('sky-depot.webp');env.mapping=T.EquirectangularReflectionMapping;env.colorSpace=T.SRGBColorSpace;scene.environment=env;scene.environmentIntensity=.85;}
  const camera=new T.PerspectiveCamera(45,1,.01,6);
  // 뷰모델 전용 조명. 본편 밝기와 무관하게 총이 항상 또렷하게 읽힌다.
  scene.add(new T.HemisphereLight('#d6e6f7','#3a3b33',2.3));
@@ -185,6 +182,8 @@ export function createViewmodel3D(renderer){
  const pos=new T.Vector3(),ejectOffset=new T.Vector3();
 
  return {
+  // 멈칫 방지: 숨어 있는 총·화염·탄피까지 잠깐 켜고 «실제로 한 번 그린다». compile()만으로는 링크 확인이 첫 사격으로 미뤄진다(프로파일 실측).
+  prewarm(){const hidden=[],culled=[];scene.traverse(o=>{if(!o.visible){hidden.push(o);o.visible=true}if(o.isMesh&&o.frustumCulled){culled.push(o);o.frustumCulled=false}});const auto=renderer.autoClear;try{renderer.compile(scene,camera);renderer.autoClear=false;renderer.render(scene,camera)}catch{}renderer.autoClear=auto;for(const o of culled)o.frustumCulled=true;for(const o of hidden)o.visible=false},
   ready:true,
   // 사격 순간: 반동을 밀어 넣고 화염·탄피를 낸다.
   shot(weapon='rifle'){

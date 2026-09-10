@@ -13,3 +13,19 @@ select{width:100%;background:#111a20;border:1px solid #77808570;color:#fff;paddi
 #hurt i::before{content:"";position:absolute;left:-72px;top:-27vmin;width:144px;height:30px;background:radial-gradient(ellipse at 50% 130%,rgba(255,72,54,.95),rgba(255,86,54,.34) 55%,rgba(255,86,54,0) 78%);clip-path:polygon(0 100%,50% 0,100% 100%);filter:drop-shadow(0 0 8px rgba(255,60,40,.55))}
 
 .match{border-radius:8px;box-shadow:0 8px 28px #0004;border-left:1px solid #ddebd01a;border-right:1px solid #ddebd01a}.health,.weapon{padding:12px 16px;border-bottom:2px solid #cddd8c;background:linear-gradient(115deg,#101d25dc,#101d250a);border-radius:8px}.weapon{background:linear-gradient(245deg,#101d25dc,#101d250a)}.health>small,.weapon>small{font-weight:700}.touch-device .health,.touch-device .weapon{padding:6px 9px;border-bottom-width:1px}.touch-device #mobile-controls #touch-sprint{width:84px;height:46px;left:52px;bottom:165px;border-radius:12px;font-size:11px;line-height:1.25;background:#23363de8}.touch-device #touch-sprint.on{background:linear-gradient(135deg,#547342,#2a432c);border-color:#cddd8c;color:#efffd5;box-shadow:0 0 0 2px #b4d58714}.touch-device #touch-fire{box-shadow:0 5px 20px #0006,inset 0 1px 0 #fff6}.touch-device #touch-aim,.touch-device #touch-reload,.touch-device #touch-jump{background:linear-gradient(145deg,#33454dcc,#17262de0)}@media (orientation:landscape) and (max-height:600px){.touch-device #mobile-controls #touch-sprint{left:166px;bottom:30px}.touch-device .health{bottom:166px}.touch-device .weapon{bottom:214px}}
+/* ── 모바일 HUD 겹침 정리 — 폰·태블릿 가로에서 실측으로 겹치던 자리를 뺀다 ── */
+/* 자동 달리기: 조이스틱 오른쪽 아래. 태블릿에서 체력 패널 위에 올라가던 것을 고친다 */
+.touch-device #mobile-controls #touch-sprint{left:calc(max(22px,env(safe-area-inset-left)) + 142px);bottom:max(30px,env(safe-area-inset-bottom))}
+@media (orientation:landscape) and (max-height:600px){
+ .touch-device #mobile-controls #touch-sprint{left:calc(max(22px,env(safe-area-inset-left)) + 142px);bottom:max(30px,env(safe-area-inset-bottom))}
+ /* 왼쪽 위: 지명 → 그 오른쪽에 일시정지, 체력은 지명 바로 아래(조이스틱과 안 닿게 이름표는 숨김) */
+ .touch-device #pause-button{top:14px;left:136px;min-height:38px;padding:6px 10px}
+ .touch-device .health{top:76px;bottom:auto;left:18px}
+ .touch-device .health>small{display:none}
+ /* 오른쪽 위: 미니맵 → 그 왼쪽에 무기 패널, 무기 패널 아래 전체맵 버튼. 점프는 그 아래로 비켜난다 */
+ .touch-device #minimap{top:12px;right:12px;width:76px;height:76px}
+ .touch-device .weapon{top:10px;bottom:auto;right:98px}
+ .touch-device .weapon>small,.touch-device .weapon p{display:none}
+ .touch-device #map-button{top:90px;right:98px;min-height:34px;padding:5px 11px}
+ .touch-device #feed{top:132px}
+}
