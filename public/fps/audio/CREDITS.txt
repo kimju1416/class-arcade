@@ -17,3 +17,5 @@ sniper-1.wav and sniper-2.wav:
 Edits: isolated individual shots, mono downmix, 48 kHz/16-bit PCM,
 low-frequency rumble filter and tail fade. Playback includes slight pitch variation,
 distance filtering, stereo positioning and a peak-control compressor.
+
+real-10 stereo editions: rifle-real-1/2 use the same AR-15 source at 0.686/5.637 seconds, 1.65 seconds long; sniper-real-1/2 use the same Mosin source at 1.018/5.008 seconds, 2.45 seconds long. Original stereo retained at 48 kHz/16-bit PCM, tail fade, peak limiter; sniper pre-gain 1.45. No pitch randomization or low-frequency removal. Playback compressor relaxed to 3:1.

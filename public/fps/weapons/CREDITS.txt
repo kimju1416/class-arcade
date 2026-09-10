@@ -1,0 +1,10 @@
+M4A1 visual model and PBR textures — CC0
+Original creator: 3DModelsCC0. OpenGameArt submission by nisu.
+Source: https://opengameart.org/content/m4a1-assault-rifle
+Archive: https://opengameart.org/sites/default/files/m4a1_0.zip
+License: https://creativecommons.org/publicdomain/zero/1.0/
+
+Adaptations: FBX converted to GLB; static transforms baked; coordinates scaled
+for the game; separate magazine and charging handle used for animation;
+WebP texture delivery; custom optic and scoped long-barrel precision variant.
+The precision variant is a fictional game adaptation, not an accurate M700 model.

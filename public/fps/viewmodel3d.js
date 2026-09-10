@@ -1,5 +1,6 @@
+import {realWeapon} from './weapon-model.js?v=real-10';
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=combat3d-2';
+import {weaponPose,RIGS} from './weapon-pose.js?v=real-10';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
 
@@ -8,16 +9,21 @@ const M={
  dark:()=>new T.MeshStandardMaterial({color:'#343a3e',roughness:.58,metalness:.18}),
  steel:()=>new T.MeshStandardMaterial({color:'#5b6165',roughness:.34,metalness:.88}),
  blued:()=>new T.MeshStandardMaterial({color:'#414850',roughness:.28,metalness:.92}),
- glove:()=>new T.MeshStandardMaterial({color:'#4a5142',roughness:.94,metalness:.02}),
- sleeve:()=>new T.MeshStandardMaterial({color:'#5c6046',roughness:.97,metalness:0}),
+ glove:()=>new T.MeshStandardMaterial({color:'#272d29',roughness:.94,metalness:.02}),
+ sleeve:()=>new T.MeshStandardMaterial({color:'#414536',roughness:.97,metalness:0}),
  brass:()=>new T.MeshStandardMaterial({color:'#b8933f',roughness:.32,metalness:.9}),
  lens:()=>new T.MeshStandardMaterial({color:'#12303f',roughness:.08,metalness:.4,emissive:'#0d3550',emissiveIntensity:.5})
 };
 
-function bx(parent,mats,name,w,h,d,x,y,z,rx=0,ry=0,rz=0){
- const m=new T.Mesh(new T.BoxGeometry(w,h,d),mats[name]);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);parent.add(m);return m;
+function roundedBox(w,h,d){
+ const radius=Math.min(w,h,d)*.20,shape=new T.Shape(),x=-w/2+radius,y=-h/2+radius,ww=w-2*radius,hh=h-2*radius;
+ shape.moveTo(x,y);shape.lineTo(x+ww,y);shape.lineTo(x+ww,y+hh);shape.lineTo(x,y+hh);shape.closePath();
+ const geo=new T.ExtrudeGeometry(shape,{depth:Math.max(.001,d-2*radius),bevelEnabled:true,bevelThickness:radius,bevelSize:radius,bevelSegments:3,steps:1,curveSegments:4});geo.translate(0,0,-d/2+radius);return geo;
 }
-function cy(parent,mats,name,rt,rb,len,x,y,z,axis='z',seg=12){
+function bx(parent,mats,name,w,h,d,x,y,z,rx=0,ry=0,rz=0){
+ const m=new T.Mesh(roundedBox(w,h,d),mats[name]);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);parent.add(m);return m;
+}
+function cy(parent,mats,name,rt,rb,len,x,y,z,axis='z',seg=24){
  const m=new T.Mesh(new T.CylinderGeometry(rt,rb,len,seg),mats[name]);
  if(axis==='z')m.rotation.x=Math.PI/2;if(axis==='x')m.rotation.z=Math.PI/2;
  m.position.set(x,y,z);parent.add(m);return m;
@@ -26,117 +32,53 @@ function cy(parent,mats,name,rt,rb,len,x,y,z,axis='z',seg=12){
 // 손·팔뚝. 총을 잡은 방향으로 소매가 화면 밖까지 이어진다.
 function hand(parent,mats,x,y,z,rz,ry,elbowX,elbowY,elbowZ){
  const g=new T.Group();g.position.set(x,y,z);g.rotation.set(0,ry,rz);parent.add(g);
- bx(g,mats,'glove',.052,.072,.088,0,0,0);                       // 주먹
- for(let i=0;i<4;i++)bx(g,mats,'glove',.05,.014,.019,0,.026-i*.018,-.047,.12); // 손가락 마디
- bx(g,mats,'glove',.02,.05,.03,.03,-.006,-.03,0,0,-.5);          // 엄지
- bx(g,mats,'glove',.05,.05,.05,0,.002,.045);                     // 손등
+ const palm=new T.Mesh(new T.SphereGeometry(1,20,14),mats.glove);palm.scale.set(.028,.037,.046);g.add(palm);                       // 주먹
+ for(let i=0;i<4;i++){const finger=new T.Mesh(new T.CapsuleGeometry(.008,.031,4,12),mats.glove);finger.rotation.z=Math.PI/2;finger.position.set(0,.026-i*.017,-.040);g.add(finger)} // 손가락 마디
+ const thumb=new T.Mesh(new T.CapsuleGeometry(.010,.027,4,12),mats.glove);thumb.rotation.z=-.5;thumb.position.set(.025,-.006,-.023);g.add(thumb);          // 엄지
+                      // 손등
  // 팔뚝은 총 좌표계에 직접 단다. 손의 회전을 따라가면 팔꿈치 방향이 틀어지기 때문이다.
  const sleeve=new T.Group();sleeve.position.set(x,y,z);parent.add(sleeve);
  const dir=new T.Vector3(elbowX-x,elbowY-y,elbowZ-z);
  const len=dir.length();dir.normalize();
  sleeve.quaternion.setFromUnitVectors(new T.Vector3(0,0,1),dir);
- cy(sleeve,mats,'glove',.038,.038,.03,0,0,.045,'z',10);                      // 손목 소맷단
- cy(sleeve,mats,'sleeve',.033,.047,len,0,0,len/2+.055,'z',10);
+ cy(sleeve,mats,'glove',.038,.038,.03,0,0,.045,'z',24);                      // 손목 소맷단
+ cy(sleeve,mats,'sleeve',.033,.047,len,0,0,len/2+.055,'z',24);
  for(let i=1;i<4;i++){const r=.033+(.047-.033)*(i/4)+.005;cy(sleeve,mats,'glove',r,r,.014,0,0,.055+len*i/4,'z',10)} // 소매 주름
  return g;
 }
 
 function buildRifle(mats){
- const g=new T.Group(),parts={};
- bx(g,mats,'dark',.062,.056,.30,0,.034,-.03);                    // 상부 총몸
- bx(g,mats,'dark',.056,.052,.17,0,-.008,.035);                   // 하부 총몸
- bx(g,mats,'dark',.05,.013,.46,0,.068,-.13);                     // 상부 레일
- for(let z=-.34;z<.07;z+=.026)bx(g,mats,'blued',.052,.017,.012,0,.074,z); // 레일 홈
- bx(g,mats,'polymer',.058,.054,.25,0,.03,-.25);                  // 총열 덮개
- for(const side of [-1,1])for(let z=-.35;z<-.14;z+=.035)cy(g,mats,'blued',.009,.009,.06,side*.03,.03,z,'x',7); // 방열 구멍
- cy(g,mats,'blued',.0115,.0115,.19,0,.03,-.45,'z',10);           // 총열
- cy(g,mats,'steel',.019,.019,.052,0,.03,-.556,'z',10);           // 소염기
- for(let i=0;i<3;i++)bx(g,mats,'dark',.042,.006,.008,0,.049,-.545+i*.016);
- bx(g,mats,'blued',.03,.028,.042,0,.052,-.375);                  // 가스 블록
- cy(g,mats,'blued',.007,.007,.30,0,.048,-.29,'z',8);             // 가스관
- // 접어 둔 기계식 가늠쇠 — 실제 조준은 위의 도트 사이트로 한다.
- bx(g,mats,'blued',.028,.026,.012,0,.087,-.397);
- cy(g,mats,'steel',.0032,.0032,.022,0,.076,-.397,'y',6);
- // 도트 사이트. 광축(붉은 점)이 RIGS.rifle.sight.y 높이에 정확히 있어야 정조준이 맞는다.
- const dotY=RIGS.rifle.sight.y;
- bx(g,mats,'blued',.03,.028,.05,0,dotY-.039,-.06);                // 마운트 받침
- bx(g,mats,'blued',.042,.008,.058,0,dotY-.025,-.06);              // 하판
- for(const s of [-1,1])bx(g,mats,'blued',.005,.036,.056,s*.019,dotY-.004,-.06); // 좌우 기둥
- bx(g,mats,'blued',.042,.006,.058,0,dotY+.017,-.06);              // 상판
- const glass=new T.Mesh(new T.PlaneGeometry(.032,.03),new T.MeshBasicMaterial({color:'#7ec8e8',transparent:true,opacity:.16,depthWrite:false,side:T.DoubleSide}));
- glass.position.set(0,dotY-.003,-.078);g.add(glass);
- const dot=new T.Mesh(new T.CircleGeometry(.0022,10),new T.MeshBasicMaterial({color:'#ff3b30',transparent:true,opacity:.95,depthTest:false,depthWrite:false,blending:T.AdditiveBlending}));
- dot.position.set(0,dotY,-.079);dot.renderOrder=3;g.add(dot);
- const halo=new T.Mesh(new T.CircleGeometry(.006,12),new T.MeshBasicMaterial({color:'#ff2a20',transparent:true,opacity:.3,depthTest:false,depthWrite:false,blending:T.AdditiveBlending}));
- halo.position.set(0,dotY,-.0785);halo.renderOrder=2;g.add(halo);
- // 탄창 — 두 토막을 살짝 꺾어 곡선을 흉내낸다.
- const mag=new T.Group();mag.position.set(RIGS.rifle.mag.x,RIGS.rifle.mag.y,RIGS.rifle.mag.z);g.add(mag);parts.mag=mag;
- bx(mag,mats,'polymer',.038,.10,.055,0,.01,0,.09);
- bx(mag,mats,'polymer',.037,.07,.052,0,-.072,-.012,.22);
- bx(mag,mats,'dark',.04,.012,.058,0,-.108,-.02,.22);
- bx(g,mats,'dark',.044,.03,.062,0,-.05,.012);                    // 탄창 멈치 주변
- // 손잡이·방아쇠울
- bx(g,mats,'polymer',.038,.105,.052,0,-.078,.082,.3);
- bx(g,mats,'dark',.03,.008,.062,0,-.042,.05);
- for(const s of [-1,1])bx(g,mats,'dark',.03,.032,.008,0,-.026,.05+s*.031);
- bx(g,mats,'steel',.008,.024,.008,0,-.028,.048,-.2);             // 방아쇠
- // 개머리판
- bx(g,mats,'dark',.03,.042,.10,0,.006,.16);
- bx(g,mats,'polymer',.05,.072,.10,0,-.002,.20);
- bx(g,mats,'dark',.052,.086,.018,0,-.006,.253);
- bx(g,mats,'polymer',.026,.036,.07,0,-.048,.20,.15);             // 뺨 받침 아래 지지대
- // 장전 손잡이 — 볼트 동작 때 뒤로 당겨진다.
- const bolt=new T.Group();bolt.position.set(0,.062,.093);g.add(bolt);parts.bolt=bolt;
- bx(bolt,mats,'steel',.056,.016,.042,0,0,0);
- bx(bolt,mats,'steel',.016,.014,.03,.03,0,.02);
- bx(g,mats,'blued',.004,.03,.07,.032,.036,-.02);                 // 탄피 배출구 덮개
- hand(g,mats,.032,-.088,.085,-.22,.12,.19,-.30,.30);             // 오른손
- hand(g,mats,-.03,-.02,-.26,.34,-.16,-.20,-.30,-.10);            // 왼손
- return {group:g,parts,muzzle:new T.Vector3(0,.03,-.585)};
+ const m=realWeapon('rifle'),g=m.group;
+ const sy=RIGS.rifle.sight.y;
+ bx(g,mats,'dark',.035,.05,.055,0,sy-.05,0);
+ const tube=new T.Mesh(new T.CylinderGeometry(.026,.026,.066,40,1,true),new T.MeshStandardMaterial({color:'#30373a',roughness:.48,metalness:.8,side:T.DoubleSide}));tube.rotation.x=Math.PI/2;tube.position.set(0,sy,0);g.add(tube);
+ for(const z of [-.034,.034]){const ring=new T.Mesh(new T.TorusGeometry(.026,.003,10,40),mats.blued);ring.position.set(0,sy,z);g.add(ring)}
+ const glass=new T.Mesh(new T.CircleGeometry(.024,40),new T.MeshBasicMaterial({color:'#8dcbd5',transparent:true,opacity:.09,depthWrite:false,side:T.DoubleSide}));glass.position.set(0,sy,-.03);g.add(glass);
+ const dot=new T.Mesh(new T.CircleGeometry(.0014,16),new T.MeshBasicMaterial({color:'#ff3928',depthTest:false,depthWrite:false}));dot.position.set(0,sy,-.031);dot.renderOrder=3;g.add(dot);
+ hand(g,mats,.032,-.088,.085,-.22,.12,.19,-.30,.30);
+ hand(g,mats,-.03,-.02,-.26,.34,-.16,-.20,-.30,-.10);
+ return m;
 }
-
 function buildSniper(mats){
- const g=new T.Group(),parts={};
- bx(g,mats,'dark',.058,.058,.36,0,.03,-.02);                     // 총몸
- bx(g,mats,'polymer',.066,.05,.30,0,-.004,-.30);                 // 총열 덮개
- cy(g,mats,'blued',.0135,.0135,.42,0,.026,-.60,'z',12);          // 긴 총열
- for(let z=-.50;z<-.36;z+=.035)cy(g,mats,'blued',.017,.017,.01,0,.026,z,'z',10); // 방열 홈
- cy(g,mats,'steel',.022,.022,.07,0,.026,-.83,'z',12);            // 소염기
- // 조준경 — 광축 중심이 RIGS.sniper.sight.y와 같아야 한다.
- const sy=RIGS.sniper.sight.y;
- cy(g,mats,'blued',.0245,.0245,.28,0,sy,-.11,'z',14);
- cy(g,mats,'blued',.034,.0265,.075,0,sy,-.285,'z',14);           // 대물부
- cy(g,mats,'blued',.028,.0245,.05,0,sy,.045,'z',14);             // 접안부
- cy(g,mats,'lens',.0305,.0305,.006,0,sy,-.321,'z',16);
- cy(g,mats,'lens',.0245,.0245,.006,0,sy,.068,'z',16);
- for(const z of [-.20,.0])bx(g,mats,'steel',.03,.05,.026,0,sy-.03,z);   // 마운트 링
- bx(g,mats,'steel',.018,.02,.02,.03,sy+.012,-.06);               // 영점 조절 손잡이
- bx(g,mats,'steel',.02,.018,.02,0,sy+.028,-.06);
- // 접힌 양각대
- for(const s of [-1,1]){bx(g,mats,'blued',.01,.012,.13,s*.016,-.014,-.42,0,0,s*.12);bx(g,mats,'dark',.014,.016,.03,s*.018,-.014,-.36)}
- // 탄창
- const mag=new T.Group();mag.position.set(RIGS.sniper.mag.x,RIGS.sniper.mag.y,RIGS.sniper.mag.z);g.add(mag);parts.mag=mag;
- bx(mag,mats,'dark',.04,.075,.06,0,0,0,.06);
- bx(mag,mats,'blued',.043,.012,.063,0,-.044,-.004,.06);
- // 손잡이·개머리판
- bx(g,mats,'polymer',.04,.11,.054,0,-.075,.09,.3);
- bx(g,mats,'dark',.03,.008,.064,0,-.04,.058);
- for(const s of [-1,1])bx(g,mats,'dark',.03,.03,.008,0,-.026,.058+s*.032);
- bx(g,mats,'steel',.008,.024,.008,0,-.028,.056,-.2);
- bx(g,mats,'polymer',.052,.075,.14,0,.004,.20);
- bx(g,mats,'polymer',.05,.03,.10,0,.05,.185);                    // 뺨 받침
- bx(g,mats,'dark',.054,.09,.018,0,-.004,.278);
- // 볼트 손잡이 — 사격 후 왕복한다.
- const bolt=new T.Group();bolt.position.set(.03,.042,.075);g.add(bolt);parts.bolt=bolt;
- bx(bolt,mats,'steel',.05,.016,.016,.022,0,0,0,0,.1);
- const knob=new T.Mesh(new T.SphereGeometry(.014,10,8),mats.steel);knob.position.set(.05,.002,0);bolt.add(knob);
- hand(g,mats,.034,-.086,.092,-.2,.12,.19,-.30,.31);              // 오른손
- hand(g,mats,-.03,-.052,-.30,.3,-.14,-.20,-.32,-.14);            // 왼손
- return {group:g,parts,muzzle:new T.Vector3(0,.026,-.87)};
+ const m=realWeapon('sniper'),g=m.group,sy=RIGS.sniper.sight.y;
+ // Scoped precision variant of the imported receiver, with a free-floating long barrel.
+ cy(g,mats,'blued',.0125,.0125,.29,0,.03,-.715,'z',32);
+ cy(g,mats,'steel',.021,.021,.045,0,.03,-.85,'z',32);
+ cy(g,mats,'blued',.024,.024,.28,0,sy,-.11,'z',40);
+ cy(g,mats,'blued',.035,.024,.075,0,sy,-.285,'z',40);
+ cy(g,mats,'blued',.030,.025,.06,0,sy,.05,'z',40);
+ cy(g,mats,'lens',.031,.031,.003,0,sy,-.324,'z',40);
+ cy(g,mats,'lens',.026,.026,.003,0,sy,.081,'z',40);
+ for(const z of [-.20,0]){cy(g,mats,'dark',.027,.027,.018,0,sy,z,'z',32);bx(g,mats,'dark',.025,.045,.024,0,sy-.035,z)}
+ cy(g,mats,'blued',.013,.013,.018,0,sy+.033,-.06,'y',24);
+ cy(g,mats,'blued',.012,.012,.018,.033,sy,-.06,'x',24);
+ hand(g,mats,.034,-.086,.092,-.2,.12,.19,-.30,.31);
+ hand(g,mats,-.03,-.04,-.30,.3,-.14,-.20,-.32,-.14);
+ return m;
 }
 
 export function createViewmodel3D(renderer){
- const scene=new T.Scene();
+ const scene=new T.Scene();const env=new T.TextureLoader().load('sky-depot.webp');env.mapping=T.EquirectangularReflectionMapping;env.colorSpace=T.SRGBColorSpace;scene.environment=env;scene.environmentIntensity=.85;
  const camera=new T.PerspectiveCamera(45,1,.01,6);
  // 뷰모델 전용 조명. 본편 밝기와 무관하게 총이 항상 또렷하게 읽힌다.
  scene.add(new T.HemisphereLight('#d6e6f7','#3a3b33',2.3));
