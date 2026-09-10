@@ -1,4 +1,4 @@
-import {mobileSprint} from './movement.js?v=polish-9';
+import {mobileSprint} from './movement.js?v=hands-1';
 export function createControls({look,shoot,weaponChanged,pauseChanged}){
  const $=id=>document.getElementById(id);let mobile=matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0&&innerWidth<1100;const keys={};
  const c={mobile,keys,autoRun:localStorage.getItem('iron-auto-run')!=='off',paused:true,enabled:false,weapon:'rifle',fire:false,aim:false,trigger:0,reloadTrigger:0,f:0,s:0,board:false};let reloadUntil=0,jumpUntil=0,sprintBlockedUntil=0;

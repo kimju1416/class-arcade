@@ -1,6 +1,6 @@
 import * as T from './three.module.js';
 import {GLTFLoader} from './addons/loaders/GLTFLoader.js';
-import {RIGS} from './weapon-pose.js?v=real-10';
+import {RIGS} from './weapon-pose.js?v=hands-1';
 const textures=new T.TextureLoader();
 function tex(name,color=false){const t=textures.load('weapons/m4-'+name+'.webp');t.flipY=true;t.anisotropy=4;if(color)t.colorSpace=T.SRGBColorSpace;return t}
 const material=new T.MeshStandardMaterial({map:tex('color',true),normalMap:tex('normal'),roughnessMap:tex('rough'),metalnessMap:tex('metal'),roughness:1,metalness:1,normalScale:new T.Vector2(.65,.65)});

@@ -1,16 +1,30 @@
-import {realWeapon} from './weapon-model.js?v=real-10';
+import {realWeapon} from './weapon-model.js?v=hands-1';
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=real-10';
+import {weaponPose,RIGS} from './weapon-pose.js?v=hands-1';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
+
+// 전술장갑 원단 사진. 같은 그림을 요철로도 써서 짜임이 빛을 받는다.
+let fabricTex=null;
+if(typeof document!=='undefined'){
+ fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=hands-1');
+ fabricTex.colorSpace=T.SRGBColorSpace;
+ fabricTex.wrapS=fabricTex.wrapT=T.MirroredRepeatWrapping;
+ fabricTex.repeat.set(3.2,3.2);fabricTex.anisotropy=4;
+}
+function fabric(color,bump){
+ const m=new T.MeshStandardMaterial({color,roughness:.93,metalness:.02,side:T.DoubleSide});
+ if(fabricTex){m.map=fabricTex;m.bumpMap=fabricTex;m.bumpScale=bump}
+ return m;
+}
 
 const M={
  polymer:()=>new T.MeshStandardMaterial({color:'#9c8869',roughness:.74,metalness:.06}),
  dark:()=>new T.MeshStandardMaterial({color:'#343a3e',roughness:.58,metalness:.18}),
  steel:()=>new T.MeshStandardMaterial({color:'#5b6165',roughness:.34,metalness:.88}),
  blued:()=>new T.MeshStandardMaterial({color:'#414850',roughness:.28,metalness:.92}),
- glove:()=>new T.MeshStandardMaterial({color:'#272d29',roughness:.94,metalness:.02}),
- sleeve:()=>new T.MeshStandardMaterial({color:'#414536',roughness:.97,metalness:0}),
+ glove:()=>fabric('#333a35',.006),
+ sleeve:()=>fabric('#41473a',.008),
  brass:()=>new T.MeshStandardMaterial({color:'#b8933f',roughness:.32,metalness:.9}),
  lens:()=>new T.MeshStandardMaterial({color:'#12303f',roughness:.08,metalness:.4,emissive:'#0d3550',emissiveIntensity:.5})
 };
@@ -29,21 +43,55 @@ function cy(parent,mats,name,rt,rb,len,x,y,z,axis='z',seg=24){
  m.position.set(x,y,z);parent.add(m);return m;
 }
 
-// 손·팔뚝. 총을 잡은 방향으로 소매가 화면 밖까지 이어진다.
-function hand(parent,mats,x,y,z,rz,ry,elbowX,elbowY,elbowZ){
- const g=new T.Group();g.position.set(x,y,z);g.rotation.set(0,ry,rz);parent.add(g);
- const palm=new T.Mesh(new T.SphereGeometry(1,20,14),mats.glove);palm.scale.set(.028,.037,.046);g.add(palm);                       // 주먹
- for(let i=0;i<4;i++){const finger=new T.Mesh(new T.CapsuleGeometry(.008,.031,4,12),mats.glove);finger.rotation.z=Math.PI/2;finger.position.set(0,.026-i*.017,-.040);g.add(finger)} // 손가락 마디
- const thumb=new T.Mesh(new T.CapsuleGeometry(.010,.027,4,12),mats.glove);thumb.rotation.z=-.5;thumb.position.set(.025,-.006,-.023);g.add(thumb);          // 엄지
-                      // 손등
+// 손가락 한 개. 마디 셋을 이어 붙이고 관절마다 꺾어 «감아쥔» 모양을 만든다.
+// 손바닥은 -X를 보고 있으므로, 마디는 -Z로 뻗다가 +Y축을 중심으로 돌면 손바닥 쪽으로 말린다.
+function finger(parent,mat,y,scale,bend){
+ const root=new T.Group();root.position.set(0,y,-.021);parent.add(root);
+ const knuckle=new T.Mesh(new T.SphereGeometry(.0092*scale,12,9),mat);root.add(knuckle);
+ const seg=(host,radius,length,angle)=>{
+  host.rotation.y=angle;
+  const bone=new T.Mesh(new T.CapsuleGeometry(radius,length,5,14),mat);
+  bone.rotation.x=Math.PI/2;bone.position.z=-(length/2+radius*.35);host.add(bone);
+  const next=new T.Group();next.position.z=-(length+radius*.5);host.add(next);return next;
+ };
+ const mid=seg(root,.0088*scale,.027*scale,bend[0]);        // 첫마디
+ const tip=seg(mid,.0079*scale,.020*scale,bend[1]);         // 중간마디
+ const end=seg(tip,.0070*scale,.014*scale,bend[2]);         // 끝마디
+ const nail=new T.Mesh(new T.SphereGeometry(.0066*scale,10,8),mat);end.add(nail);
+ return root;
+}
+// 총을 감아쥔 장갑 낀 손. 손바닥이 -X를 보고, 손가락이 그 쪽으로 말린다.
+// 왼손은 mirror로 X를 뒤집어 만든다 — 오른손을 그대로 쓰면 손바닥이 총 반대편을 본다.
+function gripHand(parent,mats,pos,rot,elbow,tight=1,mirror=false){
+ const [x,y,z]=pos;
+ const g=new T.Group();g.position.set(x,y,z);g.rotation.set(rot[0],rot[1],rot[2]);
+ if(mirror)g.scale.x=-1;
+ parent.add(g);
+ const mat=mats.glove;
+ // 손바닥 — 공이 아니라 납작한 판이라야 손처럼 보인다.
+ const palm=new T.Mesh(roundedBox(.027,.081,.049),mat);palm.position.set(0,0,-.002);g.add(palm);
+ const thenar=new T.Mesh(new T.SphereGeometry(1,14,10),mat);thenar.scale.set(.015,.026,.023);thenar.position.set(.009,-.024,-.006);g.add(thenar); // 엄지두덩
+ const back=new T.Mesh(roundedBox(.017,.072,.040),mat);back.position.set(-.007,.002,-.004);g.add(back);                                            // 손등
+ // 검지에서 새끼로 갈수록 짧아지고, 쥐는 각도도 조금씩 달라진다.
+ const spread=[.0265,.0095,-.0085,-.0245],scale=[1,1.04,.97,.86];
+ for(let i=0;i<4;i++)finger(g,mat,spread[i],scale[i],[.86*tight+i*.03,1.12*tight,.72*tight]);
+ // 엄지 — 앞으로 넘어와 검지 쪽을 누른다.
+ const thumbRoot=new T.Group();thumbRoot.position.set(.010,-.030,-.004);thumbRoot.rotation.set(.35,-.55*tight,-.75);g.add(thumbRoot);
+ const t1=new T.Mesh(new T.CapsuleGeometry(.0105,.024,5,14),mat);t1.rotation.x=Math.PI/2;t1.position.z=-.016;thumbRoot.add(t1);
+ const t2g=new T.Group();t2g.position.z=-.030;t2g.rotation.y=.62*tight;thumbRoot.add(t2g);
+ const t2=new T.Mesh(new T.CapsuleGeometry(.0092,.018,5,14),mat);t2.rotation.x=Math.PI/2;t2.position.z=-.012;t2g.add(t2);
+ const t3=new T.Mesh(new T.SphereGeometry(.0085,10,8),mat);t3.position.z=-.024;t2g.add(t3);
+ // 손목 — 손과 소매를 이어 준다.
+ cy(g,mats,'glove',.019,.021,.026,-.001,-.002,.028,'z',18);
  // 팔뚝은 총 좌표계에 직접 단다. 손의 회전을 따라가면 팔꿈치 방향이 틀어지기 때문이다.
+ const [elbowX,elbowY,elbowZ]=elbow;
  const sleeve=new T.Group();sleeve.position.set(x,y,z);parent.add(sleeve);
  const dir=new T.Vector3(elbowX-x,elbowY-y,elbowZ-z);
  const len=dir.length();dir.normalize();
  sleeve.quaternion.setFromUnitVectors(new T.Vector3(0,0,1),dir);
- cy(sleeve,mats,'glove',.038,.038,.03,0,0,.045,'z',24);                      // 손목 소맷단
- cy(sleeve,mats,'sleeve',.033,.047,len,0,0,len/2+.055,'z',24);
- for(let i=1;i<4;i++){const r=.033+(.047-.033)*(i/4)+.005;cy(sleeve,mats,'glove',r,r,.014,0,0,.055+len*i/4,'z',10)} // 소매 주름
+ cy(sleeve,mats,'glove',.027,.029,.028,0,0,.042,'z',20);                     // 손목 소맷단
+ cy(sleeve,mats,'sleeve',.044,.028,len,0,0,len/2+.052,'z',20);                // 팔뚝
+ for(let i=1;i<4;i++){const r=.029+(.044-.029)*(i/4)+.004;cy(sleeve,mats,'glove',r,r,.012,0,0,.052+len*i/4,'z',12)} // 소매 주름
  return g;
 }
 
@@ -55,8 +103,8 @@ function buildRifle(mats){
  for(const z of [-.034,.034]){const ring=new T.Mesh(new T.TorusGeometry(.026,.003,10,40),mats.blued);ring.position.set(0,sy,z);g.add(ring)}
  const glass=new T.Mesh(new T.CircleGeometry(.024,40),new T.MeshBasicMaterial({color:'#8dcbd5',transparent:true,opacity:.09,depthWrite:false,side:T.DoubleSide}));glass.position.set(0,sy,-.03);g.add(glass);
  const dot=new T.Mesh(new T.CircleGeometry(.0014,16),new T.MeshBasicMaterial({color:'#ff3928',depthTest:false,depthWrite:false}));dot.position.set(0,sy,-.031);dot.renderOrder=3;g.add(dot);
- hand(g,mats,.032,-.088,.085,-.22,.12,.19,-.30,.30);
- hand(g,mats,-.03,-.02,-.26,.34,-.16,-.20,-.30,-.10);
+ gripHand(g,mats,[.031,-.082,.036],[.30,.06,-.16],[.20,-.30,.26],.92);
+ gripHand(g,mats,[-.046,.030,-.252],[1.42,.10,.12],[-.15,-.33,.09],1.05,true);
  return m;
 }
 function buildSniper(mats){
@@ -72,8 +120,8 @@ function buildSniper(mats){
  for(const z of [-.20,0]){cy(g,mats,'dark',.027,.027,.018,0,sy,z,'z',32);bx(g,mats,'dark',.025,.045,.024,0,sy-.035,z)}
  cy(g,mats,'blued',.013,.013,.018,0,sy+.033,-.06,'y',24);
  cy(g,mats,'blued',.012,.012,.018,.033,sy,-.06,'x',24);
- hand(g,mats,.034,-.086,.092,-.2,.12,.19,-.30,.31);
- hand(g,mats,-.03,-.04,-.30,.3,-.14,-.20,-.32,-.14);
+ gripHand(g,mats,[.031,-.082,.036],[.30,.06,-.16],[.20,-.30,.26],.92);
+ gripHand(g,mats,[-.046,.028,-.30],[1.42,.10,.12],[-.15,-.35,.05],1.05,true);
  return m;
 }
 

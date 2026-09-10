@@ -1,4 +1,4 @@
-import {BOXES,SPAWNS} from './core.js?v=combat3d-2';
+import {BOXES,SPAWNS} from './core.js?v=hands-1';
 export function mapPoint(x,z,width=700,height=756){return {x:(x+25)/50*width,y:(z+27)/54*height}}
 export function mapPlayers(state,id){const me=state?.players.find(p=>p.id===id);return me?state.players.filter(p=>p.hp>0&&(p.id===id||state.mode==='tdm'&&p.team===me.team)):[]}
 export function createTacticalMap({getState,getId,controls,isActive}){
