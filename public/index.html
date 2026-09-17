@@ -1323,6 +1323,16 @@ body.host #teamResult .tr-line { font-size: 30px; }
      z-index가 60 대 6이라 «점프를 누르려다 소리가 꺼지는» 자리였다(실측).
      버튼이 뜨는 판에서는 비어 있는 오른쪽 위로 보낸다 (왼쪽 위는 방 코드 자리). */
   body.joined.hasbtn:not(.host) #btnMute { top: 10px; bottom: auto; right: 14px; }
+  /* 그런데 오른쪽 위엔 «방 번호» 알약이 있어 소리 버튼이 그걸 덮었다(320·360·390px 실측) — 윗줄을 버튼 폭만큼 비운다 */
+  body.joined.hasbtn:not(.host) .hud { padding-right: 64px; }
+  /* 320px대에선 그러면 왼쪽 알약이 «내 …»로 잘린다 — 게임 중 폰엔 방 번호가 덜 필요하니 그걸 뺀다 */
+  @media (max-width: 340px) { body.joined.hasbtn:not(.host) #hudCode { display: none; } }
+  /* 작은 폰(320px대): 버튼 글자가 음절 중간에서 꺾이고(«바로내리/기», «동의보/감») 넘친다 */
+  @media (max-width: 340px) {
+    .tet-btn small { font-size: 9.5px; white-space: nowrap; letter-spacing: -.3px; }
+    body:not(.host) .quiz-choice { font-size: 16px; padding: 12px 10px; gap: 6px; word-break: keep-all; }
+    body:not(.host) .quiz-choice .shp { font-size: 16px; }
+  }
   /* 퀴즈·순간포착 폰: 선택지가 위 45%만 쓰고 아래가 비었다 — 남는 세로를 버튼이 먹게 */
   body:not(.host) .quiz-grid { flex: 1; grid-auto-rows: 1fr; max-height: 46vh; }
   body:not(.host) .quiz-choice { min-height: 0; font-size: 20px; }
@@ -8195,7 +8205,7 @@ function drawPullGame(W, H, dpr, m) {
   }
 
   // ── 상단 점수판 ────────────────────────────────────────────────
-  const topY = 16 * dpr, fs = (isHost ? 30 : 20) * dpr;
+  const topY = (isHost ? 16 : 58) * dpr, fs = (isHost ? 30 : 20) * dpr;   // 폰은 위에 HTML 알약 줄(생존·시간·방)이 있어 그 아래로 내린다 — 겹쳐 팀 이름이 가려졌다(실측)
   ctx.textAlign = 'center'; ctx.font = `900 ${fs}px Pretendard, sans-serif`;
   for (const s of [0, 1]) {
     const x = s === 0 ? W * 0.22 : W * 0.78;

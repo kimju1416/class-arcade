@@ -226,7 +226,8 @@ const PartyGames = (() => {
       text(c, msg, mid, gy + 49, Math.min(16, panelW / (msg.length + 1)), '#ffe3a3');
       text(c, '물고기 30 · 황금 50 · 보물 80점', mid, gy + 87, 12, '#d4e6f4');
     }
-    if (me) text(c, `${me.caught || 0}마리  ·  ${me.combo || 0}연속 성공`, mid, gy + gh + 24, 14, '#fff');
+    // 가운데 정렬이면 오른쪽 아래 큰 챔질 버튼에 가려진다(320·390px 실측) — 왼쪽으로 붙인다
+    if (me) text(c, `${me.caught || 0}마리  ·  ${me.combo || 0}연속 성공`, short ? mid : panelX + 4, gy + gh + 24, 14, '#fff', short ? undefined : 'left');
   }
   function draw(e) {
     const m = e.m;
