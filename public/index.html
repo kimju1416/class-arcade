@@ -924,6 +924,10 @@ body.host #teamResult .tr-line { font-size: 30px; }
   .rc-tag { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: 3px; }
   .role-card.teacher .rc-tag { background: rgba(255,176,58,.18); color: var(--amber); }
   .role-card.student .rc-tag { background: rgba(61,220,132,.18); color: var(--green); }
+  /* IRON SECTOR 카드 — 테두리 올리브색에 맞춘 아이콘 */
+  .role-card.fps { text-decoration: none; color: inherit; border-color: rgba(183,207,101,.6); box-shadow: 0 14px 34px rgba(0,0,0,.35), 0 0 0 1px rgba(183,207,101,.15); }
+  .role-card.fps .rc-ico { background: linear-gradient(180deg, #d4ea86, #8fae3a); box-shadow: 0 6px 16px rgba(183,207,101,.35); color: #1f2a0c; font-size: 32px; font-weight: 700; }
+  .role-card.fps .rc-tag { background: rgba(183,207,101,.18); color: #cfe38a; }
   .rc-body p { color: #a3aed0; font-size: 13.5px; margin-top: 5px; line-height: 1.5; word-break: keep-all; }
   .rc-arrow { font-size: 30px; color: #55628f; font-weight: 300; padding-right: 2px; }
   body.host .role-card { max-width: 440px; padding: 20px 20px 20px 18px; }
@@ -1363,7 +1367,7 @@ body.host #teamResult .tr-line { font-size: 30px; }
     <p>내 폰으로 게임에 참가해요. TV의 QR을 찍었다면 이미 입장 화면이 열려 있어요!</p></div>
     <div class="rc-arrow">›</div>
   </div>
-  <a href="/fps/" class="role-card" style="text-decoration:none;color:inherit;border-color:#b7cf65"><div class="rc-ico">⌖</div><div class="rc-body"><b>IRON SECTOR</b><span class="rc-tag">PC FPS</span><p>팀전 · 개인전 1인칭 슈팅. 키보드와 마우스로 전투에 참가하세요.</p></div><div class="rc-arrow">›</div></a>
+  <a href="/fps/" class="role-card fps"><div class="rc-ico">⌖</div><div class="rc-body"><b>IRON SECTOR</b><span class="rc-tag">PC FPS</span><p>팀전 · 개인전 1인칭 슈팅. 키보드와 마우스로 전투에 참가하세요.</p></div><div class="rc-arrow">›</div></a>
   <div class="err" id="homeErr"></div>
   <div class="home-foot">
     <a class="made-by" href="https://www.instagram.com/kimju.zip" target="_blank" rel="noopener">
