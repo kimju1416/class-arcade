@@ -884,7 +884,11 @@ body.host #teamResult .tr-line { font-size: 30px; }
   .btn.danger-ghost { background: none; box-shadow: none; }
 
   /* ---- 첫 화면 ---- */
-  #home { gap: 14px; }
+  #home { gap: 14px; justify-content: safe center; }
+  /* 카드가 3장으로 늘자 세로 칸이 모자라 카드가 눌려 아이콘·설명이 잘렸다 — 줄지 말고 넘치면 스크롤 */
+  #home > * { flex-shrink: 0; }
+  #homeErr:empty { min-height: 0; }
+  @media (max-height: 820px) { #homeLogo { width: min(320px, 78vw, 28vh); } }
   #homeLogo { animation: logoFloat 3.6s ease-in-out infinite; filter: drop-shadow(0 10px 28px rgba(255,176,58,.35)); }
   @keyframes logoFloat { 0%,100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-8px) rotate(1deg); } }
   .home-feat { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: -2px 0 6px; }
