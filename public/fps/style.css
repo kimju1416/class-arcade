@@ -29,3 +29,29 @@ select{width:100%;background:#111a20;border:1px solid #77808570;color:#fff;paddi
  .touch-device #map-button{top:90px;right:98px;min-height:34px;padding:5px 11px}
  .touch-device #feed{top:132px}
 }
+/* 첫 화면 플레이 방법 */
+.how-link{margin-left:auto;margin-right:22px;font-size:13px;font-weight:700;color:#171e18;background:#d9ed84;text-decoration:none;padding:8px 14px;white-space:nowrap}.how-link:hover{background:#ecff9d}
+footer{z-index:2}footer::before{content:"";position:absolute;inset:0 -5%;background:#090d0fe8;z-index:-1}
+.touch-device .how-link{padding:6px 11px;font-size:12px}
+.how{position:relative;z-index:1;margin:0 7% 95px;max-width:980px;background:#0a1115f2;border:1px solid #8a979347;border-top:3px solid #d9ed84;padding:26px 30px 24px;scroll-margin-top:20px}
+.how h2{font-size:26px;margin:12px 0 8px;letter-spacing:-.5px}
+.how-lead{color:#c7cecb;font-size:14px;line-height:1.7;margin:0 0 20px;word-break:keep-all}
+.how-steps{list-style:none;margin:0 0 22px;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.how-steps li{display:flex;gap:12px;border-top:1px solid #ffffff25;padding-top:14px}
+.how-steps li>b{color:#d9ed84;font-size:13px;letter-spacing:1px;padding-top:2px}
+.how-steps strong{display:block;font-size:15px;margin-bottom:6px;color:#f1f4ef}
+.how-steps p{margin:0;color:#bfc7c4;font-size:13px;line-height:1.7;word-break:keep-all}
+.how-steps em,.how-tips b{font-style:normal;color:#e7f3b5;font-weight:700}
+.how-keys{border:1px solid #8a979340;font-size:13px}
+.how-row{display:grid;grid-template-columns:1fr 1.5fr 1.5fr}
+.how-row+.how-row{border-top:1px solid #ffffff14}
+.how-row span{padding:9px 14px;line-height:1.5;color:#dde3df;word-break:keep-all}
+.how-row span:first-child{color:#f1f4ef;font-weight:700}
+.how-head{background:#111b21}
+.how-head span,.how-head span:first-child{font-size:11px;letter-spacing:1px;color:#a8b3b6;font-weight:600}
+.how kbd{white-space:nowrap;margin:0 1px}
+.how-tips{list-style:none;padding:0;margin:18px 0 0;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;color:#bfc7c4;font-size:12.5px;line-height:1.7;word-break:keep-all}
+@media(max-width:900px){.how-steps,.how-tips{grid-template-columns:1fr;gap:12px}}
+@media(max-width:750px){.how{margin:0 6% 40px;padding:20px 18px}}
+@media(max-width:560px){.how-head{display:none}.how-row{grid-template-columns:1fr;padding:9px 12px}.how-row span{padding:1px 0}.how-row span:nth-child(2)::before{content:"PC  ";white-space:pre;color:#a8b3b6;font-size:11px}.how-row span:nth-child(3)::before{content:"폰  ";white-space:pre;color:#a8b3b6;font-size:11px}}
+@media (pointer:coarse) and (orientation:landscape){.how{max-width:540px;margin:0 auto 40px}.how-steps,.how-tips{grid-template-columns:1fr}}
