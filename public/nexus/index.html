@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#102c32" />
+    <meta
+      name="description"
+      content="하늘섬을 달리고, 크리스털을 찾고, 나만의 섬을 만드는 3D 어드벤처. NEXUS ISLES."
+    />
+    <title>NEXUS ISLES · 넥서스 아일즈</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23102c32'/%3E%3Cpath d='M32 8 51 27 32 56 13 27Z' fill='%237fffe0'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/nexus/style.css?v=20260919a" />
+  </head>
+  <body>
+    <main id="lobby">
+      <div class="lobby-art"></div>
+      <div class="lobby-shade"></div>
+      <header class="masthead">
+        <a class="brand" href="/nexus/"
+          ><span class="brand-mark">◈</span
+          ><span>NEXUS <b>ISLES</b><small>넥서스 아일즈</small></span></a
+        >
+        <div class="header-actions">
+          <span class="edition">A WORLD ABOVE THE ORDINARY</span
+          ><a class="subtle-link" href="/">교실 아케이드 ↗</a>
+        </div>
+      </header>
+      <section class="hero-copy">
+        <div class="eyebrow"><span></span> 나만의 모험이 시작되는 곳</div>
+        <h1>작은 블록.<br />끝없는 <em>모험.</em></h1>
+        <p>
+          구름 위를 달리고, 숨겨진 빛을 찾고.<br />상상하던 세상을 직접 만들어
+          보세요.
+        </p>
+        <div class="hero-tags">
+          <span>3D 자유 탐험</span><span>친구와 함께</span
+          ><span>PC & 모바일</span>
+        </div>
+      </section>
+      <section class="launch-panel" aria-label="모험 시작 설정">
+        <div class="panel-kicker">YOUR NEXT ADVENTURE <span>01 / 03</span></div>
+        <h2>어디로 떠나 볼까요?</h2>
+        <div class="world-cards">
+          <button
+            class="world-card selected"
+            data-mode="explore"
+            aria-pressed="true"
+          >
+            <img
+              src="/nexus/assets/crystal-hollow.webp"
+              alt="크리스털 유적"
+              width="360"
+              height="210"
+            /><span class="card-overlay"
+              ><small>EXPLORE</small><strong>빛을 찾아서</strong
+              ><span>크리스털 12개 · 자유 탐험</span></span
+            ><i>↗</i>
+          </button>
+          <button class="world-card" data-mode="parkour" aria-pressed="false">
+            <img
+              src="/nexus/assets/sky-trial.webp"
+              alt="구름 위 파쿠르"
+              width="360"
+              height="210"
+            /><span class="card-overlay"
+              ><small>SKY RUN</small><strong>하늘을 달려</strong
+              ><span>9개 관문 · 타임 챌린지</span></span
+            ><i>↗</i>
+          </button>
+          <button class="world-card" data-mode="build" aria-pressed="false">
+            <img
+              src="/nexus/assets/makers-garden.webp"
+              alt="나만의 건설 섬"
+              width="360"
+              height="210"
+            /><span class="card-overlay"
+              ><small>CREATE</small><strong>상상의 정원</strong
+              ><span>블록 건설 · 자동 저장</span></span
+            ><i>↗</i>
+          </button>
+        </div>
+        <div class="launch-row">
+          <div class="identity">
+            <label for="nickname">탐험가 이름</label
+            ><input
+              id="nickname"
+              maxlength="12"
+              placeholder="구름 탐험가"
+              autocomplete="nickname"
+            />
+          </div>
+          <div class="avatar-select" aria-label="캐릭터 선택">
+            <button
+              class="avatar selected"
+              data-skin="0"
+              aria-label="탐험가 캐릭터"
+              aria-pressed="true"
+            >
+              <img src="/nexus/assets/explorer.webp" alt="탐험가" /></button
+            ><button
+              class="avatar"
+              data-skin="1"
+              aria-label="가디언 캐릭터"
+              aria-pressed="false"
+            >
+              <img src="/nexus/assets/guardian.webp" alt="가디언" />
+            </button>
+          </div>
+          <button id="play" class="primary">
+            모험 시작하기 <span>↗</span>
+          </button>
+        </div>
+        <div class="launch-foot">
+          <span>설치 없이 바로 플레이 · 기록은 이 기기에 저장</span
+          ><button id="lobby-help" class="text-button">조작 방법 ⓘ</button>
+        </div>
+      </section>
+      <footer class="lobby-footer">
+        <span>CRAFTED FOR THE CURIOUS.</span
+        ><span
+          >Created by kimju <span class="divider">/</span> NEXUS ISLES ·
+          2026</span
+        >
+      </footer>
+    </main>
+    <section id="game" hidden aria-label="3D 게임">
+      <canvas id="viewport" aria-label="넥서스 아일즈 3D 월드"></canvas>
+      <div class="vignette"></div>
+      <header class="hud-top">
+        <button id="menu" class="glass square" aria-label="메뉴 열기">
+          ☰
+        </button>
+        <div class="glass location">
+          <span class="mini-mark">◈</span>
+          <div>
+            <b id="zone-name">여명의 섬</b
+            ><small id="network">혼자 탐험 중</small>
+          </div>
+        </div>
+        <div class="hud-right">
+          <div class="glass count">
+            <span>◆</span><b id="crystal-count">0</b><small>/ 12</small>
+          </div>
+          <button id="sound" class="glass square" aria-label="소리 켜기">
+            ♪</button
+          ><button id="help" class="glass square" aria-label="도움말">?</button>
+        </div>
+      </header>
+      <aside class="glass quest">
+        <span class="eyebrow" id="quest-label">STORY QUEST</span>
+        <h2 id="quest-title">잠든 포털을 깨워라</h2>
+        <p id="quest-copy">섬 곳곳에서 빛의 크리스털을 찾아보세요.</p>
+        <div class="quest-track"><i id="quest-progress"></i></div>
+        <small id="quest-status">빛의 크리스털 0 / 12</small>
+      </aside>
+      <div id="checkpoint" class="checkpoint" hidden>◈ 체크포인트 저장</div>
+      <div id="toast" role="status" class="toast" hidden></div>
+      <div class="compass">
+        W <i></i> <b id="compass-label">N · 여명의 포털</b> <i></i> E
+      </div>
+      <div class="minimap-wrap glass">
+        <canvas
+          id="minimap"
+          width="180"
+          height="180"
+          aria-label="섬 지도"
+        ></canvas
+        ><small>SKY ARCHIPELAGO</small>
+      </div>
+      <div id="interact-hint" class="interact-hint" hidden></div>
+      <div class="bottom-bar">
+        <div class="glass toolbelt">
+          <button id="mode-explore" class="tool active" title="자유 탐험">
+            <span>◈</span><small>탐험</small></button
+          ><button id="mode-parkour" class="tool" title="파쿠르 도전">
+            <span>↟</span><small>파쿠르</small></button
+          ><button id="mode-build" class="tool" title="건설 모드">
+            <span>▧</span><small>건설</small></button
+          ><span class="tool-separator"></span
+          ><button id="respawn" class="tool" title="체크포인트 복귀">
+            <span>↺</span><small>복귀</small></button
+          ><button id="invite" class="tool" title="친구 초대 링크 복사">
+            <span>♧</span><small>초대</small>
+          </button>
+        </div>
+        <div class="desktop-hints">
+          <kbd>W A S D</kbd> 이동 <kbd>SPACE</kbd> 2단 점프 / 길게 활공
+          <kbd>SHIFT</kbd> 대시 <kbd>드래그</kbd> 시점
+        </div>
+      </div>
+      <div id="build-controls" class="glass build-controls" hidden>
+        <label for="material">재료</label
+        ><select id="material">
+          <option value="0">사암</option>
+          <option value="1">잔디</option>
+          <option value="2">크리스털</option>
+          <option value="3">나무</option></select
+        ><button id="place">설치 E</button><button id="remove">회수 Q</button
+        ><small id="build-count">0 / 150</small>
+      </div>
+      <div id="touch-controls">
+        <div id="joystick" aria-label="이동 조이스틱">
+          <div id="stick"></div>
+          <span>MOVE</span>
+        </div>
+        <div class="touch-actions">
+          <button id="dash" aria-label="대시">대시</button
+          ><button id="jump" aria-label="점프와 활공">
+            ↟<small>점프</small>
+          </button>
+        </div>
+      </div>
+      <div id="loading" class="loading">
+        <div class="loading-symbol">◈</div>
+        <h2>구름 위의 세상을 여는 중</h2>
+        <p id="loading-copy">월드와 텍스처를 불러오고 있어요.</p>
+      </div>
+    </section>
+    <dialog id="modal">
+      <button id="close-modal" class="close-modal" aria-label="닫기">×</button>
+      <div id="modal-body"></div>
+    </dialog>
+    <script type="module" src="/nexus/app.js?v=20260919a"></script>
+  </body>
+</html>

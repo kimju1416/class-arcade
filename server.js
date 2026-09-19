@@ -1188,6 +1188,7 @@ const GAME_KEYS = ['bomb', 'tag', 'coin', 'word', 'cho', 'mos', 'claw', 'race', 
 
 // ---------- 정적 파일 서빙 ----------
 const MIME = {
+  '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon', '.woff2': 'font/woff2',
@@ -1290,6 +1291,8 @@ const server = http.createServer((req, res) => {
     }))));
     return;
   }
+  if (url === '/nexus') { res.writeHead(302, { Location: '/nexus/' }); res.end(); return; }
+  if (url === '/nexus/') url = '/nexus/index.html';
   if (url === '/fps') { res.writeHead(302, { Location: '/fps/' }); res.end(); return; }
   if (url === '/fps/') url = '/fps/index.html';
   if (url === '/') url = '/index.html';
@@ -1303,7 +1306,7 @@ const server = http.createServer((req, res) => {
   //  - 그 외(이미지·소리) : 하루 캐시 + 일주일 SWR. 만료돼도 캐시본을 바로 쓰고 갱신은 뒤에서 한다.
   //    파일을 교체하면 mtime이 바뀌어 ETag가 달라지므로 만료 후 자동으로 새로 받는다.
   const ext = path.extname(file);
-  const cache = (ext === '.html' || ext === '.json' || ext === '.js')
+  const cache = (ext === '.html' || ext === '.json' || ext === '.js' || ext === '.mjs' || (url.startsWith('/nexus/') && ext === '.css'))
     ? 'no-cache'
     : 'public, max-age=86400, stale-while-revalidate=604800';
   fs.stat(file, (er, st) => {
@@ -4417,10 +4420,11 @@ function backToLobby(room) {
 // 4KB였으나 퀴즈쇼 커스텀 문제 20개가 한글 UTF-8로 4KB를 넘을 수 있어 상향 — rate limit이 도배는 막는다)
 const wss = new WebSocketServer({ noServer: true, maxPayload: 16384 });
 const fpsWss = require('./fps-server')(WebSocketServer);
+const nexusWss = require('./nexus-server')(WebSocketServer);
 server.on('upgrade', (req, socket, head) => {
   let pathname;
   try { pathname = new URL(req.url, 'http://localhost').pathname; } catch { socket.destroy(); return; }
-  const target = pathname === '/fps/ws' ? fpsWss : wss;
+  const target = pathname === '/nexus/ws' ? nexusWss : pathname === '/fps/ws' ? fpsWss : wss;
   target.handleUpgrade(req, socket, head, (client) => target.emit('connection', client, req));
 });
 wss.on('error', (e) => console.error('[wss 오류]', e.message));
