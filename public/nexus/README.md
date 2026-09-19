@@ -18,6 +18,8 @@ Collection, best time and construction are local to each player's browser. Const
 
 Three.js is served from the existing `/fps/three.module.js` and `/fps/three.core.js`, retaining their MIT license. Node/ws social presence is in `nexus-server.js`, isolated from existing Class Arcade and FPS WebSockets. No build step and no additional production dependency. The existing Render service runs `npm install` and `node server.js`.
 
+Sound: three looping Mixkit background tracks (explore / Sky Run / garden, crossfaded on mode change) and 15 Mixkit effects triggered by actual physics events (jump, double jump, dash, landing, glide wind, crystals, rings, portal, building, respawn, friend joins). On by default after the start button; the ♪ toggle is remembered. Sources in `audio/CREDITS.txt`.
+
 Ten original images were generated with the built-in Codex image tool: world key art; three mode illustrations; explorer and guardian portraits; stone and grass textures; sky panorama; relic reward. Runtime WebP files total under 1 MB. Stone, grass and sky are used in the actual 3D world, and the remaining images are used in the launch and reward interfaces. Original PNGs and exact prompts are delivered separately.
 
 Graphics use shared beveled geometry, instanced scenery and bounded particle pools. Default pixel ratio is capped at 1.35 on touch devices and 1.8 on desktop; sustained low frame rate selects lighter settings. Graphics can also be toggled from the menu. Device performance varies; mobile viewport emulation is not a physical phone benchmark.

@@ -1,0 +1,24 @@
+NEXUS ISLES 소리 — 전부 Mixkit 무료 음원 (https://mixkit.co/license/ , 표기 의무 없음)
+2026-09-19 받음. 효과음은 앞부분만 잘라 끝을 흐리게 하고 음량을 맞춤(ffmpeg loudnorm), 모노 80kbps.
+
+배경음악 (Mixkit Stock Music Free License, 96kbps 스테레오)
+  bgm-explore.mp3  탐험   id 587  "Discover"        Eugenio Mininni (Orchestral Pop)
+  bgm-parkour.mp3  파쿠르 id 76   "Epic Games"      Ahjay Stelino   (Film Score)
+  bgm-build.mp3    정원   id 813  "Magical moment"  Michael Ramir C. (Folk Pop)
+
+효과음 (Mixkit Sound Effects Free License)
+  jump.mp3     2043 Player jumping in a video game
+  jump2.mp3    2648 Video game spin jump
+  dash.mp3     2607 Fast air woosh
+  land.mp3     1922 Heavy grass step
+  wind.mp3     2658 Wind blowing ambience (활공 중 반복)
+  crystal.mp3   871 Fairy magic sparkle
+  ring.mp3      270 Fantasy game success notification
+  clear.mp3    2059 Game level completed
+  portal.mp3    257 Magic sweep game trophy
+  place.mp3    2182 Wood hard hit
+  remove.mp3   2357 Bubble pop up alert notification
+  respawn.mp3   868 Fairy teleport
+  click.mp3    2568 Cool interface click tone
+  error.mp3    2569 Negative tone interface tap
+  friend.mp3   2344 Magic notification ring

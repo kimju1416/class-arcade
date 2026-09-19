@@ -63,10 +63,9 @@ let elapsed = 0,
   socket,
   reconnectTimer,
   socketGeneration = 0;
-let soundOn = false,
+let soundOn = readSoundPref(),
   audioContext,
-  musicClock = 0,
-  musicStep = 0,
+  stateSeen = false,
   particlePool = [],
   frameCount = 0,
   frameTime = 0,
@@ -144,10 +143,12 @@ function showModal(html) {
   clearInput();
   $("modal-body").innerHTML = html;
   if (!$("modal").open) $("modal").showModal();
+  updateDuck();
 }
 function closeModal() {
   $("modal").close();
   clearInput();
+  updateDuck();
 }
 $("close-modal").onclick = closeModal;
 $("modal").addEventListener("close", clearInput);
@@ -186,39 +187,152 @@ function applyQuality() {
   });
   world.resize();
 }
-function tone(
-  freq = 660,
-  duration = 0.18,
-  volume = 0.04,
-  type = "sine",
-  delay = 0,
-) {
-  if (!soundOn || !audioContext) return;
-  const at = audioContext.currentTime + delay,
-    o = audioContext.createOscillator(),
-    g = audioContext.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(freq, at);
-  g.gain.setValueAtTime(0.001, at);
-  g.gain.exponentialRampToValueAtTime(volume, at + 0.015);
-  g.gain.exponentialRampToValueAtTime(0.001, at + duration);
-  o.connect(g);
-  g.connect(audioContext.destination);
-  o.start(at);
-  o.stop(at + duration + 0.03);
-}
-function chime() {
-  [660, 880, 1108].forEach((n, i) => tone(n, 0.3, 0.05, "sine", i * 0.08));
-}
-$("sound").onclick = () => {
-  soundOn = !soundOn;
-  if (soundOn) {
-    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-    audioContext.resume();
-    tone(660);
+// 소리 — Mixkit 무료 음원(public/nexus/audio/CREDITS.txt). 탐험·파쿠르·정원마다 배경음악이 따로 흐른다.
+function readSoundPref() {
+  try {
+    return localStorage.getItem("nexus_sound") !== "off";
+  } catch {
+    return true;
   }
+}
+const SFX_GAIN = {
+  jump: 0.45, jump2: 0.5, dash: 0.55, land: 0.5, crystal: 0.9, ring: 0.75,
+  place: 0.55, remove: 0.5, respawn: 0.6, click: 0.35, error: 0.35,
+  portal: 1, clear: 0.8, friend: 0.45,
+};
+const BGM = { explore: "bgm-explore", parkour: "bgm-parkour", build: "bgm-build" };
+const MUSIC_LEVEL = 0.32;
+const buffers = {},
+  loadingSounds = {};
+let musicGain, sfxGain, bgmSource = null, bgmName = "", windGain = null;
+function ensureAudio() {
+  if (audioContext) return audioContext;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  audioContext = new AC();
+  musicGain = audioContext.createGain();
+  sfxGain = audioContext.createGain();
+  musicGain.gain.value = 0;
+  sfxGain.gain.value = 0.9;
+  musicGain.connect(audioContext.destination);
+  sfxGain.connect(audioContext.destination);
+  for (const n of Object.keys(SFX_GAIN)) loadSound(n);
+  return audioContext;
+}
+function loadSound(name) {
+  if (buffers[name]) return Promise.resolve(buffers[name]);
+  return (loadingSounds[name] ||= fetch(`/nexus/audio/${name}.mp3`)
+    .then((r) => {
+      if (!r.ok) throw new Error(r.status);
+      return r.arrayBuffer();
+    })
+    .then((b) => new Promise((ok, no) => audioContext.decodeAudioData(b, ok, no)))
+    .then((buf) => (buffers[name] = buf))
+    .catch(() => {
+      delete loadingSounds[name];
+      return null;
+    }));
+}
+function sfx(name, volume = 1, rate = 1) {
+  if (!soundOn || !audioContext) return;
+  const buf = buffers[name];
+  if (!buf) {
+    loadSound(name);
+    return;
+  }
+  const src = audioContext.createBufferSource(),
+    g = audioContext.createGain();
+  src.buffer = buf;
+  src.playbackRate.value = rate * (0.97 + Math.random() * 0.06);
+  g.gain.value = (SFX_GAIN[name] ?? 0.6) * volume;
+  src.connect(g);
+  g.connect(sfxGain);
+  src.start();
+}
+// 모드가 바뀌면 1.2초 동안 곡을 겹쳐 넘긴다.
+function playMusic(key) {
+  const name = key && BGM[key];
+  if (!soundOn || !audioContext || !name) return stopMusic();
+  if (name === bgmName && bgmSource) return;
+  bgmName = name;
+  loadSound(name).then((buf) => {
+    if (!buf || bgmName !== name || !soundOn) return;
+    const now = audioContext.currentTime,
+      old = bgmSource;
+    const src = audioContext.createBufferSource(),
+      g = audioContext.createGain();
+    src.buffer = buf;
+    src.loop = true;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(1, now + 1.2);
+    src.connect(g);
+    g.connect(musicGain);
+    src.start();
+    bgmSource = { src, g };
+    musicGain.gain.setTargetAtTime(duckLevel(), now, 0.3);
+    if (old) fadeOut(old);
+  });
+}
+function fadeOut(node) {
+  const now = audioContext.currentTime;
+  node.g.gain.cancelScheduledValues(now);
+  node.g.gain.setValueAtTime(Math.max(0.0001, node.g.gain.value), now);
+  node.g.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+  node.src.stop(now + 1.3);
+}
+function stopMusic() {
+  bgmName = "";
+  if (bgmSource && audioContext) fadeOut(bgmSource);
+  bgmSource = null;
+}
+// 결과 창이 떠 있으면 음악을 낮춰 팡파르가 들리게 한다.
+function duckLevel() {
+  return $("modal").open ? MUSIC_LEVEL * 0.35 : MUSIC_LEVEL;
+}
+function updateDuck() {
+  if (audioContext && musicGain)
+    musicGain.gain.setTargetAtTime(duckLevel(), audioContext.currentTime, 0.25);
+}
+// 활공하는 동안만 바람 소리가 커진다.
+function updateWind(gliding) {
+  if (!audioContext || !soundOn) return;
+  if (!windGain) {
+    const buf = buffers.wind;
+    if (!buf) {
+      loadSound("wind");
+      return;
+    }
+    const src = audioContext.createBufferSource();
+    windGain = audioContext.createGain();
+    windGain.gain.value = 0;
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(windGain);
+    windGain.connect(sfxGain);
+    src.start();
+  }
+  windGain.gain.setTargetAtTime(gliding ? 0.55 : 0, audioContext.currentTime, gliding ? 0.15 : 0.3);
+}
+function paintSoundButton() {
   $("sound").style.color = soundOn ? "#bdffb7" : "#ffffff";
   $("sound").setAttribute("aria-label", soundOn ? "소리 끄기" : "소리 켜기");
+}
+paintSoundButton();
+$("sound").onclick = () => {
+  soundOn = !soundOn;
+  try {
+    localStorage.setItem("nexus_sound", soundOn ? "on" : "off");
+  } catch {}
+  if (soundOn) {
+    ensureAudio()?.resume();
+    loadSound("wind");
+    if (active) playMusic(mode);
+    sfx("click");
+  } else {
+    stopMusic();
+    if (windGain) windGain.gain.value = 0;
+  }
+  paintSoundButton();
   toast(soundOn ? "배경 음악과 효과음 켜짐" : "소리 꺼짐", 1400);
 };
 $("play").onclick = async () => {
@@ -232,6 +346,10 @@ $("play").onclick = async () => {
   $("game").hidden = false;
   $("loading").hidden = false;
   document.body.classList.add("playing");
+  if (soundOn) {
+    ensureAudio()?.resume();
+    loadSound("wind");
+  }
   try {
     if (!world) {
       world = await createWorld($("viewport"), mobile);
@@ -295,6 +413,8 @@ function returnLobby() {
   $("game").hidden = true;
   $("lobby").hidden = false;
   document.body.classList.remove("playing");
+  stopMusic();
+  updateWind(false);
 }
 function setMode(next) {
   mode = next;
@@ -333,9 +453,13 @@ function setMode(next) {
     toast("정원의 바닥을 선택하고 블록을 설치하세요. E 설치 · Q 회수", 4500);
   updateHUD();
   updateCamera(1);
+  playMusic(mode);
 }
 for (const n of ["explore", "parkour", "build"])
-  $("mode-" + n).onclick = () => setMode(n);
+  $("mode-" + n).onclick = () => {
+    if (n !== mode) sfx("click");
+    setMode(n);
+  };
 function resetPosition() {
   Object.assign(player, makePlayer(), checkpoint);
   player.vx = player.vy = player.vz = 0;
@@ -343,7 +467,7 @@ function resetPosition() {
 }
 $("respawn").onclick = () => {
   resetPosition();
-  tone(330);
+  sfx("respawn");
   toast("체크포인트로 돌아왔어요.");
 };
 function checkpointAt(c) {
@@ -409,7 +533,6 @@ function setupControls() {
     if (e.repeat) return;
     if (e.code === "Space") {
       input.jump = true;
-      tone(440, 0.09, 0.025, "triangle");
     }
     if (e.code === "ShiftLeft" || e.code === "ShiftRight") input.dash = true;
     if (e.code === "KeyE" && mode === "build") placeBlock();
@@ -509,7 +632,6 @@ function setupControls() {
     input.jump = true;
     touchJump = true;
     $("jump").setPointerCapture(e.pointerId);
-    tone(440, 0.09, 0.025, "triangle");
   });
   for (const event of ["pointerup", "pointercancel", "lostpointercapture"])
     $("jump").addEventListener(event, () => {
@@ -560,7 +682,7 @@ function collectAndProgress(dt) {
       save.crystals.push(c.id);
       persist();
       burst(c.x, c.y, c.z, "#9affde");
-      chime();
+      sfx("crystal", 1, 1 + save.crystals.length * 0.012);
       toast(`빛의 크리스털 발견! ${save.crystals.length} / 12`, 1700);
       updateHUD();
     }
@@ -578,8 +700,9 @@ function collectAndProgress(dt) {
       ringIndex++;
       checkpointAt(gate);
       burst(gate.x, gate.y + 2, gate.z, "#d3ffb9");
-      chime();
+      if (ringIndex < 9) sfx("ring", 1, 1 + ringIndex * 0.03);
       if (ringIndex === 9) {
+        sfx("clear");
         runFinished = true;
         save.best = save.best ? Math.min(save.best, runTime) : runTime;
         persist();
@@ -596,7 +719,7 @@ function collectAndProgress(dt) {
   ) {
     save.complete = true;
     persist();
-    chime();
+    sfx("portal");
     burst(0, 3, -8, "#b6ffce", 48);
     showModal(
       '<div class="result"><img class="reward" src="/nexus/assets/relic.webp" alt="빛의 크리스털 보상"><div class="eyebrow">THE PORTAL AWAKENS</div><h2>포털의 수호자가 되었어요!</h2><p>흩어진 12개의 빛을 모두 되찾았어요.<br>이제 하늘의 관문에 도전하거나, 나만의 정원을 만들어 보세요.</p><button id="finish-explore" class="primary">계속 탐험하기</button></div>',
@@ -673,6 +796,7 @@ function updateBuildTarget() {
 function placeBlock() {
   updateBuildTarget();
   if (!canPlace(save.blocks, targetBlock, player)) {
+    sfx("error");
     toast(
       "정원 안 9m 이내에, 몸과 겹치지 않게 설치하세요. 최대 8층·150개입니다.",
     );
@@ -682,7 +806,7 @@ function placeBlock() {
   save.blocks.push(b);
   blockMeshes.push(world.createBlock(b));
   persist();
-  tone(440, 0.13, 0.06, "triangle");
+  sfx("place", 1, 0.92 + b.level * 0.03);
   burst(b.x, b.level * 1.5 + 1, b.z, "#caffae", 8);
   updateHUD();
 }
@@ -693,6 +817,7 @@ function removeBlock() {
     .sort((a, b) => b.level - a.level);
   const b = candidates[0];
   if (!b || Math.hypot(player.x - b.x, player.z - b.z) > 9) {
+    sfx("error");
     toast("가까운 블록이 있는 칸을 먼저 선택하세요.");
     return;
   }
@@ -701,7 +826,7 @@ function removeBlock() {
   blockMeshes.splice(i, 1);
   save.blocks.splice(i, 1);
   persist();
-  tone(260, 0.12, 0.04, "triangle");
+  sfx("remove");
   updateHUD();
 }
 $("place").onclick = placeBlock;
@@ -836,6 +961,7 @@ function connect() {
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/nexus/ws?room=${encodeURIComponent(room)}`,
   );
   socket = ws;
+  stateSeen = false;
   $("network").textContent = "친구 월드에 연결 중";
   ws.onopen = () =>
     ws.send(JSON.stringify({ type: "hello", nick: save.nick, skin }));
@@ -860,6 +986,7 @@ function connect() {
           mesh.position.set(p.x, p.y, p.z);
           r = { mesh, target: p };
           remote.set(p.id, r);
+          if (stateSeen) sfx("friend");
         }
         r.target = p;
       }
@@ -869,6 +996,7 @@ function connect() {
           disposeAvatar(r.mesh);
           remote.delete(id);
         }
+      stateSeen = true;
       $("network").textContent =
         `${room === "public" ? "공개 월드" : "초대 월드"} · ${msg.players.length}명 접속`;
     }
@@ -934,8 +1062,16 @@ function frame(now) {
     accumulator += dt;
     const solids = [...world.solids, ...save.blocks.map(blockSolid)];
     while (accumulator >= 1 / 60) {
+      const jumpsBefore = player.jumps,
+        dashBefore = player.dash,
+        airBefore = !player.grounded,
+        vyBefore = player.vy;
       stepPlayer(player, input, solids, 1 / 60);
       input.jump = input.dash = false;
+      if (player.jumps > jumpsBefore) sfx(player.jumps >= 2 ? "jump2" : "jump");
+      if (player.dash > 0 && dashBefore <= 0) sfx("dash");
+      if (airBefore && player.grounded && vyBefore < -7)
+        sfx("land", Math.min(1, -vyBefore / 18));
       collectAndProgress(1 / 60);
       accumulator -= 1 / 60;
     }
@@ -945,7 +1081,7 @@ function frame(now) {
       Math.abs(player.z) > 250
     ) {
       resetPosition();
-      tone(220, 0.3);
+      sfx("respawn");
       toast("괜찮아요! 체크포인트에서 다시 출발해요.", 2300);
     }
   } else {
@@ -1011,12 +1147,7 @@ function frame(now) {
     );
     netClock = 0;
   }
-  musicClock += dt;
-  if (musicClock > (mode === "parkour" ? 0.45 : 0.85) && !$("modal").open) {
-    musicClock = 0;
-    const notes = [220, 329.63, 440, 493.88, 392, 329.63, 293.66, 440];
-    tone(notes[musicStep++ % notes.length], 1.2, 0.012);
-  }
+  updateWind(player.gliding && !$("modal").open);
   world.renderer.render(world.scene, world.camera);
 }
 window.addEventListener("pagehide", () => {
