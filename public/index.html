@@ -934,6 +934,32 @@ body.host #teamResult .tr-line { font-size: 30px; }
   .role-card.nexus .rc-tag { white-space: nowrap; background: rgba(94,224,196,.18); color: #8ff0d8; }
   .rc-body p { color: #a3aed0; font-size: 13.5px; margin-top: 5px; line-height: 1.5; word-break: keep-all; }
   .rc-arrow { font-size: 30px; color: #55628f; font-weight: 300; padding-right: 2px; }
+  /* 첫 화면 «이렇게 놀아요» */
+  .how-jump { font-size: 13px; font-weight: 700; color: #b9c3e4; text-decoration: none; border-bottom: 1px solid rgba(185,195,228,.4); padding-bottom: 1px; margin: -6px 0 2px; }
+  .how-jump:hover { color: #fff; }
+  .home-how { width: 100%; max-width: 380px; text-align: left; background: rgba(22,29,58,.72); border: 1.5px solid var(--line); border-radius: 20px; padding: 20px 18px; scroll-margin-top: 16px; }
+  .home-how h2 { font-size: 20px; margin-bottom: 6px; }
+  .hh-lead { color: #a3aed0; font-size: 13.5px; line-height: 1.6; word-break: keep-all; margin-bottom: 14px; }
+  .home-how h3 { font-size: 14.5px; margin-bottom: 8px; }
+  .hh-block { border-left: 3px solid var(--line); padding-left: 12px; margin-bottom: 16px; }
+  .hh-block.teacher { border-color: rgba(255,176,58,.7); }
+  .hh-block.teacher h3 { color: var(--amber); }
+  .hh-block.student { border-color: rgba(61,220,132,.7); }
+  .hh-block.student h3 { color: var(--green); }
+  .hh-block ol { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+  .hh-block li, .hh-tips li { color: #c9d1ec; font-size: 13.5px; line-height: 1.55; word-break: keep-all; }
+  .hh-block li::marker { color: #6d7aa6; font-weight: 700; }
+  .home-how b { color: #eef1fa; }
+  .hh-kinds { margin-bottom: 14px; }
+  .hh-kinds dl { display: flex; flex-direction: column; gap: 7px; }
+  .hh-kinds dl > div { display: grid; grid-template-columns: 92px 1fr; gap: 8px; font-size: 13px; line-height: 1.5; }
+  .hh-kinds dt { color: var(--cyan); font-weight: 700; word-break: keep-all; }
+  .hh-kinds dd { color: #c9d1ec; word-break: keep-all; }
+  .hh-tips { list-style: none; border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 5px; }
+  .hh-tips li { font-size: 12.5px; color: #a3aed0; padding-left: 12px; position: relative; }
+  .hh-tips li::before { content: "·"; position: absolute; left: 2px; color: #6d7aa6; }
+  body.host .home-how { max-width: 440px; }
+  body.host .hh-block li, body.host .hh-lead { font-size: 15px; }
   body.host .role-card { max-width: 440px; padding: 20px 20px 20px 18px; }
   body.host .rc-body b { font-size: 22px; }
   body.host .rc-body p { font-size: 15px; }
@@ -1359,6 +1385,7 @@ body.host #teamResult .tr-line { font-size: 30px; }
   <h1 class="logo" id="homeTitle" style="display:none">Class <span class="accent">Arcade</span></h1>
   <p class="sub">우리 반이 한 방에 모여 실시간 미니게임!</p>
   <div class="home-feat"><span>📺 TV에 띄우고</span><span>📱 폰으로 QR 접속</span><span>⚡ 실시간 대결</span></div>
+  <a class="how-jump" href="#homeHow" onclick="event.preventDefault();document.getElementById('homeHow').scrollIntoView({behavior:'smooth',block:'start'})">처음이세요? 이렇게 놀아요 ↓</a>
   <div class="role-card teacher" id="btnCreate">
     <div class="rc-ico">🎮</div>
     <div class="rc-body"><b>방 만들기</b><span class="rc-tag">선생님용</span>
@@ -1374,6 +1401,41 @@ body.host #teamResult .tr-line { font-size: 30px; }
   <a href="/fps/" class="role-card fps"><div class="rc-ico"><svg viewBox="0 0 48 24" width="42" height="21" fill="currentColor" aria-hidden="true"><path d="M2 9.5 10 8v7l-6 2.2-2-.8z"/><rect x="10" y="7" width="21" height="7" rx="1"/><rect x="30" y="8" width="9" height="5" rx="1"/><rect x="38" y="9.2" width="8" height="2.4" rx=".8"/><path d="M20.5 14h5l1.6 7-4.3.6z"/><path d="M13 14h4.2l-1.6 6.2-3.6-.6z"/><rect x="15" y="3.6" width="10" height="2.6" rx="1.2"/><rect x="17" y="5.8" width="1.8" height="1.6"/><rect x="21.4" y="5.8" width="1.8" height="1.6"/></svg></div><div class="rc-body"><b>IRON SECTOR</b><span class="rc-tag">PC FPS</span><p>팀전 · 개인전 1인칭 슈팅. 키보드와 마우스로 전투에 참가하세요.</p></div><div class="rc-arrow">›</div></a>
   <a href="/nexus/" class="role-card nexus"><div class="rc-ico"><svg viewBox="0 0 48 48" width="38" height="38" fill="currentColor" aria-hidden="true"><path d="M24 3 29 11 24 19 19 11z"/><path d="M7 26c0-2.2 7.6-4 17-4s17 1.8 17 4c0 1.4-2.8 2.6-7 3.3L28 42l-3-5-3 6-4-10-3 3-2.5-6.7C9.6 28.6 7 27.4 7 26z"/><circle cx="11" cy="16" r="1.6"/><circle cx="37" cy="13" r="1.3"/></svg></div><div class="rc-body"><b>NEXUS ISLES</b><span class="rc-tag">3D 모험</span><p>하늘섬 탐험 · 파쿠르 · 나만의 정원 짓기. PC와 폰에서 친구와 함께해요.</p></div><div class="rc-arrow">›</div></a>
   <div class="err" id="homeErr"></div>
+  <section class="home-how" id="homeHow" aria-labelledby="homeHowTitle">
+    <h2 id="homeHowTitle">이렇게 놀아요</h2>
+    <p class="hh-lead">선생님 컴퓨터를 TV에 띄우고, 학생들은 각자 폰으로 들어와 한 방에서 같이 겨뤄요. 설치도 로그인도 필요 없어요.</p>
+    <div class="hh-block teacher">
+      <h3>선생님 · TV 화면</h3>
+      <ol>
+        <li><b>방 만들기</b>를 누르면 화면에 QR코드와 방 코드 4자리가 떠요.</li>
+        <li>학생들이 다 들어오면 게임을 고르고 <b>게임 시작</b>. 개인전·팀 대항전을 고를 수 있는 게임도 있어요.</li>
+        <li>한 판이 끝나면 순위와 누적 점수가 나와요. <b>한 판 더</b> 또는 <b>다른 게임 고르기</b>로 이어 가요.</li>
+      </ol>
+    </div>
+    <div class="hh-block student">
+      <h3>학생 · 내 폰</h3>
+      <ol>
+        <li>TV의 QR코드를 폰 카메라로 찍어요. 찍기 어려우면 <b>게임 들어가기</b>에서 방 코드 4자리를 넣어요.</li>
+        <li>별명을 쓰고 마음에 드는 캐릭터를 골라요.</li>
+        <li>게임은 TV를 보면서 폰으로 조작해요. 조이스틱, 버튼, 화면 터치, 글자 입력 등 게임마다 달라요.</li>
+      </ol>
+    </div>
+    <div class="hh-kinds">
+      <h3>어떤 게임이 있나요?</h3>
+      <dl>
+        <div><dt>피하고 살아남기</dt><dd>폭탄 피하기 · 감염 술래잡기 · 무궁화 꽃이 피었습니다 · 물풍선 대작전</dd></div>
+        <div><dt>달리기 시합</dt><dd>레이싱 · 카트 그랑프리 · 설원 러너</dd></div>
+        <div><dt>손가락 순발력</dt><dd>모기 잡기 · 인형 뽑기 · 보물 낚시 · 10초를 잡아라</dd></div>
+        <div><dt>머리 쓰기</dt><dd>퀴즈쇼 · OX 서바이벌 · 초성 퀴즈 · 그림 퀴즈 · 같은 그림 찾기</dd></div>
+        <div><dt>힘 모으기 · 운</dt><dd>줄다리기 · 색 땅따먹기 · 사다리 복불복 · 통아저씨</dd></div>
+      </dl>
+    </div>
+    <ul class="hh-tips">
+      <li>한 방에 <b>최대 40명</b>까지 들어올 수 있어요.</li>
+      <li>소리는 TV에서 나와요. 학생 폰은 기본으로 조용해요.</li>
+      <li><b>IRON SECTOR</b>·<b>NEXUS ISLES</b>는 방 없이 각자 바로 하는 게임이에요. 카드를 누르면 자세한 방법이 나와요.</li>
+    </ul>
+  </section>
   <div class="home-foot">
     <a class="made-by" href="https://www.instagram.com/kimju.zip" target="_blank" rel="noopener">
       <span class="ig" aria-hidden="true">
