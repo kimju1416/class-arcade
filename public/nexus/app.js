@@ -158,7 +158,11 @@ function help() {
   );
   $("help-done").onclick = closeModal;
 }
-$("help").onclick = $("lobby-help").onclick = help;
+$("help").onclick = help;
+$("lobby-help").onclick = (e) => {
+  e.preventDefault();
+  $("how-to-play").scrollIntoView({ behavior: "smooth", block: "start" });
+};
 $("menu").onclick = () => {
   showModal(
     `<div class="eyebrow">TAKE A BREATH</div><h2>잠깐 쉬어 갈까요?</h2><p>기록은 자동 저장돼요. ${saveOK ? "" : '<span class="save-warning">현재 이 브라우저에서는 저장을 사용할 수 없습니다.</span>'}</p><button class="primary" id="continue">계속 탐험하기</button><button class="secondary" id="menu-help">조작 방법 보기</button><button class="secondary" id="quality">그래픽: ${qualityReduced ? "가볍게" : "선명하게"} · 바꾸기</button><button class="secondary" id="return-lobby">시작 화면으로</button>`,

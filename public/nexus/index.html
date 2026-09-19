@@ -16,7 +16,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23102c32'/%3E%3Cpath d='M32 8 51 27 32 56 13 27Z' fill='%237fffe0'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/nexus/style.css?v=20260919a" />
+    <link rel="stylesheet" href="/nexus/style.css?v=20260919b" />
   </head>
   <body>
     <main id="lobby">
@@ -119,8 +119,100 @@
         </div>
         <div class="launch-foot">
           <span>설치 없이 바로 플레이 · 기록은 이 기기에 저장</span
-          ><button id="lobby-help" class="text-button">조작 방법 ⓘ</button>
+          ><a id="lobby-help" class="text-button" href="#how-to-play">플레이 방법 보기 ↓</a>
         </div>
+      </section>
+      <section id="how-to-play" class="how-panel" aria-labelledby="how-title">
+        <div class="panel-kicker">HOW TO PLAY</div>
+        <h2 id="how-title">이렇게 놀아요</h2>
+        <p class="how-lead">
+          하늘에 떠 있는 섬들을 뛰어다니는 3D 모험 게임이에요. 위에서 놀이
+          하나를 골라 시작하고, 게임 안에서는 아래쪽 버튼으로 언제든 바꿀 수
+          있어요.
+        </p>
+        <ol class="how-modes">
+          <li>
+            <b><span>1</span>빛을 찾아서 · 탐험</b>
+            <p>
+              섬 곳곳에 숨은 <strong>빛의 크리스털 12개</strong>를 찾아요.
+              오른쪽 위 숫자와 지도로 몇 개 모았는지 볼 수 있어요. 다 모았으면
+              처음 섬의 포털로 돌아가면 성공!
+            </p>
+          </li>
+          <li>
+            <b><span>2</span>하늘을 달려 · 파쿠르</b>
+            <p>
+              번호가 붙은 <strong>관문 1~9번을 차례대로</strong> 통과해요. 첫
+              관문을 지나면 시간이 재지고, 9번까지 지나면 내 최고 기록이
+              남아요. 떨어지면 마지막으로 지난 관문에서 다시 시작하지만 시간은
+              계속 흘러요.
+            </p>
+          </li>
+          <li>
+            <b><span>3</span>상상의 정원 · 건설</b>
+            <p>
+              정원 바닥에서 자리를 고르고 <strong>사암·잔디·크리스털·나무</strong>
+              블록을 쌓아요. 8층, 150개까지 쌓을 수 있고 만든 건 자동으로
+              저장돼요.
+            </p>
+          </li>
+        </ol>
+        <div class="how-keys" role="table" aria-label="조작 방법">
+          <div class="how-row how-head" role="row">
+            <span role="columnheader">하고 싶은 것</span
+            ><span role="columnheader">PC</span
+            ><span role="columnheader">휴대폰·태블릿</span>
+          </div>
+          <div class="how-row" role="row">
+            <span role="cell">움직이기</span
+            ><span role="cell"><kbd>W A S D</kbd> 또는 방향키</span
+            ><span role="cell">왼쪽 아래 조이스틱</span>
+          </div>
+          <div class="how-row" role="row">
+            <span role="cell">둘러보기</span
+            ><span role="cell">화면 끌기 · 휠로 확대</span
+            ><span role="cell">빈 화면을 손가락으로 끌기</span>
+          </div>
+          <div class="how-row" role="row">
+            <span role="cell">점프</span
+            ><span role="cell"><kbd>Space</kbd></span
+            ><span role="cell">점프 버튼</span>
+          </div>
+          <div class="how-row" role="row">
+            <span role="cell">2단 점프 · 활공</span
+            ><span role="cell">공중에서 <kbd>Space</kbd> 한 번 더, 꾹 누르면 활공</span
+            ><span role="cell">점프 버튼 두 번, 두 번째를 꾹 누르면 활공</span>
+          </div>
+          <div class="how-row" role="row">
+            <span role="cell">대시(순간 돌진)</span
+            ><span role="cell"><kbd>Shift</kbd></span
+            ><span role="cell">대시 버튼</span>
+          </div>
+          <div class="how-row" role="row">
+            <span role="cell">블록 놓기 · 빼기</span
+            ><span role="cell">자리 클릭 후 <kbd>E</kbd> · <kbd>Q</kbd></span
+            ><span role="cell">자리 누른 뒤 설치 · 회수 버튼</span>
+          </div>
+          <div class="how-row" role="row">
+            <span role="cell">체크포인트로 돌아가기</span
+            ><span role="cell"><kbd>R</kbd> 또는 복귀 버튼</span
+            ><span role="cell">복귀 버튼</span>
+          </div>
+        </div>
+        <ul class="how-tips">
+          <li>
+            <b>떨어져도 괜찮아요.</b> 섬 밖으로 떨어지면 마지막 체크포인트에서
+            다시 시작해요.
+          </li>
+          <li>
+            <b>친구와 같이.</b> 게임 안 ‘초대’ 버튼으로 링크를 보내면 같은
+            하늘에서 최대 16명이 서로를 볼 수 있어요.
+          </li>
+          <li>
+            <b>기록은 이 기기에.</b> 모은 크리스털·최고 기록·정원은 지금 쓰는
+            브라우저에 저장돼요.
+          </li>
+        </ul>
       </section>
       <footer class="lobby-footer">
         <span>CRAFTED FOR THE CURIOUS.</span
@@ -227,6 +319,6 @@
       <button id="close-modal" class="close-modal" aria-label="닫기">×</button>
       <div id="modal-body"></div>
     </dialog>
-    <script type="module" src="/nexus/app.js?v=20260919a"></script>
+    <script type="module" src="/nexus/app.js?v=20260919b"></script>
   </body>
 </html>
