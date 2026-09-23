@@ -11,7 +11,7 @@ export function makeKart(id, char, tr, s, lat) {
     id, char, x: p.x, z: p.z, y: p.y, h: p.h, spd: 0,
     prog: s, li: ((Math.floor(s) % N) + N) % N, lat, lap: 0,
     drift: 0, driftT: 0, driftLv: 0, hop: 0, hopV: 0,
-    boostT: 0, starT: 0, spinT: 0, spinA: 0, squash: 0,
+    boostT: 0, starT: 0, spinT: 0, spinDur: 1, dizzyT: 0, squash: 0,
     off: false, wallT: 0, bumpT: 0, steerVis: 0, yawVis: 0,
     item: null, itemN: 0, rollT: 0, finished: false, finT: 0, rank: 0,
     mul: 1, events: [],
@@ -125,13 +125,14 @@ export function stepKart(k, inp, tr, dt, loc) {
   // 타이머
   if (k.boostT > 0) k.boostT -= dt;
   if (k.starT > 0) k.starT -= dt;
-  if (k.spinT > 0) { k.spinT -= dt; k.spinA += dt * 14; } else k.spinA = 0;
+  if (k.spinT > 0) k.spinT -= dt;
+  if (k.dizzyT > 0) k.dizzyT -= dt;
   if (k.bumpT > 0) k.bumpT -= dt;
 }
 
 export function spinOut(k, t = 1.3) {
   if (k.starT > 0) return false;
-  k.spinT = t; k.drift = 0; k.driftLv = 0; k.boostT = 0; k.hopV = 5;
+  k.spinT = t; k.spinDur = t; k.dizzyT = t + 0.7; k.drift = 0; k.driftLv = 0; k.boostT = 0; k.hopV = 6.5;
   k.events.push('spun');
   return true;
 }

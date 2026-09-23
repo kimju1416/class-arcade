@@ -176,6 +176,7 @@ body.touch #touch { display: block; }
 #tL { left: 18px; } #tR { left: 118px; }
 #tDrift { width: 96px; height: 96px; right: 18px; bottom: calc(22px + env(safe-area-inset-bottom)); font-size: 15px; }
 #tItem { width: 76px; height: 76px; right: 126px; bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 14px; }
+#tItem.has { background-size: 70%; background-position: center; background-repeat: no-repeat; color: transparent; border-color: var(--yel); }
 #tBrake { width: 62px; height: 62px; right: 36px; bottom: calc(132px + env(safe-area-inset-bottom)); font-size: 12px; }
 body.touch #speedo { display: none; }
 body.touch #rankBox { right: auto; left: 16px; top: calc(116px + env(safe-area-inset-top)); bottom: auto; }

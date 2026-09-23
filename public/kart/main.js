@@ -13,6 +13,7 @@ import { audio } from './audio.js';
 import { icon } from './icons.js';
 import { botInput, botWantsItem } from './ai.js';
 import { Net } from './net.js';
+import { Particles, Skids, softDot } from './fx.js';
 
 const $ = (id) => document.getElementById(id);
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -286,6 +287,7 @@ async function startRace(opt) {
     race.racers.push(r); race.byId[g.id] = r;
     if (me) race.me = r;
   });
+  race.fx = { add: new Particles(scene, 2600, true), dust: new Particles(scene, 1400, false), skids: new Skids(scene) };
   $('rankOf').textContent = '/ ' + race.racers.length;
   drawMiniBase();
   $('loading').hidden = true;
@@ -329,7 +331,11 @@ function interpRemote(r, now, dt) {
   const f = B.f;
   k.starT = f & 1 ? 1 : 0; k.boostT = f & 4 ? 1 : 0;
   k.drift = f & 8 ? 1 : f & 16 ? -1 : 0; k.driftLv = (f >> 5) & 3;
-  if (f & 2) { k.spinT = 0.5; k.spinA += dt * 14; } else { k.spinT = 0; k.spinA = 0; }
+  // 원격 카트가 맞은 순간(깃발이 켜지는 순간)부터 내 화면에서 같은 회전 연출을 돌린다
+  if (f & 2) { if (!k._spinOn) { k.spinT = k.spinDur = 1.25; k.dizzyT = 1.9; fxBurst(k.x, k.y + 1, k.z, 1); } k._spinOn = true; }
+  else k._spinOn = false;
+  if (k.spinT > 0) k.spinT -= dt;
+  if (k.dizzyT > 0) k.dizzyT -= dt;
   k.finished = !!(f & 128);
   const turn = lerpAng(0, k.h - ph, 1) / Math.max(dt, 1e-3);
   k.steerVis += (Math.max(-1, Math.min(1, -turn / 1.5)) - k.steerVis) * Math.min(1, dt * 8);
@@ -358,11 +364,13 @@ function becomeHost(id) {
 }
 
 // ---------------- 아이템 ----------------
+const iconURL = {};
 function setItem(k) {
   const cv = $('itemCv'), g = cv.getContext('2d');
   g.clearRect(0, 0, 160, 160);
   if (k) g.drawImage(icon(k, 160), 8, 8, 144, 144);
   $('itemN').textContent = '';
+  const tb = $('tItem'); if (tb.dataset.k !== (k || '')) { tb.dataset.k = k || ''; tb.style.backgroundImage = k ? `url(${iconURL[k] || (iconURL[k] = icon(k, 128).toDataURL())})` : ''; tb.classList.toggle('has', !!k); }
 }
 function giveItem(r) {
   const k = r.k;
@@ -428,7 +436,8 @@ function onItem(m) {
   spawnHazard(m);
 }
 
-const hazGeo = new T.SphereGeometry(0.55, 20, 14);
+const hazGeo = new T.SphereGeometry(0.55, 28, 20);
+let glowTex = null;
 function hazardTexture(k) { const t = new T.CanvasTexture(icon(k, 128)); t.colorSpace = T.SRGBColorSpace; return t; }
 const hazTex = {};
 function spawnHazard(m) {
@@ -455,8 +464,8 @@ function spawnHazard(m) {
   } else {
     const mat = new T.MeshStandardMaterial({ map: hazTex[m.k], roughness: 0.4 });
     h.mesh = new T.Mesh(hazGeo, mat); h.mesh.castShadow = true;
-    const glow = new T.Sprite(new T.SpriteMaterial({ color: m.k === 'hball' ? 0xff7a1a : 0xffffff, transparent: true, opacity: 0.35, blending: T.AdditiveBlending, depthWrite: false }));
-    glow.scale.set(2.2, 2.2, 1); h.mesh.add(glow);
+    const glow = new T.Sprite(new T.SpriteMaterial({ map: glowTex || (glowTex = softDot()), color: m.k === 'hball' ? 0xff8a2a : 0xfff2c0, transparent: true, opacity: 0.55, blending: T.AdditiveBlending, depthWrite: false }));
+    glow.scale.set(2.4, 2.4, 1); h.mesh.add(glow);
   }
   scene.add(h.mesh);
   race.hazards.set(h.id, h);
@@ -476,7 +485,10 @@ function placeHazard(h, now) {
   const p = tr.point(s, lat);
   h.x = p.x; h.z = p.z; h.y = p.y + (h.k === 'banana' ? 0.7 : 0.6 + Math.abs(Math.sin(el / 160)) * (h.k === 'hball' ? 1.2 : 0.4));
   h.mesh.position.set(h.x, h.y, h.z);
-  if (h.k !== 'banana') h.mesh.rotation.set(el / 90, 0, el / 140);
+  if (h.k !== 'banana') {
+    h.mesh.rotation.set(el / 90, 0, el / 140);
+    if (race.fx) { const c = h.k === 'hball' ? [1, 0.55, 0.15] : [1, 1, 0.85]; race.fx.add.emit(h.x, h.y, h.z, (Math.random() - 0.5), 0.5, (Math.random() - 0.5), 0.35, 0.55, c[0] * 0.8, c[1] * 0.8, c[2] * 0.8, 0, -0.6); }
+  }
 }
 function killHazard(h, tell) {
   if (h.dead) return;
@@ -505,6 +517,7 @@ function hazardsTick(now) {
   }
 }
 function onSpun(r, by, kind) {
+  fxBurst(r.k.x, r.k.y + 1, r.k.z, 1);
   if (r.me) { audio.play('hit', 1); shake = 0.5; }
   else nearSound(r, 'hit', 0.7);
   if (race.online) net.send({ t: 'hit', v: r.id, by, k: kind });
@@ -536,6 +549,49 @@ function feed(msg) {
   const f = $('feed'), d = document.createElement('div'); d.textContent = msg; f.appendChild(d);
   while (f.children.length > 3) f.firstChild.remove();
   setTimeout(() => d.remove(), 2600);
+}
+
+// ---------------- 효과 ----------------
+// kind 1 = 맞음(노란 별 불꽃), 2 = 아이템 상자(무지개 색종이)
+function fxBurst(x, y, z, kind) {
+  if (!race || !race.fx) return;
+  const A = race.fx.add;
+  const rain = [[1, 0.35, 0.6], [1, 0.85, 0.25], [0.3, 0.9, 0.6], [0.35, 0.6, 1], [0.8, 0.45, 1]];
+  for (let i = 0; i < (kind === 1 ? 34 : 26); i++) {
+    const a = Math.random() * Math.PI * 2, u = Math.random() * 0.9 + 0.1, sp = kind === 1 ? 7 + Math.random() * 6 : 5 + Math.random() * 5;
+    const c = kind === 1 ? (i % 3 ? [1, 0.85, 0.3] : [1, 1, 1]) : rain[i % rain.length];
+    A.emit(x, y, z, Math.cos(a) * sp * (1 - u * 0.5), u * sp, Math.sin(a) * sp * (1 - u * 0.5), 0.55 + Math.random() * 0.3, kind === 1 ? 0.6 : 0.45, c[0], c[1], c[2], 9);
+  }
+  if (kind === 1) for (let i = 0; i < 8; i++) race.fx.dust.emit(x, y - 0.4, z, (Math.random() - 0.5) * 4, 1 + Math.random(), (Math.random() - 0.5) * 4, 0.9, 1.4, 0.92, 0.92, 0.92, -0.5, 1.8);
+}
+const DUST = { beach: [0.93, 0.8, 0.6], blossom: [0.62, 0.6, 0.45], neon: null };
+const DRIFT_C = [null, [0.35, 0.65, 1], [1, 0.6, 0.15], [1, 0.35, 0.9]];
+function fxKart(r, dt) {
+  const k = r.k, F = race.fx;
+  const dx = k.x - camera.position.x, dz = k.z - camera.position.z;
+  if (dx * dx + dz * dz > 110 * 110) return;
+  const yaw = k.h + k.yawVis, s = Math.sin(yaw), c = Math.cos(yaw);
+  const wheel = (side) => [k.x + (-c * 0.82 * side) + s * -0.9, k.y + 0.1, k.z + (s * 0.82 * side) + c * -0.9];
+  r.fxT = (r.fxT || 0) + dt;
+  const tick = r.fxT > 1 / 45; if (tick) r.fxT = 0;
+  // 드리프트 불꽃 + 타이어 자국
+  if (k.drift && k.spd > 8 && k.hop <= 0.05) {
+    const dist = Math.hypot(k.x - (r.skX || 0), k.z - (r.skZ || 0));
+    if (dist > 0.45) { for (const sd of [-1, 1]) { const w = wheel(sd); F.skids.add(w[0], k.y, w[2], yaw); } r.skX = k.x; r.skZ = k.z; }
+    const col = DRIFT_C[k.driftLv];
+    if (col && tick) for (const sd of [-1, 1]) { const w = wheel(sd); for (let i = 0; i < 2; i++) F.add.emit(w[0], w[1] + 0.1, w[2], (Math.random() - 0.5) * 3 - s * 2, 1.5 + Math.random() * 3, (Math.random() - 0.5) * 3 - c * 2, 0.28, 0.32, col[0], col[1], col[2], 14); }
+    if (tick && Math.random() < 0.5) { const w = wheel(k.drift); F.dust.emit(w[0], w[1] + 0.3, w[2], (Math.random() - 0.5), 0.8, (Math.random() - 0.5), 0.7, 0.9, 0.85, 0.85, 0.88, -0.3, 2); }
+  }
+  // 흙·모래 먼지
+  const dc = DUST[race.def.theme];
+  if (dc && k.off && Math.abs(k.spd) > 6 && tick) for (const sd of [-1, 1]) { const w = wheel(sd); F.dust.emit(w[0], w[1] + 0.2, w[2], (Math.random() - 0.5) * 1.5 - s * 1.5, 1 + Math.random() * 1.5, (Math.random() - 0.5) * 1.5 - c * 1.5, 0.8, 1.1, dc[0], dc[1], dc[2], 1, 2.2); }
+  // 부스터 불길
+  if (k.boostT > 0 && tick) for (const sd of [-0.22, 0.22]) {
+    const ex = k.x + (-c * sd) - s * 1.6, ez = k.z + (s * sd) - c * 1.6;
+    F.add.emit(ex, k.y + 0.5, ez, -s * 6 + (Math.random() - 0.5), 0.6, -c * 6 + (Math.random() - 0.5), 0.22, 0.7, 1, 0.55 + Math.random() * 0.3, 0.15, 0, 1);
+  }
+  // 슈퍼스타 무지개 가루
+  if (k.starT > 0 && tick) { const h = (performance.now() / 300) % 1; const col = new T.Color().setHSL(h, 1, 0.6); F.add.emit(k.x + (Math.random() - 0.5) * 2, k.y + Math.random() * 2, k.z + (Math.random() - 0.5) * 2, 0, 1, 0, 0.6, 0.5, col.r, col.g, col.b, -1); }
 }
 
 // ---------------- 순위 ----------------
@@ -781,7 +837,7 @@ function frame() {
       const k = r.k;
       for (const bx of W.boxes) {
         if (bx.off > 0) continue;
-        if (Math.hypot(k.x - bx.x, k.z - bx.z) < 2.3) { bx.off = 2.2; bx.mesh.visible = false; if (r.local) giveItem(r); }
+        if (Math.hypot(k.x - bx.x, k.z - bx.z) < 2.3) { bx.off = 2.2; bx.mesh.visible = false; fxBurst(bx.x, bx.y + 1.2, bx.z, 2); if (r.local) giveItem(r); }
       }
       if (!r.local) continue;
       for (const p of W.pads) {
@@ -823,7 +879,9 @@ function frame() {
   // 보이는 것
   updateCamera(now, dt);
   for (const f of race.world.update) f(dt, race.time, camera);
-  for (const r of race.racers) if (!r.gone) r.view.update(r.k, dt, camera);
+  for (const r of race.racers) if (!r.gone) { r.view.update(r.k, dt, camera); fxKart(r, dt); }
+  const ph = innerHeight * renderer.getPixelRatio() / Math.tan(camera.fov * Math.PI / 360) / 2;
+  race.fx.add.update(dt, ph); race.fx.dust.update(dt, ph);
   const sun = race.world.sun, sd = sun.userData.dir;
   sun.position.set(mk.x + sd.x * 120, mk.y + sd.y * 120, mk.z + sd.z * 120); sun.target.position.set(mk.x, mk.y, mk.z);
   hud(now, dt);

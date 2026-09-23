@@ -262,20 +262,57 @@ export function plantCherries(scene, list, quality, W) {
   branches.push(tube([[0, 3.9, 0], [1.3, 4.9, -0.4], [2.3, 6, -0.8]], 0.16));
   branches.push(tube([[0, 4.6, 0], [0.3, 5.8, 1.2], [0.6, 6.8, 1.9]], 0.14));
   const trunk = mergeGeometries(branches);
-  const leaf = cardMaterial('leaf-cherry', 0.03);
-  leaf.m.color.set(0xf2b3cc); // 햇빛에 하얗게 날아가지 않게 분홍을 진하게
-  const cards = [];
+  // 수관: 울퉁불퉁한 공 여러 개를 뭉쳐 부피를 만들고, 꽃 무더기 텍스처를 세 방향에서 투영해 입힌다
   const Rn = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
-  for (let i = 0; i < 26; i++) {
-    const a = Rn() * Math.PI * 2, e = (Rn() - 0.3) * 1.2;
-    const rr = 2.6 + Rn() * 0.9;
-    const x = Math.cos(a) * Math.cos(e) * rr * 1.1, y = 6.3 + Math.sin(e) * rr * 0.75, z = Math.sin(a) * Math.cos(e) * rr * 1.1;
-    const s = 2.6 + Rn() * 1.4;
-    cards.push(card(s, s, x, y, z, Rn() * Math.PI, (Rn() - 0.5) * 0.9));
+  const blobs = [];
+  const centers = [[0, 6.6, 0, 2.3], [-1.9, 5.9, 0.4, 1.7], [1.9, 6.1, -0.5, 1.8], [0.3, 8.0, 0.6, 1.6], [-0.7, 6.9, -1.8, 1.6], [1.0, 6.8, 1.8, 1.5], [-2.6, 6.4, -0.9, 1.2], [2.5, 7.0, 1.0, 1.2], [0.0, 5.4, -1.6, 1.3], [-1.2, 7.8, 1.3, 1.2]];
+  for (const [x, y, z, r] of centers) {
+    const g = new T.IcosahedronGeometry(r, 3);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const v = new T.Vector3().fromBufferAttribute(p, i).normalize();
+      const n = fbm(v.x * 2.4 + x * 3, v.z * 2.4 + v.y * 1.7 + z * 3, 3);
+      const rr = r * (0.82 + n * 0.42);
+      p.setXYZ(i, x + v.x * rr, y + v.y * rr * 0.86, z + v.z * rr);
+    }
+    g.computeVertexNormals();
+    blobs.push(g);
   }
-  const crown = puffNormals(mergeGeometries(cards), 0, 6.3, 0);
+  const crown = mergeGeometries(blobs);
+  // 안쪽(아래·중심)은 어둡게 — 부피감
+  { const p = crown.attributes.position, col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const y = p.getY(i), d = Math.hypot(p.getX(i), p.getZ(i)); const k = 0.6 + 0.4 * smooth(4.6, 8.2, y) * (0.75 + 0.25 * smooth(0.5, 2.8, d)); col[i * 3] = k; col[i * 3 + 1] = k * 0.96; col[i * 3 + 2] = k; }
+    crown.setAttribute('color', new T.BufferAttribute(col, 3)); }
+  const bt = tex('tex-blossom');
+  const crownM = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+  crownM.onBeforeCompile = (sh) => {
+    sh.uniforms.tB = { value: bt };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
+varying vec3 vOP; varying vec3 vON;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+vOP = position; vON = normal;`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+uniform sampler2D tB; varying vec3 vOP; varying vec3 vON;`)
+      .replace('#include <map_fragment>', `vec3 bw = pow(abs(normalize(vON)), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
+        float sc = 0.28;
+        vec3 tb = texture2D(tB, vOP.zy * sc).rgb * bw.x + texture2D(tB, vOP.xz * sc).rgb * bw.y + texture2D(tB, vOP.xy * sc).rgb * bw.z;
+        diffuseColor.rgb *= tb;`);
+  };
+  // 가장자리 꽃송이 카드 — 실루엣을 보송하게
+  const leaf = cardMaterial('leaf-cherry', 0.03);
+  leaf.m.color.set(0xf2b3cc);
+  const cards = [];
+  for (let i = 0; i < 16; i++) {
+    const [x, y, z, r] = centers[i % centers.length];
+    const a = Rn() * Math.PI * 2, e = (Rn() - 0.2) * 1.3;
+    const px = x + Math.cos(a) * Math.cos(e) * r * 0.95, py = y + Math.sin(e) * r * 0.85, pz = z + Math.sin(a) * Math.cos(e) * r * 0.95;
+    const sz = 1.2 + Rn() * 0.8;
+    cards.push(card(sz, sz, px, py, pz, -a + Math.PI / 2, (Rn() - 0.5) * 0.8));
+  }
+  const fringe = puffNormals(mergeGeometries(cards), 0, 6.6, 0);
   placeInstanced(scene, trunk, trunkM, list, quality >= 2);
-  placeInstanced(scene, crown, leaf.m, list, quality >= 2, leaf.depth);
+  placeInstanced(scene, crown, crownM, list, quality >= 2);
+  placeInstanced(scene, fringe, leaf.m, list, false);
   W.update.push((dt, t) => { leaf.u.time.value = t; });
 }
 

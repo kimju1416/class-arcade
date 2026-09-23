@@ -1,5 +1,7 @@
 // 3D 카트 모델 + 운전자 그림(앞/뒤 두 장) + 불꽃·연기 효과
 import * as T from 'three';
+import { Dizzy, starTex } from './fx.js';
+let _star;
 
 const tireGeo = new T.CylinderGeometry(0.34, 0.34, 0.3, 20).rotateZ(Math.PI / 2);
 const tireWide = new T.CylinderGeometry(0.4, 0.4, 0.42, 20).rotateZ(Math.PI / 2);
@@ -118,6 +120,7 @@ export class KartView {
       this.label = makeLabel(opts.label, char.color);
       this.label.position.set(0, 3.0, 0); this.root.add(this.label);
     }
+    this.dizzy = new Dizzy(this.root, _star || (_star = starTex()));
     scene.add(this.root);
     this.wheelA = 0; this.t = Math.random() * 10;
   }
@@ -127,10 +130,17 @@ export class KartView {
     this.root.position.set(k.x, k.y - k.hop, k.z);
     this.root.rotation.y = k.h;
     this.body.position.y = k.hop;
-    this.body.rotation.y = k.yawVis + (k.spinT > 0 ? k.spinA : 0);
+    // 맞았을 때: 두 바퀴를 빠르게 돌다 부드럽게 멈추고(끝에서 딱 원위치), 살짝 기울며 흔들린다
+    let spin = 0, wob = 0;
+    if (k.spinT > 0) {
+      const p = 1 - k.spinT / (k.spinDur || 1);
+      spin = (1 - Math.pow(1 - p, 3)) * Math.PI * 4;
+      wob = Math.sin(p * Math.PI * 7) * 0.22 * (1 - p);
+    }
+    this.body.rotation.y = k.yawVis + spin;
     const bob = Math.sin(this.t * 38) * 0.012 * Math.min(1, Math.abs(k.spd) / 10) + (k.off ? Math.sin(this.t * 55) * 0.03 : 0);
     this.body.position.y += bob;
-    this.body.rotation.z = -k.steerVis * 0.05 * Math.min(1, Math.abs(k.spd) / 20) + (k.drift ? k.drift * 0.07 : 0);
+    this.body.rotation.z = -k.steerVis * 0.05 * Math.min(1, Math.abs(k.spd) / 20) + (k.drift ? k.drift * 0.07 : 0) + wob;
     this.body.rotation.x = -(k.pitch || 0);
     const sq = k.squash || 0;
     this.body.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.3);
@@ -167,6 +177,7 @@ export class KartView {
       sp.visible = !!k.drift && k.driftLv > 0;
       if (sp.visible) { sp.material.color.setHex(lvCol); const s = 0.7 + Math.random() * 0.7; sp.scale.set(s, s, 1); sp.material.rotation = Math.random() * 6; }
     }
+    this.dizzy.update((k.dizzyT || 0) > 0, this.t);
     this.aura.visible = k.starT > 0;
     if (this.aura.visible) {
       this.aura.material.color.setHSL((this.t * 1.5) % 1, 1, 0.6);

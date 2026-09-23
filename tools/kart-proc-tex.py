@@ -106,3 +106,28 @@ for _ in range(2600):
     d.line([x, y, x + math.cos(ang) * l, y + math.sin(ang) * l], fill=(int(g * 0.32), g, int(g * 0.4), 255), width=3)
 im.save(os.path.join(OUT, 'leaf-pine.webp'), 'WEBP', quality=88, method=6)
 print('ok')
+
+# 벚꽃 수관용 이음매 없는 꽃 무더기 텍스처(3D 구에 입힌다)
+S = 1024
+im = Image.new('RGB', (S, S), (214, 120, 150)); d = ImageDraw.Draw(im)
+def flower(cx, cy, r, col, core):
+    for k in range(5):
+        a = k / 5 * math.pi * 2 + random.uniform(0, 1)
+        px, py = cx + math.cos(a) * r * 0.55, cy + math.sin(a) * r * 0.55
+        for ox in (0, -S, S):
+            for oy in (0, -S, S):
+                d.ellipse([px - r * 0.52 + ox, py - r * 0.52 + oy, px + r * 0.52 + ox, py + r * 0.52 + oy], fill=col)
+    for ox in (0, -S, S):
+        for oy in (0, -S, S):
+            d.ellipse([cx - r * 0.18 + ox, cy - r * 0.18 + oy, cx + r * 0.18 + ox, cy + r * 0.18 + oy], fill=core)
+for layer in range(4):
+    for _ in range(520 if layer < 3 else 260):
+        x, y = random.uniform(0, S), random.uniform(0, S)
+        l = 0.72 + layer * 0.09 + random.uniform(-0.05, 0.05)
+        base = (255, int(170 + 60 * l * random.uniform(0.85, 1)), int(200 + 40 * l))
+        col = tuple(int(min(255, c * (0.78 + 0.22 * l))) for c in base)
+        if random.random() < 0.08 and layer < 2: col = (120, 170, 90)  # 사이사이 연두 잎
+        flower(x, y, random.uniform(13, 24), col, (255, 205, 120) if col[1] > 150 else col)
+im = im.filter(ImageFilter.GaussianBlur(0.5))
+im.save(os.path.join(OUT, 'tex-blossom.webp'), 'WEBP', quality=86, method=6)
+print('blossom ok')
