@@ -335,6 +335,20 @@ function build(cfg, char) {
     for (const sx of [-1, 1]) { const p = mesh(new T.PlaneGeometry(1.7, 0.42), m, sx * (out.sideX + 0.015), out.numberAt[1], 0.55); p.rotation.y = sx * Math.PI / 2; if (sx < 0) p.scale.x = -1; G.add(p); }
   }
   G.traverse(o => { if (o.isMesh && o.material !== M.glass) o.castShadow = true; });
+  // 운전대를 그림 속 주먹 자리로: 운전자 그림은 가슴 높이(좌석+0.66)·몸 앞 0.5m에서 주먹을 쥐고 있다
+  if (out.steer) {
+    const st = out.steer, cy = out.driverY + 0.6, cz = out.driverZ + 0.5, R = 0.34;
+    st.geometry = new T.TorusGeometry(R, 0.045, 10, 32);
+    st.position.set(0, cy, cz); st.rotation.set(-0.55, 0, 0);
+    const hubM = M.seat;
+    const hub = new T.Mesh(new T.CylinderGeometry(0.09, 0.09, 0.07, 16).rotateX(Math.PI / 2), hubM); st.add(hub);
+    for (const a of [Math.PI / 2, Math.PI * 7 / 6, Math.PI * 11 / 6]) { const sp = new T.Mesh(new T.BoxGeometry(0.035, R, 0.03).translate(0, R / 2, 0), hubM); sp.rotation.z = a - Math.PI / 2; st.add(sp); }
+    // 기둥: 운전대 가운데에서 앞 아래 계기판 쪽으로
+    const from = new T.Vector3(0, cy, cz), to = new T.Vector3(0, out.driverY + 0.12, cz + 0.55), len = from.distanceTo(to);
+    const col = new T.Mesh(new T.CylinderGeometry(0.04, 0.05, len, 10), hubM);
+    col.position.copy(from).add(to).multiplyScalar(0.5); col.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), to.clone().sub(from).normalize());
+    G.add(col);
+  }
   // 그리기 호출 줄이기: 움직이지 않는 부품은 재질별로 한 덩어리로(카트 하나 90개 → 10여 개)
   const skip = new Set([...out.fronts, ...out.wheels.map(w => w.parent), out.steer].filter(Boolean));
   mergeStatic(G, skip);

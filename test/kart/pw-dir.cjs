@@ -9,11 +9,12 @@ const OUT = process.argv[2], CH = +(process.argv[4] || 0);
   await p.evaluate((c) => { __kart.S.track = 0; __kart.S.char = c; __kart.startSolo(); }, CH);
   await p.waitForFunction(() => __kart.race && __kart.race.me, null, { timeout: 60000 });
   await p.waitForTimeout(2500);
+  await p.addStyleTag({ content: '#courseCard,#myCard,#center,#hud{display:none!important}' });
   for (let i = 0; i < 8; i++) {
-    await p.evaluate((i) => {
+    await p.evaluate(([i, R, H]) => {
       const k = __kart.race.me.k, a = k.h + i * Math.PI / 4;
-      window.__kartCam = { pos: [k.x + Math.sin(a) * 5.5, k.y + 2.2, k.z + Math.cos(a) * 5.5], look: [k.x, k.y + 1.3, k.z], fov: 50 };
-    }, i);
+      window.__kartCam = { pos: [k.x + Math.sin(a) * R, k.y + H, k.z + Math.cos(a) * R], look: [k.x, k.y + 1.2, k.z], fov: 50 };
+    }, [i, +process.env.R || 5.5, +process.env.H || 2.2]);
     await p.waitForTimeout(250);
     await p.screenshot({ path: `${OUT}/dir${i}.png` });
   }

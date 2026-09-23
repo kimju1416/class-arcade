@@ -6,6 +6,7 @@ import { CHAR_EXTRA } from './extra.js';
 let _star;
 
 const DRV_W = 1.5, DRV_H = DRV_W * 640 / 480;
+const _v1 = new T.Vector3(), _v2 = new T.Vector3();
 const driverGeo = new T.PlaneGeometry(DRV_W, DRV_H);
 
 // 운전자 텍스처: 앞모습/뒷모습 두 장 (tools/kart-sprites.py가 480x640으로 잘라 둔 것)
@@ -15,7 +16,7 @@ export function driverTextures(id) {
   if (driverTex[id]) return driverTex[id];
   // ok: 실제로 받아진 그림만 쓴다(없는 파일은 앞/뒤 두 장으로 돌아감)
   const has = CHAR_EXTRA[id] || [];
-  const mk = (v) => { if (v !== 'front' && v !== 'back' && !has.includes(v)) return { ok: false }; const t = loader.load(`/kart/chars/${id}-${v}.webp`, () => { t.ok = true; }); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 4; return t; };
+  const mk = (v) => { if (v !== 'front' && v !== 'back' && !has.includes(v)) return { ok: false }; const t = loader.load(`/kart/chars/${id}-${v}.webp`, () => { t.ok = true; if (KartView.renderer) try { KartView.renderer.initTexture(t); } catch (e) { } }); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 4; return t; };
   driverTex[id] = { front: mk('front'), back: mk('back'), side: mk('side'), q3f: mk('q3f'), q3b: mk('q3b'), hit: mk('hit'), win: mk('win') };
   return driverTex[id];
 }
@@ -41,6 +42,21 @@ export class KartView {
     this.driver = new T.Mesh(driverGeo, this.driverMat);
     this.driver.position.set(0, car.driverY + DRV_H / 2, car.driverZ);
     this.body.add(this.driver);
+    // 주먹 겹 그림: 앞·대각앞에서 운전대 테두리 위로 주먹(같은 그림의 양옆 아래만)을 한 번 더 그린다
+    this.fistMat = new T.MeshBasicMaterial({ map: tex.back, transparent: true, alphaTest: 0.35, side: T.DoubleSide, toneMapped: false });
+    this.fistMat.onBeforeCompile = (sh) => {
+      sh.uniforms.fm = this.fistU = { value: 0 };
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+uniform float fm;`)
+        .replace('#include <alphatest_fragment>', `
+          float v = 1.0 - vMapUv.y, u = vMapUv.x;
+          bool band = v > 0.5 && v < 0.88;
+          bool keep = fm > 1.5 ? (band && u < 0.5) : (band && (u < 0.34 || u > 0.66));
+          if (!keep) discard;
+          #include <alphatest_fragment>`);
+    };
+    this.fist = new T.Mesh(driverGeo, this.fistMat); this.fist.visible = true; this.fist.renderOrder = 2;
+    this.body.add(this.fist);
     // 운전자 그림자(평면 원)
     const shadow = new T.Mesh(new T.CircleGeometry(1.35, 24).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.35, depthWrite: false }));
     shadow.scale.set(0.85, 1, 1.3); shadow.position.y = 0.04; this.root.add(shadow); this.shadow = shadow;
@@ -118,12 +134,23 @@ export class KartView {
       else if ((k.spinT > 0 || (k.dizzyT || 0) > 0) && tx.hit.ok && fwd > 0) want = tx.hit;
       const flip = want !== tx.front && want !== tx.back && want !== tx.hit && want !== tx.win && rel < 0;
       this.driver.scale.x = flip ? -1 : 1;
-      if (this.driverMat.map !== want) { this.driverMat.map = want; this.driverMat.needsUpdate = true; }
+      if (this.driverMat.map !== want) this.driverMat.map = want;
       // 원통형 빌보드: 카메라 쪽으로 y축만 돌린다
       const ang = Math.atan2(dx, dz) - (k.h + this.body.rotation.y);
       this.driver.rotation.y = ang;
       this.driver.position.x = -k.steerVis * 0.05;
       this.driver.rotation.z = k.steerVis * 0.08 * (fwd > 0 ? -1 : 1);
+      // 주먹 겹: 앞(1)·대각앞(2) 그림일 때만, 운전대보다 카메라 쪽으로 당겨(원근만큼 줄여) 같은 자리에 겹친다
+      const fm = want === tx.front ? 1 : want === tx.q3f ? 2 : 0;
+      this.fist.visible = fm > 0 && this.driver.visible;
+      if (this.fist.visible) {
+        if (this.fistMat.map !== want) this.fistMat.map = want;
+        if (this.fistU) this.fistU.value = fm;
+        const wp = this.driver.getWorldPosition(_v1), d = cam.position.distanceTo(wp), pull = Math.min(0.9, d * 0.3);
+        _v2.copy(cam.position).sub(wp).normalize().multiplyScalar(pull).add(wp);
+        this.fist.position.copy(this.body.worldToLocal(_v2));
+        this.fist.rotation.copy(this.driver.rotation); this.fist.scale.copy(this.driver.scale).multiplyScalar((d - pull) / d);
+      }
     }
 
     // 불꽃

@@ -441,10 +441,18 @@ async function startRace(opt) {
   $('loadTxt').textContent = '그래픽을 준비하는 중…'; loadBar(75);
   { const c = tr.point(-10 / tr.seg, 0); camera.position.set(c.x, c.y + 12, c.z + 30); camera.lookAt(c.x, c.y, c.z); }
   const myRace = race;
+  KartView.renderer = renderer;
+  for (const r of race.racers) for (const t of Object.values(r.view.tex)) if (t && t.ok) try { renderer.initTexture(t); } catch (e) { }
   try { await renderer.compileAsync(scene, camera); } catch (e) { }
+  // 로딩 화면 뒤에서 코스 전체를 한 번 그려 모양·그림을 GPU에 다 올려 둔다(처음 보이는 순간 몇 초씩 멈칫하던 것)
+  try {
+    const fc = []; scene.traverse(o => { if (o.frustumCulled) { fc.push(o); o.frustumCulled = false; } });
+    const rt = new T.WebGLRenderTarget(64, 64); renderer.setRenderTarget(rt); renderer.render(scene, camera); renderer.setRenderTarget(null); rt.dispose();
+    for (const o of fc) o.frustumCulled = true;
+  } catch (e) { renderer.setRenderTarget(null); }
   if (race !== myRace) return;
   window.__kartBuild = performance.now() - buildStart;
-  if (!opt.online) race.t0 = performance.now() + 9400; // 소개 비행 3초 + 내 캐릭터 한 바퀴 3초 + 카운트다운 3초
+  if (!opt.online) race.t0 = performance.now() + 9800; // 소개 비행 3초 + 내 캐릭터 한 바퀴 3초 + 카운트다운 3초
   loadBar(100);
   $('loading').hidden = true;
   adapt.reset(qualityLevel());
@@ -1048,26 +1056,27 @@ function updateCamera(now, dt) {
   const k = (race.focus || race.me || race.racers[0]).k;
   if (toGo > 3000) {
     // 출발 전: 코스의 볼거리(다리·터널·해변)를 거쳐 날아온 뒤, 마리오카트처럼 내 캐릭터를 한 바퀴 돌며 보여 주고 뒤에 붙는다
-    camIntro += dt;
     const ORB = (e) => { // 내 카트 둘레: 대각 앞에서 시작해 한 바퀴 넘게 돌아 뒤로(반지름·높이는 경기 카메라 쪽으로)
-      const ang = k.h + Math.PI + (1 - e) * Math.PI * 2.4, R = 3.4 + (6.6 - 3.4) * e * e, h = 1.1 + (2.7 - 1.1) * e * e;
+      const ang = k.h + Math.PI + (1 - e) * Math.PI * 2, R = 4.6 + (6.6 - 4.6) * e * e, h = 1.5 + (2.7 - 1.5) * e * e;
       return new T.Vector3(k.x + Math.sin(ang) * R, k.y + h, k.z + Math.cos(ang) * R);
     };
     if (!race.introPath) {
       const d = race.def, su = (d.bridges && d.bridges[0][0] + 0.04) || (d.tunnels && d.tunnels[0][0]) || (d.open && d.open[0][0]) || 0.5;
       const a = tr.point(su * tr.N, 0), m = tr.point(tr.N * 0.93, 0), g = tr.point(-10 / tr.seg, 0);
       race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000);
-      race.orbDur = race.me ? Math.min(3.2, race.introDur * 0.5) : 0;
+      race.orbDur = race.me ? Math.min(3.8, race.introDur * 0.55) : 0;
       const end = race.me ? ORB(0).add(new T.Vector3(0, 3, 0)) : new T.Vector3(g.x - Math.sin(g.h) * 26, g.y + 12, g.z - Math.cos(g.h) * 26);
       race.introPath = new T.CatmullRomCurve3([new T.Vector3(a.x, a.y + 28, a.z), new T.Vector3((a.x + m.x) / 2, Math.max(a.y, m.y) + 45, (a.z + m.z) / 2), new T.Vector3(m.x, m.y + 22, m.z), end]);
+      race.introStartT = now;
       race.introLook = [a, race.me ? { x: k.x, y: k.y + 0.2, z: k.z } : g];
       if (race.me) { const c = race.me.char; $('mcImg').src = portrait(c); $('mcName').textContent = race.me.name || c.name; $('mcRole').textContent = c.role; $('myCard').style.setProperty('--c', c.color); }
     }
     // 로딩 중엔 t0가 임시값이다 → t0가 정해지거나 바뀌면(건너뛰기 제외) 길이를 다시 잡는다
     if (race.introT0 !== race.t0 && race.t0 - now < 60000 && !race.introSkip) {
-      race.introT0 = race.t0; camIntro = 0;
-      race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000); race.orbDur = race.me ? Math.min(3.2, race.introDur * 0.5) : 0;
+      race.introT0 = race.t0; race.introStartT = now;
+      race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000); race.orbDur = race.me ? Math.min(3.8, race.introDur * 0.55) : 0;
     }
+    camIntro = (now - race.introStartT) / 1000; // 실제 시계 기준(느린 기기에서 프레임 시간을 더하면 한 바퀴가 잘림)
     const flyDur = race.introDur - race.orbDur;
     if (camIntro < flyDur || !race.me) {
       const u = Math.min(1, camIntro / Math.max(0.1, flyDur)), e = u * u * (3 - 2 * u);
@@ -1077,7 +1086,7 @@ function updateCamera(now, dt) {
       camPos.copy(camera.position); camLook.set(lx, ly + 1, lz);
       $('courseCard').hidden = false; $('myCard').hidden = true;
     } else {
-      const u = Math.min(1, (camIntro - flyDur) / race.orbDur), e = 1 - Math.pow(1 - u, 2.2);
+      const u = Math.min(1, (camIntro - flyDur) / race.orbDur), e = u * u * (3 - 2 * u); // 천천히 출발·천천히 도착
       camera.position.copy(ORB(e));
       const ly = k.y + 1.1 + e * 0.3;
       camera.lookAt(k.x, ly, k.z);
