@@ -86,7 +86,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   const RES = quality >= 2 ? 4 : 5;
   const NX = Math.ceil(GW / RES), NZ = Math.ceil(GD / RES);
   const H = new Float32Array((NX + 1) * (NZ + 1));
-  const ND = new Float32Array(H.length), NY = new Float32Array(H.length); // 가까운 도로까지 거리·그 높이 (칠할 때 다시 쓴다)
+  const ND = new Float32Array(H.length), NY = new Float32Array(H.length), NI = new Int32Array(H.length); // 가까운 도로까지 거리·그 높이 (칠할 때 다시 쓴다)
   function farH(x, z, ny) {
     if (def.theme === 'beach') return -4.5 + fbm(x * 0.006, z * 0.006) * 5;
     if (NIGHT) return 0;
@@ -95,6 +95,16 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   }
   // 도로까지 거리: 칸마다 가장 가까운 도로를 찾지 않고, 도로 표본에서 주변 칸으로 거리를 찍어 나간다(훨씬 빠름)
   const W1 = NX + 1, RS = edge + 76;
+  // 다리 구간 가중치(끝에서 부드럽게)
+  let bridgeW = null;
+  const bridgeLow = def.theme === 'blossom' ? th.sea - 3 : 0;
+  if (def.bridges) {
+    bridgeW = new Float32Array(N);
+    for (const [u0, u1] of def.bridges) for (let i = Math.floor(u0 * N); i <= Math.ceil(u1 * N); i++) {
+      const e = Math.min(i - u0 * N, u1 * N - i);
+      bridgeW[((i % N) + N) % N] = Math.max(bridgeW[((i % N) + N) % N], smooth(0, 14, e));
+    }
+  }
   ND.fill(1e9);
   const rC = Math.ceil(RS / RES);
   for (let k = 0; k < tr.N; k += 2) {
@@ -104,7 +114,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
       const dz = gz0 + j * RES - pz, dz2 = dz * dz, row = j * W1;
       for (let i = Math.max(0, ci - rC); i <= Math.min(NX, ci + rC); i++) {
         const dx = gx0 + i * RES - px, d2 = dx * dx + dz2;
-        if (d2 < ND[row + i]) { ND[row + i] = d2; NY[row + i] = py; }
+        if (d2 < ND[row + i]) { ND[row + i] = d2; NY[row + i] = py; NI[row + i] = k; }
       }
     }
   }
@@ -125,6 +135,11 @@ export function buildWorld(scene, tr, def, quality, renderer) {
       h = near + (fh - near) * t;
       if (def.theme === 'blossom' && t > 0) h = Math.max(h, near - 0.5 * t * 8);
     }
+    // 다리 밑: 땅을 낮춘다(벚꽃은 강, 공연장은 바닥)
+    if (bridgeW && d < edge + 70) {
+      const bw = bridgeW[NI[q]] * (1 - smooth(edge + 30, edge + 70, d));
+      if (bw > 0) h = h + (bridgeLow - h) * bw;
+    }
     H[q] = h;
   }
   const groundAt = (x, z) => {
@@ -135,6 +150,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     return a + (bb - a) * u + (c - a) * v + (a - bb - c + d) * u * v;
   };
   W.groundAt = groundAt;
+  tr.groundAt = groundAt; tr.seaY = th.sea;
 
   PROF('// 지형 메시: 모래·풀');
   // 지형 메시: 모래·풀·바위·흙을 경사·높이·노이즈로 섞어 칠한다
@@ -314,7 +330,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
         const x = tr.x[k] + tr.rx[k] * L * side, z = tr.z[k] + tr.rz[k] * L * side, y = tr.y[k] - 0.3;
         pos.push(x, y, z, x, y + Hh + 0.3, z);
         const u = i * tr.seg / 16; uv.push(u, 0, u, 1);
-        if (i < N) { if (side > 0) idx.push(vi, vi + 2, vi + 1, vi + 1, vi + 2, vi + 3); else idx.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2); }
+        if (i < N && !(tr.open && tr.open[k] && tr.open[(k + 1) % N])) { if (side > 0) idx.push(vi, vi + 2, vi + 1, vi + 1, vi + 2, vi + 3); else idx.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2); }
         vi += 2;
       }
     }
@@ -523,6 +539,53 @@ export function buildWorld(scene, tr, def, quality, renderer) {
       const e = tr.point(s0 + L, 0), i1 = Math.floor(((s0 + L) % N + N) % N);
       const back = new T.Mesh(new T.BoxGeometry(2 * hw, HGT, 0.3), sideM); back.position.set(e.x, e.y + HGT / 2, e.z); back.rotation.y = Math.atan2(tr.fx[i1], tr.fz[i1]); scene.add(back);
       W.ramps.push({ s0, L, H: HGT });
+    }
+  }
+
+  // ---------- 다리: 도로 밑 상판 + 기둥 ----------
+  if (def.bridges) {
+    const nightB = NIGHT;
+    const deckM = new T.MeshStandardMaterial({ color: nightB ? 0x1a1030 : 0x8d8579, roughness: 0.8, metalness: nightB ? 0.5 : 0 });
+    const ledM = new T.MeshBasicMaterial({ color: 0x39e0ff });
+    for (const [u0, u1] of def.bridges) {
+      const pos = [], idx = []; let vi = 0;
+      const i0 = Math.floor(u0 * N), i1 = Math.ceil(u1 * N);
+      for (let i = i0; i <= i1; i += 2) {
+        const k = ((i % N) + N) % N, L = edge + 0.4, y = tr.y[k];
+        for (const [sx, dy] of [[-1, -0.05], [1, -0.05], [1, -1.3], [-1, -1.3]]) pos.push(tr.x[k] + tr.rx[k] * L * sx, y + dy, tr.z[k] + tr.rz[k] * L * sx);
+        if (i + 2 <= i1) for (const [a, b2] of [[0, 3], [1, 2], [2, 3]]) { idx.push(vi + a, vi + 4 + a, vi + b2, vi + b2, vi + 4 + a, vi + 4 + b2); }
+        vi += 4;
+        // 기둥과 가장자리 빛띠
+        if (i % 24 === 0) for (const sx of [-1, 1]) {
+          const px = tr.x[k] + tr.rx[k] * (edge - 1) * sx, pz = tr.z[k] + tr.rz[k] * (edge - 1) * sx, gy = groundAt(px, pz);
+          const hgt = y - 1.3 - gy;
+          if (hgt > 1) { const pl = new T.Mesh(new T.CylinderGeometry(0.9, 1.1, hgt, 12), deckM); pl.position.set(px, gy + hgt / 2, pz); pl.castShadow = quality >= 2; scene.add(pl); }
+        }
+        if (nightB && i % 6 === 0) for (const sx of [-1, 1]) { const led = new T.Mesh(new T.BoxGeometry(0.25, 0.25, 4.5), ledM); led.position.set(tr.x[k] + tr.rx[k] * (edge + 0.45) * sx, y - 0.5, tr.z[k] + tr.rz[k] * (edge + 0.45) * sx); led.rotation.y = Math.atan2(tr.fx[k], tr.fz[k]); scene.add(led); }
+      }
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+      const deck = new T.Mesh(g, deckM); deck.material.side = T.DoubleSide; deck.castShadow = quality >= 2; deck.receiveShadow = true; scene.add(deck);
+    }
+  }
+  // ---------- 터널: 도로를 덮는 반원 지붕 + 천장 빛 ----------
+  if (def.tunnels) {
+    const tunM = new T.MeshStandardMaterial({ color: 0x14121e, roughness: 0.5, metalness: 0.6, side: T.DoubleSide });
+    const lampM = new T.MeshBasicMaterial({ color: 0xffffff });
+    const cols = [0xff2fa0, 0x1ee6ff, 0xffd24a, 0x9d7bff];
+    for (const [u0, u1] of def.tunnels) {
+      const pos = [], idx = []; const SEG = 16; let rows = 0;
+      for (let i = Math.floor(u0 * N); i <= Math.ceil(u1 * N); i += 2) {
+        const k = ((i % N) + N) % N, R = edge + 0.3;
+        for (let a = 0; a <= SEG; a++) { const t = Math.PI * a / SEG, c = Math.cos(t), s2 = Math.sin(t); pos.push(tr.x[k] + tr.rx[k] * R * c, tr.y[k] - 0.3 + s2 * 9, tr.z[k] + tr.rz[k] * R * c); }
+        if (rows) for (let a = 0; a < SEG; a++) { const p0 = (rows - 1) * (SEG + 1) + a, p1 = rows * (SEG + 1) + a; idx.push(p0, p1, p0 + 1, p0 + 1, p1, p1 + 1); }
+        rows++;
+        if (i % 12 === 0) { // 고리 빛
+          const ring = new T.Mesh(new T.TorusGeometry(R - 0.2, 0.18, 6, 32, Math.PI), new T.MeshBasicMaterial({ color: cols[(i / 12) % cols.length] }));
+          ring.scale.y = 9 / R; ring.position.set(tr.x[k], tr.y[k] - 0.3, tr.z[k]); ring.rotation.y = Math.atan2(tr.fx[k], tr.fz[k]) + Math.PI / 2; ring.rotation.y = Math.atan2(tr.rx[k], tr.rz[k]) - Math.PI / 2; scene.add(ring);
+        }
+      }
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+      scene.add(new T.Mesh(g, tunM));
     }
   }
 

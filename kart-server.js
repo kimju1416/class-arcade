@@ -4,6 +4,7 @@
 const crypto = require("crypto");
 
 const MAX_ROOM = 40, MAX_RACERS = 12, GRID = 8, TICK_MS = 66, TRACKS = ["beach", "neon", "blossom", "kpop"];
+const CUP_ORDER = ["beach", "neon", "blossom", "kpop"], CUP_PTS = [15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0];
 const CHAR_N = 10;
 
 module.exports = function createKartServer(WebSocketServer) {
@@ -19,7 +20,7 @@ module.exports = function createKartServer(WebSocketServer) {
 
   function lobbyState(room) {
     return {
-      type: "lobby", code: room.code, host: room.host, track: room.track, bots: room.bots, teams: !!room.teams, state: room.state,
+      type: "lobby", code: room.code, host: room.host, track: room.track, bots: room.bots, teams: !!room.teams, cup: !!room.cup, cupRound: room.cupState && !room.cupState.done ? room.cupState.round : 0, cupNext: room.cupNext || 0, state: room.state,
       players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, char: p.char, host: p.id === room.host, racing: p.racing, tv: p.tv, away: !!p.away })),
       max: MAX_RACERS,
     };
@@ -36,6 +37,40 @@ module.exports = function createKartServer(WebSocketServer) {
     const before = room.host; pickHost(room);
     if (room.host !== before && room.state === "race") bcast(room, { type: "host", id: room.host });
   }
+  // 레이스 출발(방장이 누르거나, 컵 모드에서 다음 코스로 자동)
+  function startRoomRace(room, now, ws) {
+    clearTimeout(room.cupTimer); room.cupNext = 0;
+    if (room.cup) {
+    if (!room.cupState || room.cupState.done) room.cupState = { round: 0, pts: {}, names: {}, chars: {}, done: false };
+    room.track = CUP_ORDER[room.cupState.round];
+    }
+    // 교실 TV(tv)는 달리지 않는다. 12명이 넘으면 지난 판에 쉰 사람부터 태운다
+    let humans = [...room.players.values()].filter(p => !p.tv);
+    if (!humans.length) { if (ws) send(ws, { type: "err", msg: "달릴 학생이 아직 없어요." }); return; }
+    humans.sort((a, b) => (room.sat.has(b.id) ? 1 : 0) - (room.sat.has(a.id) ? 1 : 0));
+    const riders = humans.slice(0, MAX_RACERS);
+    room.sat = new Set(humans.slice(MAX_RACERS).map(p => p.id));
+    for (let i = riders.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [riders[i], riders[j]] = [riders[j], riders[i]]; }
+    const grid = riders.map(p => ({ id: p.id, name: p.name, char: p.char, bot: false, car: p.car }));
+    if (room.bots) {
+      const used = new Set(grid.map(g => g.char));
+      const free = [...Array(CHAR_N).keys()].filter(c => !used.has(c));
+      const names = ["번개", "씽씽", "로켓", "질주", "바람", "터보", "회오리", "별빛"];
+      let k = 0;
+      while (grid.length < GRID) {
+        const c = free.length ? free.splice(crypto.randomInt(free.length), 1)[0] : crypto.randomInt(CHAR_N);
+        grid.unshift({ id: "b" + k, name: names[k % names.length], char: c, bot: true, skill: 0.9 + (k / GRID) * 0.08 }); k++;
+      }
+    }
+    // 팀전: 사람과 봇을 번갈아 빨강(0)·파랑(1)으로
+    if (room.teams) { const hs = grid.filter(g => !g.bot), bs = grid.filter(g => g.bot); hs.forEach((g, i) => g.team = i % 2); const c0 = hs.filter(g => g.team === 0).length; bs.forEach((g, i) => g.team = (c0 + i) % 2 === 0 ? 0 : 1); }
+    room.state = "race";
+    room.race = { id: crypto.randomBytes(3).toString("hex"), grid, t0: now + 9000, fin: [], prog: {}, poses: {}, firstFin: 0 };
+    for (const p of room.players.values()) p.racing = riders.includes(p);
+    bcast(room, { type: "start", race: room.race.id, track: room.track, t0: room.race.t0, grid, host: room.host, laps: 3, teams: !!room.teams });
+    bcast(room, lobbyState(room));
+    room.endTimer = setTimeout(() => endRace(room, "timeout"), 8 * 60 * 1000);
+  }
   function endRace(room, reason) {
     if (room.state !== "race") return;
     clearTimeout(room.endTimer);
@@ -45,7 +80,16 @@ module.exports = function createKartServer(WebSocketServer) {
       .sort((a, b) => (r.prog[b.id] || -1e9) - (r.prog[a.id] || -1e9))
       .map(g => ({ id: g.id, time: null }));
     const order = [...r.fin, ...rest];
-    bcast(room, { type: "results", order, reason });
+    let cup = null;
+    if (room.cup && room.cupState) {
+      const C = room.cupState;
+      order.forEach((o, i) => { C.pts[o.id] = (C.pts[o.id] || 0) + (CUP_PTS[i] || 0); const g = r.grid.find(x => x.id === o.id); if (g) { C.names[o.id] = g.name; C.chars[o.id] = g.char; } });
+      C.round++; C.done = C.round >= CUP_ORDER.length;
+      const standings = Object.keys(C.pts).map(id => ({ id, name: C.names[id], char: C.chars[id], pts: C.pts[id] })).sort((x, y) => y.pts - x.pts);
+      cup = { round: C.round, total: CUP_ORDER.length, standings, done: C.done, next: C.done ? null : CUP_ORDER[C.round] };
+      if (!C.done) { room.cupNext = Date.now() + 18000; room.cupTimer = setTimeout(() => { if (room.state === "lobby" && room.players.size) startRoomRace(room, Date.now(), null); }, 18000); }
+    }
+    bcast(room, { type: "results", order, reason, cup });
     room.state = "lobby"; room.race = null;
     for (const p of room.players.values()) p.racing = false;
     bcast(room, lobbyState(room));
@@ -134,6 +178,10 @@ module.exports = function createKartServer(WebSocketServer) {
       const isHost = room.host === me.id;
       switch (m.t) {
         case "car": { me.car = cleanCar(m.car); break; }
+        case "emote": {
+          const e = num(m.e, 0, 5); if (e === null || now - (me.emoteAt || 0) < 1200) return;
+          me.emoteAt = now; bcast(room, { type: "emote", id: me.id, e: Math.floor(e) }); break;
+        }
         case "vis": { me.hidden = m.hidden === true; handHost(room); break; }
         case "char": {
           const c = num(m.char, 0, CHAR_N - 1); if (c == null) return;
@@ -144,36 +192,12 @@ module.exports = function createKartServer(WebSocketServer) {
           if (TRACKS.includes(m.track)) room.track = m.track;
           if (typeof m.bots === "boolean") room.bots = m.bots;
           if (typeof m.teams === "boolean") room.teams = m.teams;
+          if (typeof m.cup === "boolean") { room.cup = m.cup; room.cupState = null; }
           bcast(room, lobbyState(room)); break;
         }
         case "start": {
           if (!isHost || room.state !== "lobby") return;
-          // 교실 TV(tv)는 달리지 않는다. 12명이 넘으면 지난 판에 쉰 사람부터 태운다
-          let humans = [...room.players.values()].filter(p => !p.tv);
-          if (!humans.length) { send(ws, { type: "err", msg: "달릴 학생이 아직 없어요." }); return; }
-          humans.sort((a, b) => (room.sat.has(b.id) ? 1 : 0) - (room.sat.has(a.id) ? 1 : 0));
-          const riders = humans.slice(0, MAX_RACERS);
-          room.sat = new Set(humans.slice(MAX_RACERS).map(p => p.id));
-          for (let i = riders.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [riders[i], riders[j]] = [riders[j], riders[i]]; }
-          const grid = riders.map(p => ({ id: p.id, name: p.name, char: p.char, bot: false, car: p.car }));
-          if (room.bots) {
-            const used = new Set(grid.map(g => g.char));
-            const free = [...Array(CHAR_N).keys()].filter(c => !used.has(c));
-            const names = ["번개", "씽씽", "로켓", "질주", "바람", "터보", "회오리", "별빛"];
-            let k = 0;
-            while (grid.length < GRID) {
-              const c = free.length ? free.splice(crypto.randomInt(free.length), 1)[0] : crypto.randomInt(CHAR_N);
-              grid.unshift({ id: "b" + k, name: names[k % names.length], char: c, bot: true, skill: 0.9 + (k / GRID) * 0.08 }); k++;
-            }
-          }
-          // 팀전: 사람과 봇을 번갈아 빨강(0)·파랑(1)으로
-          if (room.teams) { const hs = grid.filter(g => !g.bot), bs = grid.filter(g => g.bot); hs.forEach((g, i) => g.team = i % 2); const c0 = hs.filter(g => g.team === 0).length; bs.forEach((g, i) => g.team = (c0 + i) % 2 === 0 ? 0 : 1); }
-          room.state = "race";
-          room.race = { id: crypto.randomBytes(3).toString("hex"), grid, t0: now + 9000, fin: [], prog: {}, poses: {}, firstFin: 0 };
-          for (const p of room.players.values()) p.racing = riders.includes(p);
-          bcast(room, { type: "start", race: room.race.id, track: room.track, t0: room.race.t0, grid, host: room.host, laps: 3, teams: !!room.teams });
-          bcast(room, lobbyState(room));
-          room.endTimer = setTimeout(() => endRace(room, "timeout"), 8 * 60 * 1000);
+          startRoomRace(room, now, ws);
           break;
         }
         case "st": { // 내 카트(+방장은 봇들) 위치

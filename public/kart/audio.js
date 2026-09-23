@@ -28,14 +28,23 @@ class Audio {
     this.on = v; try { localStorage.setItem('kart_sound', v ? '1' : '0'); } catch (e) { }
     if (this.master) this.master.gain.setTargetAtTime(v ? 1 : 0, this.ctx.currentTime, 0.05);
   }
-  play(n, vol = 1, rate = 1) {
+  play(n, vol = 1, rate = 1, pan = 0) {
     if (!this.ctx) return null;
     const b = this.buf[n];
     if (!b || b instanceof Promise) return null;
     const s = this.ctx.createBufferSource(); s.buffer = b; s.playbackRate.value = rate;
     const g = this.ctx.createGain(); g.gain.value = vol;
-    s.connect(g); g.connect(this.fx); s.start();
+    s.connect(g);
+    if (pan && this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); g.connect(p); p.connect(this.fx); }
+    else g.connect(this.fx);
+    s.start();
     return { s, g };
+  }
+  // 맞았을 때 등: 음악을 잠깐 낮춘다
+  duck(v = 0.4, sec = 0.6) {
+    if (!this.music) return;
+    const t = this.ctx.currentTime, base = this.music.gain.value > 0.05 ? 0.42 : this.music.gain.value;
+    this.music.gain.cancelScheduledValues(t); this.music.gain.setTargetAtTime(base * v, t, 0.03); this.music.gain.setTargetAtTime(base, t + sec, 0.25);
   }
   loop(n, vol) { // 반복 효과음(드리프트 끼익·관중)
     if (!this.ctx) return null;
@@ -79,7 +88,10 @@ class Audio {
   engine(speed01, boost, on) {
     if (!this.ctx || !this.o1) return;
     const t = this.ctx.currentTime;
-    const f = 48 + speed01 * 120 + (boost ? 30 : 0);
+    // 4단 기어처럼: 한 단 안에서 회전수가 오르다 다음 단에서 툭 떨어진다
+    const sp = Math.max(0, Math.min(1.15, speed01)), gear = Math.min(3, Math.floor(sp * 4)), frac = sp * 4 - gear;
+    const rpm = gear === 3 ? 0.3 + Math.min(1, (sp - 0.75) / 0.4) * 0.7 : 0.3 + frac * 0.7;
+    const f = 42 + rpm * 110 + gear * 10 + (boost ? 45 : 0);
     this.o1.frequency.setTargetAtTime(f, t, 0.06);
     this.o2.frequency.setTargetAtTime(f * 0.5, t, 0.06);
     this.lp.frequency.setTargetAtTime(500 + speed01 * 1400 + (boost ? 600 : 0), t, 0.08);

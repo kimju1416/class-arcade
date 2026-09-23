@@ -129,6 +129,20 @@ export class KartView {
       if (sp.visible) { sp.material.color.setHex(lvCol); const s = 0.7 + Math.random() * 0.7; sp.scale.set(s, s, 1); sp.material.rotation = Math.random() * 6; }
     }
     this.dizzy.update((k.dizzyT || 0) > 0, this.t);
+    // 물에 빠졌을 때 건져 주는 드론
+    if (k.rescueT > 0 && !this.drone) {
+      const d = new T.Group(), m = new T.MeshStandardMaterial({ color: 0xf2f2f2, metalness: 0.3, roughness: 0.4 }), dk = new T.MeshStandardMaterial({ color: 0x23262e });
+      d.add(new T.Mesh(new T.BoxGeometry(1.4, 0.35, 1.4), m));
+      this.rotors = [];
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const arm = new T.Mesh(new T.BoxGeometry(0.12, 0.08, 1.2), dk); arm.position.set(x * 0.6, 0.1, z * 0.6); arm.rotation.y = Math.atan2(x, z); d.add(arm); const r = new T.Mesh(new T.CylinderGeometry(0.55, 0.55, 0.03, 16), new T.MeshBasicMaterial({ color: 0x99a0b0, transparent: true, opacity: 0.5 })); r.position.set(x * 1.0, 0.25, z * 1.0); d.add(r); this.rotors.push(r); }
+      const light = new T.Mesh(new T.SphereGeometry(0.12, 8, 6), new T.MeshBasicMaterial({ color: 0xff3040 })); light.position.set(0, -0.2, 0.7); d.add(light);
+      const cable = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 1.6, 4), dk); cable.position.y = -0.95; d.add(cable);
+      d.position.y = 4.2; this.root.add(d); this.drone = d;
+    }
+    if (this.drone) {
+      this.drone.visible = k.rescueT > 0 && k.rescued;
+      for (const r of this.rotors) r.rotation.y += 0.9;
+    }
     if ((k.held || null) !== this.heldKind) {
       this.heldKind = k.held || null; this.heldSpr.visible = !!this.heldKind;
       if (this.heldKind && KartView.iconTex) { this.heldSpr.material.map = KartView.iconTex(this.heldKind); this.heldSpr.material.needsUpdate = true; }

@@ -241,6 +241,7 @@ $('bCopy').onclick = () => {
 };
 $('roomBots').onchange = () => net && net.send({ t: 'set', bots: $('roomBots').checked });
 $('roomTeams').onchange = () => net && net.send({ t: 'set', teams: $('roomTeams').checked });
+$('roomCup').onchange = () => net && net.send({ t: 'set', cup: $('roomCup').checked });
 $('bRoomStart').onclick = () => { audio.play('select', 0.8); net && net.send({ t: 'start' }); };
 
 function joinURL() { return `${location.origin}/kart/?room=${room.code}`; }
@@ -279,6 +280,8 @@ function renderRoom() {
   });
   $('roomBots').checked = room.bots; $('roomBots').disabled = !meHost;
   $('roomTeams').checked = !!room.teams; $('roomTeams').disabled = !meHost;
+  $('roomCup').checked = !!room.cup; $('roomCup').disabled = !meHost;
+  [...$('roomTracks').children].forEach(b => { if (room.cup) b.disabled = true; });
   $('bRoomStart').hidden = !meHost;
   $('roomWait').textContent = room.state === 'race' ? '지금 레이스가 진행 중이에요. 이번 판이 끝나면 함께 달려요.'
     : racers.length > room.max ? `한 판에 ${room.max}명씩 달려요. 이번에 못 탄 사람은 다음 판에 먼저 타요.`
@@ -310,7 +313,8 @@ function onNet(m) {
     case 'hit': if (race) { feedHit(m.by, m.v, m.k); const h = m.k === 'soccer' && race.hazards.get(m.id); if (h && !h.hitSet.has(m.v)) { h.hitSet.add(m.v); if (++h.hits >= 3) killHazard(h, false); } } break;
     case 'fin': if (race) onFin(m); break;
     case 'closing': if (race && !(race.me && race.me.k.finished)) feed(`${m.sec}초 뒤 레이스가 끝나요`); break;
-    case 'results': if (race && race.online) showResults(m.order); break;
+    case 'results': if (race && race.online) { race.cup = m.cup; showResults(m.order); } break;
+    case 'emote': if (race) showEmote(m.id, m.e); break;
     case 'host': if (race) becomeHost(m.id); break;
     case 'left': if (race) { const r = race.byId[m.id]; if (r && !r.bot) { r.gone = true; r.view.root.visible = false; feed(`${r.name} 님이 나갔어요`); } } break;
     case 'closed':
@@ -372,6 +376,7 @@ async function startRace(opt) {
   scene = new T.Scene();
   const def = opt.def, tr = buildTrack(def);
   const q = qualityLevel();
+  if (def.open) { tr.open = new Uint8Array(N); for (const [u0, u1] of def.open) for (let i = Math.floor(u0 * N); i <= Math.ceil(u1 * N); i++) tr.open[((i % N) + N) % N] = 1; }
   const world = buildWorld(scene, tr, def, q, renderer);
   loadBar(55); await new Promise(r => setTimeout(r, 0));
   renderer.toneMappingExposure = world.theme.exposure;
@@ -436,7 +441,7 @@ async function startRace(opt) {
   try { await renderer.compileAsync(scene, camera); } catch (e) { }
   if (race !== myRace) return;
   window.__kartBuild = performance.now() - buildStart;
-  if (!opt.online) race.t0 = performance.now() + 5200;
+  if (!opt.online) race.t0 = performance.now() + 7200; // 소개 비행 4초 + 카운트다운 3초
   loadBar(100);
   $('loading').hidden = true;
   adapt.reset(qualityLevel());
@@ -447,7 +452,8 @@ async function startRace(opt) {
   setItem(race.ta ? 'boost3' : null); if (race.ta) $('itemN').textContent = 3;
   audio.init(); audio.bgm(null); audio.musicVol(0.42); audio.musicRate(1);
   race.crowd = null;
-  camIntro = 0; camYaw = null;
+  camIntro = 0; camYaw = null; lookBack = false;
+  $('ccName').textContent = def.name; $('ccSub').textContent = def.sub;
   lastT = performance.now();
 }
 
@@ -716,6 +722,7 @@ function hazardsTick(now) {
 function onSpun(r, by, kind, hid) {
   fxBurst(r.k.x, r.k.y + 1, r.k.z, 1);
   if (r.me) {
+    audio.duck(0.35, 0.7); audio.play('bump', 0.5, 0.7);
     try { navigator.vibrate && navigator.vibrate(90); } catch (e) { }
     const fl = $('hitFlash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
     if (!race.online) race.slowT = 0.16; // 맞는 순간 잠깐 느리게(혼자일 때만)
@@ -746,7 +753,8 @@ function nearSound(r, n, vol, rate = 1) {
   const f = race.me || race.focus;
   if (!r || !f) return;
   const d = Math.hypot(r.k.x - f.k.x, r.k.z - f.k.z);
-  if (d < 45) audio.play(n, vol * (1 - d / 45), rate);
+  const cr = new T.Vector3(); camera.getWorldDirection(cr); const pan = (-(r.k.x - camera.position.x) * cr.z + (r.k.z - camera.position.z) * cr.x) / Math.max(1, d);
+  if (d < 45) audio.play(n, vol * (1 - d / 45), rate, -pan);
 }
 function feed(msg) {
   const f = $('feed'), d = document.createElement('div'); d.textContent = msg; f.appendChild(d);
@@ -803,6 +811,30 @@ function sameTeam(a, b) { if (!race.teams) return false; const A = race.byId[a],
 const TEAM_PTS = [15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0];
 function teamScore(list) { const s = [0, 0]; list.forEach((r, i) => { if (r && (r.team === 0 || r.team === 1)) s[r.team] += TEAM_PTS[i] || 0; }); return s; }
 
+// ---------------- 이모지 ----------------
+const EMOTES = ['👍', '😂', '😱', '🔥', '👏', '💪'];
+{
+  const list = $('emoList');
+  EMOTES.forEach((e, i) => { const b = document.createElement('button'); b.textContent = e; b.onclick = (ev) => { ev.stopPropagation(); sendEmote(i); list.hidden = true; }; list.appendChild(b); });
+  $('emoBtn').onclick = () => { list.hidden = !list.hidden; };
+}
+function sendEmote(i) {
+  if (!race || !race.me) return;
+  if (race.online && net) net.send({ t: 'emote', e: i }); else showEmote(race.myId, i);
+}
+function showEmote(id, e) {
+  const r = race && race.byId[id]; if (!r || !EMOTES[e]) return;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d'); g.fillStyle = 'rgba(255,255,255,.95)'; g.beginPath(); g.arc(64, 58, 50, 0, 7); g.fill(); g.beginPath(); g.moveTo(52, 100); g.lineTo(64, 124); g.lineTo(76, 100); g.fill();
+  g.font = '64px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(EMOTES[e], 64, 62);
+  const t = new T.CanvasTexture(cv); t.colorSpace = T.SRGBColorSpace;
+  const s = new T.Sprite(new T.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  s.scale.set(2.2, 2.2, 1); s.position.set(0, 4, 0); s.renderOrder = 12; r.view.root.add(s);
+  const born = performance.now();
+  const tick = () => { const a = (performance.now() - born) / 1600; if (a >= 1 || !race) { r.view.root.remove(s); return; } s.position.y = 4 + a * 0.8; s.material.opacity = a > 0.7 ? (1 - a) / 0.3 : 1; requestAnimationFrame(tick); };
+  tick();
+}
+
 // ---------------- 순위 ----------------
 function rankList() {
   return race.racers.filter(r => !r.gone).sort((a, b) => {
@@ -828,6 +860,7 @@ function finishRacer(r, now) {
   }
   if (r.me) {
     race.myFinT = now;
+    if (!race.online) race.slowT = 0.55; // 결승 순간 느리게
     audio.play('finish', 1); audio.bgm('bgm-win', 0.9);
     const rk = rankList().indexOf(r) + 1;
     center(rk === 1 ? '우승!' : 'FINISH', 'go');
@@ -845,8 +878,11 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyX' || e.code === 'KeyE' || e.code === 'ControlLeft' || e.code === 'KeyK') { if (race.phase === 'race' && race.me) pressItem(race.me); }
   if (race.spec && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) specStep(e.code === 'ArrowRight' ? 1 : -1);
   if (e.code === 'Escape' || e.code === 'KeyP') togglePause();
+  if (e.code === 'KeyR') lookBack = true;
+  if (/^Digit[1-6]$/.test(e.code)) sendEmote(+e.code.slice(5) - 1);
+  if (race.t0 - race.clock() > 3200 && !race.online && (e.code === 'Space' || e.code === 'Enter')) race.t0 = race.clock() + 3100; // 소개 건너뛰기
 });
-addEventListener('keyup', (e) => { keys[e.code] = false; if (race && race.me && ['KeyX', 'KeyE', 'ControlLeft', 'KeyK'].includes(e.code)) releaseItem(race.me); });
+addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'KeyR') lookBack = false; if (race && race.me && ['KeyX', 'KeyE', 'ControlLeft', 'KeyK'].includes(e.code)) releaseItem(race.me); });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 function hold(id, key) {
   const el = $(id);
@@ -855,6 +891,8 @@ function hold(id, key) {
   el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
 }
 hold('tDrift', 'drift');
+for (const [ev, v] of [['pointerdown', true], ['pointerup', false], ['pointercancel', false], ['pointerleave', false]]) $('tBack').addEventListener(ev, (e) => { e.preventDefault(); lookBack = v; });
+$('courseCard').addEventListener('pointerdown', () => { if (race && !race.online && race.t0 - race.clock() > 3200) race.t0 = race.clock() + 3100; });
 // 원 조이스틱 — 왼쪽 영역 아무 데나 누르면 그 자리가 중심. 좌우 = 핸들(아날로그), 아래로 깊이 = 브레이크
 const joy = { id: null, cx: 0, cy: 0, x: 0, y: 0 };
 {
@@ -979,7 +1017,7 @@ function hud(now, dt) {
 }
 
 // ---------------- 카메라 ----------------
-let camIntro = 0, shake = 0, camYaw = null;
+let camIntro = 0, shake = 0, camYaw = null, lookBack = false;
 const camPos = new T.Vector3(), camLook = new T.Vector3();
 function updateCamera(now, dt) {
   const tr = race.tr;
@@ -989,21 +1027,31 @@ function updateCamera(now, dt) {
   if (!race.me) { if ((race.specHold || 0) > 0) race.specHold -= dt; else race.specIdx = 0; }
   const k = (race.focus || race.me || race.racers[0]).k;
   if (toGo > 3000) {
-    // 출발 전: 출발선 주위를 크게 돈다
+    // 출발 전: 코스의 볼거리(다리·터널·해변)를 거쳐 출발선으로 날아온다
     camIntro += dt;
-    const a = camIntro * 0.35 + 0.6, c = tr.point(-10 / tr.seg, 0);
-    camera.position.set(c.x + Math.sin(a) * 34, c.y + 13 - camIntro * 1.5, c.z + Math.cos(a) * 34);
-    camera.lookAt(c.x, c.y + 1, c.z);
-    camPos.copy(camera.position); camLook.set(c.x, c.y + 1, c.z);
+    if (!race.introPath) {
+      const d = race.def, su = (d.bridges && d.bridges[0][0] + 0.04) || (d.tunnels && d.tunnels[0][0]) || (d.open && d.open[0][0]) || 0.5;
+      const a = tr.point(su * tr.N, 0), m = tr.point(tr.N * 0.93, 0), g = tr.point(-10 / tr.seg, 0);
+      race.introPath = new T.CatmullRomCurve3([new T.Vector3(a.x, a.y + 28, a.z), new T.Vector3((a.x + m.x) / 2, Math.max(a.y, m.y) + 45, (a.z + m.z) / 2), new T.Vector3(m.x, m.y + 22, m.z), new T.Vector3(g.x - Math.sin(g.h) * 26, g.y + 12, g.z - Math.cos(g.h) * 26)]);
+      race.introLook = [a, g]; race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000);
+    }
+    const u = Math.min(1, camIntro / race.introDur), e = u * u * (3 - 2 * u);
+    camera.position.copy(race.introPath.getPointAt(e));
+    const [la, lg] = race.introLook, lx = la.x + (lg.x - la.x) * e, lz = la.z + (lg.z - la.z) * e, ly = la.y + (lg.y - la.y) * e;
+    camera.lookAt(lx, ly + 1, lz);
+    camPos.copy(camera.position); camLook.set(lx, ly + 1, lz);
     camera.fov = 60; camera.updateProjectionMatrix();
+    $('courseCard').hidden = false;
     return;
   }
+  $('courseCard').hidden = true;
   const fin = k.finished;
   const tall = camera.aspect < 1; // 폰 세로: 좌우가 좁으니 조금 더 뒤·위에서
   const sp_ = !race.me;
   const back = (fin && !sp_ ? 7.5 : sp_ ? 10.5 : 6.6) + (tall ? 2.2 : 0), up = (fin && !sp_ ? 2.4 : sp_ ? 4.6 : 2.7) + (tall ? 0.9 : 0);
   let yawT = k.h + k.yawVis * 0.5 + (fin && !sp_ ? Math.sin(now / 2400) * 1.6 + Math.PI * 0.85 : 0);
   if (k.spd < -1) yawT += Math.PI;
+  if (lookBack && !fin) yawT += Math.PI;
   if (camYaw == null || toGo > 2900) camYaw = yawT;
   // 위치는 카트에 바로 붙이고, 도는 방향만 부드럽게 따라간다(고속에서도 카트가 멀어지지 않게)
   let dy = yawT - camYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
@@ -1066,7 +1114,7 @@ function frame() {
     race.refProg = race.me ? race.me.k.prog : hp.length ? Math.max(...hp) : Math.max(...race.racers.map(r => r.k.prog)); }
 
   // 로켓 스타트: 카운트다운 중 처음 누른 때를 기억한다
-  if (toGo > 0 && race.me && race.rsPress == null && (keys.Space || keys.ShiftLeft || keys.ArrowUp || keys.KeyW || touch.drift)) race.rsPress = toGo;
+  if (toGo > 0 && toGo < 3000 && race.me && race.rsPress == null && (keys.Space || keys.ShiftLeft || keys.ArrowUp || keys.KeyW || touch.drift)) race.rsPress = toGo;
 
   // 물리 (작은 걸음으로 나눠서)
   const steps = Math.ceil(dt / (1 / 90)), h = dt / steps;
@@ -1128,8 +1176,10 @@ function frame() {
         if (e === 'wall' || e === 'bump') audio.play('bump', 0.55), shake = 0.18;
         if (e === 'driftlv') audio.play('spark', 0.35, 1 + k.driftLv * 0.15);
         if (e === 'hop') audio.play('click', 0.25, 0.6);
+        if (e === 'water') { audio.play('splash', 0.9); feed('풍덩! 드론이 건져 줄게요'); }
       }
     }
+    for (const e of k.events) if (e === 'water') { for (let i = 0; i < 40; i++) race.fx.dust.emit(k.x, k.y + 0.3, k.z, (Math.random() - 0.5) * 6, 4 + Math.random() * 5, (Math.random() - 0.5) * 6, 1, 0.6, 0.75, 0.9, 1, 9, 0.5); }
     k.events.length = 0;
   }
   if (race.lapShown === 0) race.lapShown = 1;
@@ -1244,6 +1294,14 @@ function showResults(order) {
     li.querySelector('b').textContent = x.r.name;
     ul.appendChild(li);
   }
+  // 컵 모드 누적 순위
+  const cb = $('cupBox');
+  if (race.cup) {
+    const C = race.cup, TN = { beach: '선셋 비치', neon: '네온 시티', blossom: '벚꽃 캐니언', kpop: 'K-POP 아레나' };
+    cb.hidden = false;
+    cb.innerHTML = `<h4>${C.done ? '컵 최종 순위' : `컵 ${C.round} / ${C.total} · 누적 순위`}</h4><ol>${C.standings.map((x, i) => `<li class="${x.id === meId ? 'me' : ''}"><b>${i + 1}</b>${esc(x.name || '')}<small>${x.pts}점</small></li>`).join('')}</ol>${C.done ? '' : `<p class="next" id="cupNext">다음 코스 «${TN[C.next] || ''}» 곧 자동 출발</p>`}`;
+    if (!C.done) { const end = Date.now() + 18000; clearInterval(showResults.cupI); showResults.cupI = setInterval(() => { const el = $('cupNext'); if (!el) return clearInterval(showResults.cupI); const s = Math.max(0, Math.ceil((end - Date.now()) / 1000)); el.textContent = `다음 코스 «${TN[C.next] || ''}» ${s}초 뒤 자동 출발`; }, 500); }
+  } else cb.hidden = true;
   // 기록 알림(혼자 달리기) / 팀전 점수
   const rec = $('resRecord');
   if (race.teams) {
@@ -1308,7 +1366,7 @@ function startPodium(rows) {
   $('hud').hidden = true;
   center('');
   $('podTitle').hidden = false;
-  $('podTitle').innerHTML = race.teams && race.teamWin != null ? `<small>${race.def.name} · 팀전</small><b>${race.teamWin < 0 ? '무승부' : race.teamWin ? '파랑팀 승리' : '빨강팀 승리'}</b>` : rows[0] ? `<small>${race.def.name}</small><b>우승 ${esc(rows[0].r.name)}</b>` : '';
+  $('podTitle').innerHTML = race.cup && race.cup.done ? `<small>컵 최종</small><b>컵 우승 ${esc(race.cup.standings[0].name || '')}</b>` : race.teams && race.teamWin != null ? `<small>${race.def.name} · 팀전</small><b>${race.teamWin < 0 ? '무승부' : race.teamWin ? '파랑팀 승리' : '빨강팀 승리'}</b>` : rows[0] ? `<small>${race.def.name}</small><b>우승 ${esc(rows[0].r.name)}</b>` : '';
   setTimeout(() => { if (!race || !race.podium) return; $('podTitle').hidden = true; show('results'); $('scr-results').classList.add('over'); }, 3600);
 }
 function podiumCamera(now, dt) {

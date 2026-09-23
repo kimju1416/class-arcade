@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/kart/style.css?v=6">
+<link rel="stylesheet" href="/kart/style.css?v=7">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -117,6 +117,7 @@
         <div class="seg col" id="roomTracks"></div>
         <label class="tog"><input type="checkbox" id="roomBots" checked> 빈 자리를 AI로 채우기</label>
         <label class="tog"><input type="checkbox" id="roomTeams"> 팀전 (빨강팀 vs 파랑팀)</label>
+        <label class="tog"><input type="checkbox" id="roomCup"> 컵 모드 (4코스 연속·누적 점수)</label>
         <button id="bRoomStart" class="btn primary">출발!</button>
         <p class="wait" id="roomWait">방장이 출발을 누르면 시작돼요.</p>
       </div>
@@ -130,6 +131,7 @@
   <div class="results">
     <div class="res-side"><p class="record" id="resRecord" hidden></p></div>
     <ol class="res-list" id="resList"></ol>
+    <div class="cupbox" id="cupBox" hidden></div>
   </div>
   <footer class="bar foot"><button id="bResMenu" class="btn">처음으로</button><button id="bResAgain" class="btn primary">한 판 더</button></footer>
 </section>
@@ -145,15 +147,18 @@
   <div id="center"></div>
   <div id="speedLines"></div>
   <div id="hitFlash"></div>
+  <div id="courseCard" hidden><small>COURSE</small><b id="ccName"></b><span id="ccSub"></span><em>화면을 누르면 건너뛰어요</em></div>
   <div id="board"></div>
   <div id="teamBar" hidden><span class="tr">빨강팀 <b id="tsR">0</b></span><span class="tb"><b id="tsB">0</b> 파랑팀</span></div>
   <div id="specBar"><span id="specBanner" hidden></span><div class="specnav"><button id="specPrev" aria-label="이전 선수">◀</button><b id="specName"></b><button id="specNext" aria-label="다음 선수">▶</button></div></div>
   <button id="bPause" class="pausebtn" aria-label="멈춤">Ⅱ</button>
+  <div id="emoBar"><button id="emoBtn" aria-label="이모지">😊</button><div id="emoList" hidden></div></div>
   <div id="touch">
     <div id="joyZone" aria-label="조이스틱: 좌우로 밀어 핸들, 아래로 당기면 브레이크"></div>
     <div id="joy"><div class="base"></div><div class="knob"></div><span class="hint">밀어서 핸들</span></div>
     <button id="tItem" aria-label="아이템">아이템</button>
     <button id="tDrift" aria-label="드리프트">드리프트</button>
+    <button id="tBack" aria-label="뒤 보기">뒤</button>
   </div>
 </div>
 <div id="podTitle" hidden></div>
@@ -166,6 +171,6 @@
 <div id="toast"></div>
 
 <script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
-<script type="module" src="/kart/main.js?v=6"></script>
+<script type="module" src="/kart/main.js?v=7"></script>
 </body>
 </html>

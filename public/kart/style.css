@@ -164,6 +164,14 @@ input:focus { border-color: var(--yel); }
 #center.go { color: var(--yel); }
 #center.small { font-size: clamp(34px, 7vw, 70px); }
 #speedLines { position: absolute; inset: 0; opacity: 0; transition: opacity .25s; background: repeating-conic-gradient(from 0deg at 50% 55%, transparent 0deg 3deg, rgba(255,255,255,.16) 3.4deg 3.7deg, transparent 4deg 9deg); -webkit-mask: radial-gradient(circle at 50% 55%, transparent 30%, #000 75%); mask: radial-gradient(circle at 50% 55%, transparent 30%, #000 75%); }
+#courseCard { position: absolute; left: 50%; bottom: 16%; transform: translateX(-50%); pointer-events: auto; text-align: center; font-family: Pretendard, sans-serif; background: linear-gradient(90deg, transparent, rgba(8,11,20,.78) 18%, rgba(8,11,20,.78) 82%, transparent); padding: 14px 80px; animation: ccIn .6s ease-out; }
+#courseCard[hidden] { display: none; }
+#courseCard small { display: block; color: var(--yel); font-weight: 800; letter-spacing: .35em; font-size: 12px; }
+#courseCard b { display: block; font-family: var(--disp); font-weight: 400; font-size: clamp(30px, 5vw, 52px); color: #fff; }
+#courseCard span { display: block; color: #dfe4ef; font-size: 15px; }
+#courseCard em { display: block; margin-top: 6px; font-style: normal; font-size: 12px; color: var(--sub); }
+@keyframes ccIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } }
+#tBack { width: 50px; height: 50px; left: auto; right: 14px; top: 46%; bottom: auto; font-size: 13px; }
 #hitFlash { position: absolute; inset: 0; opacity: 0; box-shadow: inset 0 0 90px 30px rgba(255,40,60,.85); }
 #hitFlash.on { animation: hitf .6s ease-out; }
 @keyframes hitf { 0% { opacity: 1; } 100% { opacity: 0; } }
@@ -249,6 +257,20 @@ body.touch .how > div:first-child { display: none; }
   .track-grid { grid-template-columns: repeat(3, 1fr); }
   .results { grid-template-columns: 1fr 1fr; grid-template-rows: none; }
 }
+
+/* ---- 컵·이모지 ---- */
+.cupbox { grid-column: 1 / -1; background: rgba(10,14,24,.78); border: 1px solid var(--line); border-radius: var(--r2); padding: 12px 16px; }
+.cupbox h4 { margin: 0 0 8px; font-size: 15px; color: var(--yel); }
+.cupbox ol { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; font-size: 14px; }
+.cupbox li b { font-family: var(--disp); font-weight: 400; margin-right: 6px; }
+.cupbox li small { color: var(--sub); margin-left: 4px; }
+.cupbox .next { margin-top: 8px; color: #dfe4ef; font-size: 14px; }
+#emoBar { position: absolute; left: 170px; top: calc(14px + env(safe-area-inset-top)); display: flex; gap: 6px; pointer-events: auto; }
+#emoBtn, #emoList button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: rgba(10,14,24,.55); font-size: 20px; line-height: 1; padding: 0; }
+#emoList { display: flex; gap: 6px; }
+#emoList[hidden] { display: none; }
+body.spec #emoBar { display: none; }
+@media (max-width: 760px) { #emoBar { left: 150px; } }
 
 /* ---- 팀전 ---- */
 #teamBar { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top)); transform: translateX(-50%); display: flex; border-radius: 999px; overflow: hidden; font-family: Pretendard, sans-serif; font-weight: 800; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.35); }

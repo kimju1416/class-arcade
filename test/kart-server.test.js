@@ -64,5 +64,20 @@ let fail = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); i
   B3.close(); await wait(400);
   ok(A.msgs.some(m => m.type === 'host' && m.id === last(A, 'welcome').id), '방장이 끊기면 남은 사람이 봇을 맡는다');
   A.close();
+  // 컵 모드: 방장이 레이스를 끝내면 누적 점수와 다음 코스 예약이 온다 + 이모지 중계
+  const H = await open(), G = await open();
+  H.send(JSON.stringify({ t: 'hello', create: true, name: '방장' })); await wait(250);
+  const code2 = last(H, 'welcome').code;
+  G.send(JSON.stringify({ t: 'hello', room: code2, name: '학생' })); await wait(250);
+  H.send(JSON.stringify({ t: 'set', cup: true })); await wait(200);
+  H.send(JSON.stringify({ t: 'start' })); await wait(300);
+  ok(last(G, 'start') && last(G, 'start').track === 'beach', '컵 모드는 첫 코스부터');
+  G.send(JSON.stringify({ t: 'emote', e: 3 })); G.send(JSON.stringify({ t: 'emote', e: 4 })); await wait(250);
+  ok(H.msgs.filter(m => m.type === 'emote').length === 1 && last(H, 'emote').e === 3, '이모지 중계(연타는 1.2초에 한 번)');
+  H.send(JSON.stringify({ t: 'back' })); await wait(300);
+  const rs = last(G, 'results');
+  ok(rs && rs.cup && rs.cup.round === 1 && rs.cup.next === 'neon' && rs.cup.standings.length >= 2, '컵 누적 점수와 다음 코스');
+  ok(last(G, 'lobby').cupNext > Date.now(), '다음 코스 자동 출발 예약');
+  H.close(); G.close();
   console.log(fail ? `실패 ${fail}` : '모두 통과'); process.exit(fail ? 1 : 0);
 })();

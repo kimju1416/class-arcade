@@ -31,10 +31,23 @@ export function turnRate(k) {
 export function stepKart(k, inp, tr, dt, loc) {
   const c = k.char;
   const ev = k.events;
+  // 물에 빠짐 → 드론이 건져서 조금 뒤 트랙 가운데에 내려 준다
+  if (k.rescueT > 0) {
+    k.rescueT -= dt; k.spd = 0; k.vs = 0; k.drift = 0; k.boostT = 0;
+    if (!k.rescued && k.rescueT < 1.2) {
+      k.prog -= 6 / tr.seg; const p = tr.point(k.prog, 0);
+      k.x = p.x; k.z = p.z; k.h = p.h; k.li = ((Math.floor(k.prog) % N) + N) % N; k.lat = 0; k.rescued = true; ev.push('rescued');
+    }
+    if (k.rescued) { k.hop = Math.max(0, k.rescueT) * 5; k.y = tr.point(k.prog, 0).y + k.hop; }
+    else k.y -= dt * 1.2;
+    if (k.rescueT <= 0) { k.rescued = false; k.hop = 0; k.hopV = 0; k.invT = 1.5; }
+    return;
+  }
   let max = statMax(c) * k.mul;
   const acc = statAcc(c);
   const turn = statTurn(c);
   const half = tr.half, lim = tr.half + tr.band - 1.0;
+  const om = tr.open ? tr.open[k.li] : 0; // 1이면 벽 없음(열린 구간)
 
   const boosting = k.boostT > 0;
   if (k.off && !boosting && k.starT <= 0) max *= 0.55;
@@ -100,7 +113,7 @@ export function stepKart(k, inp, tr, dt, loc) {
 
   // 트랙 위치 → 벽·노면·높이
   tr.locate(k.x, k.z, k.li, loc);
-  if (Math.abs(loc.lat) > lim) {
+  if (Math.abs(loc.lat) > (om ? 90 : lim)) {
     const push = Math.abs(loc.lat) - lim, sgn = Math.sign(loc.lat);
     k.x -= tr.rx[loc.i] * push * sgn; k.z -= tr.rz[loc.i] * push * sgn;
     // 벽에 박으면 트랙 방향 쪽으로 살짝 꺾고 감속
@@ -115,7 +128,7 @@ export function stepKart(k, inp, tr, dt, loc) {
     const vWall = k.vs * ((-Math.cos(k.h)) * tr.rx[loc.i] + Math.sin(k.h) * tr.rz[loc.i]) * sgn;
     if (vWall > 0) k.vs *= -0.3;
     k.scrape = 0.25;
-    loc.lat = lim * sgn;
+    loc.lat = (om ? 90 : lim) * sgn;
   }
   if (k.wallT > 0) k.wallT -= dt;
   if (k.scrape > 0) k.scrape -= dt;
@@ -131,7 +144,13 @@ export function stepKart(k, inp, tr, dt, loc) {
   // 높이 + 점프
   k.hopV -= 22 * dt; k.hop += k.hopV * dt;
   if (k.hop < 0) { if (k.hopV < -3) k.squash = 0.18; k.hop = 0; k.hopV = 0; }
-  k.y = loc.y + k.hop;
+  // 도로 밖(열린 구간)에서는 실제 땅 높이를 따라가고, 물보다 낮으면 빠진다
+  let baseY = loc.y;
+  if (om && Math.abs(loc.lat) > half + tr.band + 0.5 && tr.groundAt) {
+    baseY = tr.groundAt(k.x, k.z);
+    if (tr.seaY != null && baseY < tr.seaY - 0.2) { k.rescueT = 2.4; ev.push('water'); baseY = tr.seaY - 0.2; }
+  }
+  k.y = baseY + k.hop;
   k.squash *= Math.max(0, 1 - dt * 8);
 
   // 타이머
