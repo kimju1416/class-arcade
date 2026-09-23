@@ -9,6 +9,22 @@ const tl = new T.TextureLoader(), gl = new GLTFLoader();
 
 export function has3D(id) { return !!CHAR3D[id]; }
 
+// 모델에서 두 주먹 찾기: 키의 15~62% 높이에서 가장 앞(+z)으로 나온 부분을 왼쪽·오른쪽으로 나눠 가운데를 잡는다
+function findFists(geo, bb) {
+  const p = geo.attributes.position, H = bb.max.y - bb.min.y, y0 = bb.min.y + H * 0.15, y1 = bb.min.y + H * 0.62, cx = (bb.min.x + bb.max.x) / 2;
+  let zmax = -Infinity;
+  for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y > y0 && y < y1) zmax = Math.max(zmax, p.getZ(i)); }
+  const L = [0, 0, 0, 0], Rt = [0, 0, 0, 0], band = H * 0.09;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i), z = p.getZ(i); if (y <= y0 || y >= y1 || z < zmax - band) continue;
+    const a = p.getX(i) < cx ? L : Rt; a[0] += p.getX(i); a[1] += y; a[2] += z; a[3]++;
+  }
+  const c = (a) => a[3] ? new T.Vector3(a[0] / a[3], a[1] / a[3], a[2] / a[3]) : null;
+  const l = c(L), r = c(Rt);
+  if (!l || !r) return null;
+  return { l, r };
+}
+
 // 캐릭터 하나의 모양+재질(여러 카트가 같이 쓴다)
 export function load3D(id) {
   if (cache[id]) return cache[id];
@@ -34,7 +50,7 @@ export function load3D(id) {
         float w = smoothstep(-0.18, 0.18, normalize(vON).z);
         diffuseColor.rgb = mix(cb, cf, w);`);
     };
-    res({ geo, mat: m, size: bb.getSize(new T.Vector3()), min: bb.min.clone() });
+    res({ geo, mat: m, size: bb.getSize(new T.Vector3()), min: bb.min.clone(), fists: findFists(geo, bb) });
   }, undefined, rej));
   return cache[id];
 }

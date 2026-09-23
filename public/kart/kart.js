@@ -1,7 +1,7 @@
 // 3D 카트 모델 + 운전자 그림(앞/뒤 두 장) + 불꽃·연기 효과
 import * as T from 'three';
 import { Dizzy, starTex } from './fx.js';
-import { buildCar, cleanCar } from './carbody.js';
+import { buildCar, cleanCar, placeSteer } from './carbody.js';
 import { CHAR_EXTRA } from './extra.js';
 import { has3D, load3D } from './char3dview.js';
 let _star;
@@ -95,6 +95,14 @@ uniform float fm;`)
       m.scale.setScalar(s);
       m.position.set(-(d.min.x + d.size.x / 2) * s, car.driverY - 0.04 - d.min.y * s, car.driverZ - (d.min.z + d.size.z / 2) * s);
       m.castShadow = true; this.body.add(m); this.m3d = m;
+      // 운전대를 이 캐릭터의 두 주먹 사이에: 테두리가 양 주먹(3시·9시)을 지나게
+      if (d.fists) {
+        const w = (v) => new T.Vector3(v.x * s + m.position.x, v.y * s + m.position.y, v.z * s + m.position.z);
+        const l = w(d.fists.l), r = w(d.fists.r), c = l.clone().add(r).multiplyScalar(0.5);
+        const rad = Math.min(0.46, Math.max(0.2, l.distanceTo(r) / 2));
+        c.x = 0; c.z -= 0.03;
+        placeSteer(car, c, rad);
+      }
       this.driver.visible = false; this.fist.visible = false;
     }).catch(() => { });
     // 뒤에 달고 다니는 아이템(방패)

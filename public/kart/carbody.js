@@ -3,6 +3,16 @@
 import * as T from 'three';
 import { mergeGeometries } from '/fps/addons/utils/BufferGeometryUtils.js';
 
+// 운전대를 center(차 기준 좌표)에 반지름 r로 두고, 기둥을 계기판까지 잇는다
+export function placeSteer(out, center, r) {
+  const st = out.steer; if (!st) return;
+  st.position.copy(center); st.scale.set(r / 0.34, r / 0.34, 1);
+  const col = out.steerCol; if (!col) return;
+  const to = new T.Vector3(0, out.driverY + 0.12, center.z + 0.55), len = center.distanceTo(to);
+  col.scale.set(1, len, 1); col.position.copy(center).add(to).multiplyScalar(0.5);
+  col.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), to.clone().sub(center).normalize());
+}
+
 // root 아래(skip 가지 제외) 메시를 root 기준 좌표로 구워 재질별로 합친다
 function mergeStatic(root, skip) {
   root.updateMatrixWorld(true);
@@ -343,14 +353,13 @@ function build(cfg, char) {
     const hubM = M.seat;
     const hub = new T.Mesh(new T.CylinderGeometry(0.09, 0.09, 0.07, 16).rotateX(Math.PI / 2), hubM); st.add(hub);
     for (const a of [Math.PI / 2, Math.PI * 7 / 6, Math.PI * 11 / 6]) { const sp = new T.Mesh(new T.BoxGeometry(0.035, R, 0.03).translate(0, R / 2, 0), hubM); sp.rotation.z = a - Math.PI / 2; st.add(sp); }
-    // 기둥: 운전대 가운데에서 앞 아래 계기판 쪽으로
-    const from = new T.Vector3(0, cy, cz), to = new T.Vector3(0, out.driverY + 0.12, cz + 0.55), len = from.distanceTo(to);
-    const col = new T.Mesh(new T.CylinderGeometry(0.04, 0.05, len, 10), hubM);
-    col.position.copy(from).add(to).multiplyScalar(0.5); col.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), to.clone().sub(from).normalize());
-    G.add(col);
+    // 기둥: 운전대 가운데에서 앞 아래 계기판 쪽으로(3D 캐릭터면 주먹 자리에 맞춰 다시 놓는다 → 합치지 않고 따로 둔다)
+    const col = new T.Mesh(new T.CylinderGeometry(0.04, 0.05, 1, 10), hubM);
+    G.add(col); out.steerCol = col;
+    placeSteer(out, new T.Vector3(0, cy, cz), R);
   }
   // 그리기 호출 줄이기: 움직이지 않는 부품은 재질별로 한 덩어리로(카트 하나 90개 → 10여 개)
-  const skip = new Set([...out.fronts, ...out.wheels.map(w => w.parent), out.steer].filter(Boolean));
+  const skip = new Set([...out.fronts, ...out.wheels.map(w => w.parent), out.steer, out.steerCol].filter(Boolean));
   mergeStatic(G, skip);
   for (const w of out.wheels) mergeStatic(w, new Set());
   return out;
