@@ -51,9 +51,11 @@ export function loadCar3D(id) {
           float wS = pow(abs(N.x), 3.0), wF = pow(max(N.z, 0.0), 3.0), wB = pow(max(-N.z, 0.0), 3.0), wT = pow(max(N.y, 0.0), 3.0) * 1.2, wD = pow(max(-N.y, 0.0), 3.0);
           vec3 col = (cS * (wS + wD * 0.5) + cF * wF + cB * wB + cT * wT + vec3(0.08) * wD * 0.5) / (wS + wF + wB + wT + wD + 1e-4);
           // 흰 차체(밝고 색이 거의 없는 곳)만 고른 색으로 물들인다
-          float mx = max(col.r, max(col.g, col.b)), mn = min(col.r, min(col.g, col.b));
-          float white = smoothstep(0.55, 0.8, mx) * (1.0 - smoothstep(0.08, 0.2, mx - mn));
-          col = mix(col, col * paint * 1.15, white);
+          // 그늘진 흰 부분까지 한 번에(명암은 살리고 색만 바꾼다) — 검은 카본·타이어는 그대로
+          float mx = max(col.r, max(col.g, col.b)), mn = min(col.r, min(col.g, col.b)), lum = dot(col, vec3(0.3, 0.59, 0.11));
+          float white = smoothstep(0.26, 0.46, lum) * (1.0 - smoothstep(0.1, 0.22, mx - mn));
+          vec3 painted = paint * pow(clamp(lum * 1.15, 0.0, 1.0), 0.85) * 1.1 + vec3(pow(clamp(lum - 0.82, 0.0, 1.0), 2.0) * 3.0); // 가장 밝은 곳은 반사광처럼 살짝 하얗게
+          col = mix(col, painted, white);
           diffuseColor.rgb = col;`);
       };
       return m;

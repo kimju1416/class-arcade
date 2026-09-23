@@ -100,7 +100,11 @@ uniform float fm;`)
     // 3D 차가 있으면 받아서 바꾼다(받는 동안은 예전 차). 좌석 자리를 찾아 운전자·운전대를 옮긴다
     const bodyId = BODIES[cleanCar(opts.car, 0).b].id;
     if (hasCar3D(bodyId)) loadCar3D(bodyId).then((cd) => {
-      const box = new T.Box3().setFromObject(car.group), L = box.max.z - box.min.z, s = (L * 1.08) / cd.size.z;
+      // 차의 크기는 차 자신의 좌표로 잰다(경기 중엔 카트가 이미 트랙 위에 있어 월드 좌표로 재면 엉뚱한 곳에 놓인다)
+      car.group.updateWorldMatrix(true, true);
+      const inv = new T.Matrix4().copy(car.group.matrixWorld).invert(), box = new T.Box3(), tmp = new T.Box3();
+      car.group.traverse(o => { if (o.isMesh && o.visible && o.geometry) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); tmp.copy(o.geometry.boundingBox).applyMatrix4(new T.Matrix4().multiplyMatrices(inv, o.matrixWorld)); box.union(tmp); } });
+      const L = box.max.z - box.min.z, s = (L * 1.28) / cd.size.z; // 운전자 상반신이 커서 차를 조금 키운다
       const m = new T.Mesh(cd.geo, cd.make(car.paint.color)); m.scale.setScalar(s);
       m.position.set(-(cd.min.x + cd.size.x / 2) * s, -cd.min.y * s, (box.min.z + box.max.z) / 2 - (cd.min.z + cd.size.z / 2) * s);
       m.castShadow = true; m.receiveShadow = true;
