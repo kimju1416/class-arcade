@@ -1,7 +1,8 @@
 // 3D 카트 모델 + 운전자 그림(앞/뒤 두 장) + 불꽃·연기 효과
 import * as T from 'three';
 import { Dizzy, starTex } from './fx.js';
-import { buildCar, cleanCar, placeSteer } from './carbody.js';
+import { buildCar, cleanCar, placeSteer, BODIES } from './carbody.js';
+import { hasCar3D, loadCar3D } from './car3dview.js';
 import { CHAR_EXTRA } from './extra.js';
 import { has3D, load3D } from './char3dview.js';
 let _star;
@@ -92,25 +93,50 @@ uniform float fm;`)
     // 3D 캐릭터가 있으면 받아서 2D 그림과 바꾼다(받는 동안은 2D 그림)
     if (opts.noDriver) { this.driver.visible = false; this.fist.visible = false; this.noDriver = true; if (car.steer) car.steer.visible = false; if (car.steerCol) car.steerCol.visible = false; } // 차량 선택 화면: 차만
     else if (has3D(char.id)) load3D(char.id).then((d) => {
-      const H = DRV_H * 0.95, s = H / d.size.y, m = new T.Mesh(d.geo, d.mat);
-      m.scale.setScalar(s);
-      m.position.set(-(d.min.x + d.size.x / 2) * s, car.driverY - 0.04 - d.min.y * s, car.driverZ - (d.min.z + d.size.z / 2) * s);
-      m.castShadow = true; this.body.add(m); this.m3d = m;
-      // 운전대를 이 캐릭터의 두 주먹 사이에: 테두리가 양 주먹(3시·9시)을 지나게
-      if (d.fists) {
-        const w = (v) => new T.Vector3(v.x * s + m.position.x, v.y * s + m.position.y, v.z * s + m.position.z);
-        const l = w(d.fists.l), r = w(d.fists.r), c = l.clone().add(r).multiplyScalar(0.5);
-        const rad = Math.min(0.46, Math.max(0.2, l.distanceTo(r) / 2));
-        c.x = 0; c.z -= 0.03;
-        placeSteer(car, c, rad);
-      }
+      const m = new T.Mesh(d.geo, d.mat); m.castShadow = true; this.body.add(m); this.m3d = m; this.c3d = d;
       this.driver.visible = false; this.fist.visible = false;
+      this.placeDriver();
+    }).catch(() => { });
+    // 3D 차가 있으면 받아서 바꾼다(받는 동안은 예전 차). 좌석 자리를 찾아 운전자·운전대를 옮긴다
+    const bodyId = BODIES[cleanCar(opts.car, 0).b].id;
+    if (hasCar3D(bodyId)) loadCar3D(bodyId).then((cd) => {
+      const box = new T.Box3().setFromObject(car.group), L = box.max.z - box.min.z, s = (L * 1.08) / cd.size.z;
+      const m = new T.Mesh(cd.geo, cd.make(car.paint.color)); m.scale.setScalar(s);
+      m.position.set(-(cd.min.x + cd.size.x / 2) * s, -cd.min.y * s, (box.min.z + box.max.z) / 2 - (cd.min.z + cd.size.z / 2) * s);
+      m.castShadow = true; m.receiveShadow = true;
+      for (const o of car.group.children) if (o !== car.steer && o !== car.steerCol) o.visible = false;
+      car.group.add(m); this.car3d = m;
+      car.driverY = cd.seat.y * s + m.position.y - 0.06; car.driverZ = cd.seat.z * s + m.position.z;
+      const back = cd.min.z * s + m.position.z, h = cd.size.y * s;
+      this.flames.forEach((f, i) => f.position.set((i ? 1 : -1) * cd.size.x * s * 0.18, h * 0.32, back + 0.05));
+      this.placeDriver();
     }).catch(() => { });
     // 뒤에 달고 다니는 아이템(방패)
     this.heldSpr = new T.Sprite(new T.SpriteMaterial({ transparent: true, depthWrite: false }));
     this.heldSpr.scale.set(1.1, 1.1, 1); this.heldSpr.position.set(0, 0.8, -2.1); this.heldSpr.visible = false; this.body.add(this.heldSpr); this.heldKind = null;
     scene.add(this.root);
     this.wheelA = 0; this.t = Math.random() * 10;
+  }
+
+  // 좌석(car.driverY/Z)에 운전자 그림·3D 캐릭터를 앉히고 운전대를 주먹에 맞춘다
+  placeDriver() {
+    const car = this.car;
+    this.driver.position.set(0, car.driverY + DRV_H / 2, car.driverZ);
+    const d = this.c3d, m = this.m3d;
+    if (m && d) {
+      const H = DRV_H * 0.95, s = H / d.size.y;
+      m.scale.setScalar(s);
+      m.position.set(-(d.min.x + d.size.x / 2) * s, car.driverY - 0.04 - d.min.y * s, car.driverZ - (d.min.z + d.size.z / 2) * s);
+      // 운전대를 이 캐릭터의 두 주먹 사이에: 테두리가 양 주먹(3시·9시)을 지나게
+      if (d.fists) {
+        const w = (v) => new T.Vector3(v.x * s + m.position.x, v.y * s + m.position.y, v.z * s + m.position.z);
+        const l = w(d.fists.l), r = w(d.fists.r), c = l.clone().add(r).multiplyScalar(0.5);
+        c.x = 0; c.z -= 0.03;
+        placeSteer(car, c, Math.min(0.46, Math.max(0.2, l.distanceTo(r) / 2)));
+        return;
+      }
+    }
+    placeSteer(car, new T.Vector3(0, car.driverY + 0.6, car.driverZ + 0.5), 0.34);
   }
 
   update(k, dt, cam) {
