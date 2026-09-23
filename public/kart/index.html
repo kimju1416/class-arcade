@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0e1320">
+<title>슈퍼스타 카트 · SUPERSTAR KART</title>
+<meta name="description" content="야구 에이스, 아이돌, 태권도 국가대표… 좋아하는 스타를 골라 3D 서킷을 달리는 카트 레이싱. 혼자 또는 친구와 최대 8명.">
+<meta property="og:title" content="슈퍼스타 카트">
+<meta property="og:description" content="좋아하는 스타를 골라 친구와 3D 카트 레이싱. 설치 없이 바로.">
+<meta property="og:image" content="/kart/tex/keyart.webp">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1320'/%3E%3Cpath d='M32 9l6.7 13.6 15 2.2-10.9 10.6 2.6 15L32 43.3 18.6 50.4l2.6-15L10.3 24.8l15-2.2z' fill='%23ffd23a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="/kart/style.css?v=1">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- 첫 화면 -->
+<section id="scr-title" class="scr on">
+  <div class="title-art"></div>
+  <div class="title-in">
+    <div class="logo"><span>SUPERSTAR</span><b>KART</b><small>슈퍼스타 카트</small></div>
+    <p class="lead">야구 에이스, 아이돌, 태권도 국가대표까지.<br>좋아하는 스타를 골라 3D 서킷을 달려요.</p>
+    <div class="menu">
+      <button id="bSolo" class="btn big primary"><b>혼자 달리기</b><small>AI 레이서 7명과 3바퀴</small></button>
+      <button id="bOnline" class="btn big"><b>친구와 달리기</b><small>방 코드로 최대 8명</small></button>
+    </div>
+    <div class="how">
+      <div><kbd>←</kbd><kbd>→</kbd> 핸들 <kbd>Space</kbd> 드리프트 <kbd>X</kbd> 아이템 <kbd>↓</kbd> 브레이크</div>
+      <div class="how-touch">폰은 화면 버튼으로 조작해요. 가속은 자동이에요.</div>
+    </div>
+  </div>
+  <div class="corner">
+    <button id="bSound" class="chip">소리 켬</button>
+    <button id="bQual" class="chip">화질 자동</button>
+    <a class="chip" href="/">교실 아케이드 ↗</a>
+  </div>
+</section>
+
+<!-- 캐릭터 고르기 -->
+<section id="scr-select" class="scr panel-scr">
+  <header class="bar"><button class="back" data-back>‹</button><h2>레이서 고르기</h2><span class="step">1 / 2</span></header>
+  <div class="sel-wrap">
+    <div class="sel-hero">
+      <div class="hero-img"><img id="heroImg" alt=""></div>
+      <div class="hero-info">
+        <small id="heroRole"></small><h3 id="heroName"></h3>
+        <div class="stats" id="heroStats"></div>
+      </div>
+    </div>
+    <div class="sel-grid" id="charGrid"></div>
+  </div>
+  <footer class="bar foot">
+    <label class="nick">내 이름 <input id="nick" maxlength="10" autocomplete="off" placeholder="이름을 적어요"></label>
+    <button id="bSelNext" class="btn primary">다음</button>
+  </footer>
+</section>
+
+<!-- 트랙 고르기 (혼자) -->
+<section id="scr-track" class="scr panel-scr">
+  <header class="bar"><button class="back" data-back>‹</button><h2>코스 고르기</h2><span class="step">2 / 2</span></header>
+  <div class="track-grid" id="trackGrid"></div>
+  <div class="diff"><span>AI 실력</span><div class="seg" id="diff"><button data-d="0">쉬움</button><button data-d="1" class="on">보통</button><button data-d="2">어려움</button></div></div>
+  <footer class="bar foot"><span class="hint">3바퀴 · 레이서 8명</span><button id="bGo" class="btn primary">출발!</button></footer>
+</section>
+
+<!-- 온라인 입장 -->
+<section id="scr-online" class="scr panel-scr">
+  <header class="bar"><button class="back" data-back>‹</button><h2>친구와 달리기</h2><span class="step">2 / 2</span></header>
+  <div class="online-box">
+    <div class="ob">
+      <h3>방 만들기</h3>
+      <p>방을 열고 코드를 친구에게 알려 주세요. 빈 자리는 AI가 채워요.</p>
+      <button id="bCreate" class="btn primary">새 방 열기</button>
+    </div>
+    <div class="ob">
+      <h3>방 들어가기</h3>
+      <p>친구에게 받은 네 글자 코드를 적어요.</p>
+      <div class="join"><input id="joinCode" maxlength="4" autocomplete="off" placeholder="ABCD"><button id="bJoin" class="btn">들어가기</button></div>
+    </div>
+    <p class="err" id="onErr"></p>
+  </div>
+</section>
+
+<!-- 온라인 대기실 -->
+<section id="scr-room" class="scr panel-scr">
+  <header class="bar"><button class="back" data-back>‹</button><h2>대기실</h2><span class="step" id="roomState"></span></header>
+  <div class="room">
+    <div class="room-code">
+      <small>방 코드</small><b id="roomCode">----</b>
+      <button id="bCopy" class="chip">링크 복사</button>
+    </div>
+    <div class="room-main">
+      <div class="players" id="players"></div>
+      <div class="room-side">
+        <h4>코스</h4>
+        <div class="seg col" id="roomTracks"></div>
+        <label class="tog"><input type="checkbox" id="roomBots" checked> 빈 자리를 AI로 채우기</label>
+        <button id="bRoomStart" class="btn primary">출발!</button>
+        <p class="wait" id="roomWait">방장이 출발을 누르면 시작돼요.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 결과 -->
+<section id="scr-results" class="scr panel-scr">
+  <header class="bar"><h2>레이스 결과</h2><span class="step" id="resTrack"></span></header>
+  <div class="results">
+    <div class="podium" id="podium"></div>
+    <ol class="res-list" id="resList"></ol>
+  </div>
+  <footer class="bar foot"><button id="bResMenu" class="btn">처음으로</button><button id="bResAgain" class="btn primary">한 판 더</button></footer>
+</section>
+
+<!-- 레이스 화면 -->
+<div id="hud" hidden>
+  <div id="itemSlot"><canvas id="itemCv" width="160" height="160"></canvas><span id="itemN"></span></div>
+  <div id="rankBox"><b id="rankNum">1</b><span>위</span><small id="rankOf">/ 8</small></div>
+  <div id="lapBox"><div class="lap">LAP <b id="lapNum">1</b><span>/3</span></div><div class="time" id="timeTxt">0:00.00</div></div>
+  <canvas id="mini" width="300" height="300"></canvas>
+  <div id="speedo"><b id="spdNum">0</b><small>km/h</small><i id="driftLv"></i></div>
+  <div id="feed"></div>
+  <div id="center"></div>
+  <div id="speedLines"></div>
+  <button id="bPause" class="pausebtn" aria-label="멈춤">Ⅱ</button>
+  <div id="touch">
+    <button id="tL" aria-label="왼쪽">◀</button><button id="tR" aria-label="오른쪽">▶</button>
+    <button id="tBrake" aria-label="브레이크">브레이크</button>
+    <button id="tItem" aria-label="아이템">아이템</button>
+    <button id="tDrift" aria-label="드리프트">드리프트</button>
+  </div>
+</div>
+<div id="pause" hidden>
+  <div class="pbox"><h3>잠깐 멈춤</h3><button id="bResume" class="btn primary">계속 달리기</button><button id="bRestart" class="btn">다시 시작</button><button id="bQuit" class="btn">그만하기</button></div>
+</div>
+<div id="loading" hidden><div class="spin"></div><p id="loadTxt">코스를 만드는 중…</p></div>
+<div id="toast"></div>
+
+<script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
+<script type="module" src="/kart/main.js?v=1"></script>
+</body>
+</html>

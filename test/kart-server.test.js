@@ -1,0 +1,51 @@
+// 슈퍼스타 카트 서버 방어 검사: node test/kart-server.test.js (서버가 3000번에 떠 있어야 함)
+const WebSocket = require('ws');
+const URL = process.env.KART_WS || 'ws://localhost:3000/kart/ws';
+const open = () => new Promise((res, rej) => { const w = new WebSocket(URL); w.msgs = []; w.on('message', d => w.msgs.push(JSON.parse(d))); w.on('open', () => res(w)); w.on('error', rej); });
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const last = (w, t) => [...w.msgs].reverse().find(m => m.type === t);
+let fail = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fail++; };
+(async () => {
+  const A = await open(), B = await open();
+  A.send(JSON.stringify({ t: 'hello', create: true, name: '<b>' + 'x'.repeat(500), char: 99 }));
+  await wait(300);
+  const code = last(A, 'welcome').code;
+  const lob = last(A, 'lobby');
+  ok(lob.players[0].name.length <= 10 && !lob.players[0].name.includes('<'), '이름 자르기·꺾쇠 제거');
+  ok(lob.players[0].char === 9, '캐릭터 번호 범위 제한');
+  B.send(JSON.stringify({ t: 'hello', room: code.toLowerCase(), name: '친구', char: 1 }));
+  await wait(300);
+  B.send(JSON.stringify({ t: 'start' })); await wait(300);
+  ok(!B.msgs.find(m => m.type === 'start'), '방장 아닌 사람은 출발 못 함');
+  B.send(JSON.stringify({ t: 'set', track: 'neon' })); await wait(200);
+  ok(last(B, 'lobby').track === 'beach', '방장 아닌 사람은 코스 못 바꿈');
+  A.send(JSON.stringify({ t: 'start' })); await wait(300);
+  const st = last(B, 'start'); ok(st && st.grid.length === 8, '출발 + 봇 채움(8명)');
+  const bId = last(B, 'welcome').id;
+  // 무한대·NaN·남의 카트·봇 위조
+  B.send('{"t":"st","k":[["' + bId + '",1e400,0,0,0,0,0,0,0]]}');
+  B.send(JSON.stringify({ t: 'st', k: [[last(A, 'welcome').id, 5, 5, 5, 0, 0, 0, 0, 0], ['b0', 9, 9, 9, 0, 0, 0, 0, 0]] }));
+  B.send(JSON.stringify({ t: 'st', k: [[bId, 1, 2, 3, 0, 10, 0, 50, 0]] }));
+  await wait(250);
+  const ss = last(A, 'ss');
+  const mine = ss && ss.k.find(x => x[0] === bId);
+  ok(mine && mine[1] === 1 && mine[7] === 50, '정상 위치는 중계');
+  ok(ss && !ss.k.find(x => x[0] === 'b0') && !ss.k.find(x => x[0] === last(A, 'welcome').id), '남의 카트·봇 위치 위조 차단');
+  B.send(JSON.stringify({ t: 'fin', id: bId })); await wait(200);
+  ok(!A.msgs.find(m => m.type === 'fin'), '출발 20초 안 결승 거부');
+  B.send(JSON.stringify({ t: 'item', k: 'nuke', by: bId, s: 1, lat: 0 }));
+  B.send(JSON.stringify({ t: 'item', k: 'ball', by: 'b1', s: 1, lat: 0 }));
+  B.send(JSON.stringify({ t: 'item', k: 'ball', by: bId, s: 1, lat: 0, n: 7 }));
+  await wait(200);
+  const items = A.msgs.filter(m => m.type === 'item');
+  ok(items.length === 1 && items[0].n === 7 && typeof items[0].id === 'number', '아이템: 없는 종류·봇 사칭 차단, 번호 붙임');
+  // 도배
+  const C = await open(); let closed = false; C.on('close', () => closed = true);
+  for (let i = 0; i < 300; i++) C.send('{"t":"ping","c":1}');
+  await wait(400); ok(closed, '초당 메시지 도배는 연결 끊음');
+  // 방장 나가면 넘겨받기
+  A.close(); await wait(400);
+  ok(B.msgs.some(m => m.type === 'host' && m.id === bId), '방장이 나가면 남은 사람이 방장');
+  B.close();
+  console.log(fail ? `실패 ${fail}` : '모두 통과'); process.exit(fail ? 1 : 0);
+})();

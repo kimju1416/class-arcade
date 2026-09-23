@@ -1,0 +1,33 @@
+KART 레이싱 소리 — 전부 Mixkit 무료 음원 (https://mixkit.co/license/ , 표기 의무 없음)
+2026-09-23 받음. 배경음악은 앞뒤 무음 제거 후 음량 맞춤(ffmpeg loudnorm I=-16, 2패스), 96kbps 스테레오.
+효과음은 앞 무음 제거·필요한 부분만 잘라 끝을 흐리게 하고 음량 맞춤, 모노 80kbps.
+BPM은 파형으로 잰 추정값.
+
+배경음악 (Mixkit Stock Music Free License)
+  bgm-menu.mp3     타이틀/선택   id 1048 "Turn This Up a Little Louder"  Michael Ramir C.  (Pop, ~120BPM)
+  bgm-beach.mp3    선셋 비치     id 48   "Ride the Waves"                Ahjay Stelino     (Surf Rock, ~150BPM)
+  bgm-neon.mp3     네온 도시     id 777  "A Game"                        Michael Ramir C.  (EDM/Electro House, ~128BPM)
+  bgm-blossom.mp3  벚꽃 산길     id 851  "Me and You"                    Michael Ramir C.  (Pop Rock, ~128BPM)
+  bgm-final.mp3    마지막 바퀴   id 47   "Punked Up Fun"                 Ahjay Stelino     (Punk Rock, ~130BPM)
+  bgm-win.mp3      시상식        id 927  "This Our Year! (Happy New Year)" Michael Ramir C. (Pop/Disco, 9.95초부터 32초만 잘라 끝 3초 페이드)
+
+효과음 (Mixkit Sound Effects Free License)
+  countdown.mp3  1953 Race countdown (첫 삑 하나만)
+  go.mp3         1953 Race countdown (마지막 높은 삑)
+  itembox.mp3    2013 Game loot win
+  roulette.mp3   1933 Arcade slot machine wheel
+  boost.mp3      1484 Speeding swoosh
+  drift.mp3      1013 Rubber fast squeak (타이어 끼익 대용, 반복용 1.25초)
+  spark.mp3      2365 Electric pop
+  throw.mp3       730 Quick rope throw
+  hit.mp3         746 Cartoon dazzle hit and birds
+  shield.mp3     3164 Video game power up
+  bump.mp3       1555 Toy car crash
+  splash.mp3     1180 Jump into the water
+  lap.mp3        2039 Game success alert
+  finallap.mp3    722 Successful horns fanfare
+  finish.mp3     2285 Orchestra triumphant trumpets
+  crowd.mp3       462 Huge crowd cheering victory (1초부터 5초, 앞뒤 0.3초 페이드 — 반복용)
+  click.mp3      1114 Game click
+  select.mp3     2342 Arcade magic notification
+  engine.mp3     2721 Motorcycle engine working (0.2초부터 1.5초, 반복용)
