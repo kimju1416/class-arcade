@@ -43,6 +43,10 @@ def prep(car):
 def shape(car):
     from gradio_client import Client, handle_file
     tok = os.environ.get('HF_TOKEN')
+    if not tok:
+        try:
+            from huggingface_hub import get_token; tok = get_token()  # 형님이 hf auth login 해 둔 로그인
+        except Exception: tok = None
     c = Client('tencent/Hunyuan3D-2mv', verbose=False, **({'token': tok} if tok else {}))
     w = lambda v: handle_file(os.path.join(WORK, f'car-{car}-{v}.png'))
     try:

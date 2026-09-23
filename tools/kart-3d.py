@@ -46,6 +46,10 @@ def prep(cid):
 def shape(cid):
     from gradio_client import Client, handle_file
     tok = os.environ.get('HF_TOKEN')
+    if not tok:
+        try:
+            from huggingface_hub import get_token; tok = get_token()  # 형님이 hf auth login 해 둔 로그인
+        except Exception: tok = None
     c = Client('tencent/Hunyuan3D-2mv', verbose=False, **({'token': tok} if tok else {}))
     try:
         r = c.predict(caption=None, image=None, mv_image_front=handle_file(os.path.join(WORK, f'{cid}-front.png')), mv_image_back=handle_file(os.path.join(WORK, f'{cid}-back.png')),
