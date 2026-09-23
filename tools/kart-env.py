@@ -75,9 +75,19 @@ for n in ('beach', 'blossom', 'neon'):
     a2 = np.concatenate([head, a[:, B:W - B]], 1)
     out = Image.fromarray(a2.clip(0, 255).astype(np.uint8), 'RGBA').resize((2048, 1152), Image.LANCZOS)
     save(out, f'bg-{n}', 86); env.append(f'bg-{n}')
+# 관중석 사진(좌우 이어지게)·밤 빌딩 벽(상하좌우 이어지게)
+def hwrap(im, B=160):
+    a = np.asarray(im.convert('RGB')).astype(np.float32); W = a.shape[1]; t = np.linspace(0, 1, B)[None, :, None]
+    head = a[:, W - B:] * (1 - t) + a[:, :B] * t
+    return Image.fromarray(np.concatenate([head, a[:, B:W - B]], 1).clip(0, 255).astype(np.uint8))
+for src_n, out_n in (('crowd-kpop', 'crowd-night'), ('crowd-day', 'crowd-day')):
+    im = get(src_n)
+    if im: save(hwrap(im).resize((2048, 1024), Image.LANCZOS), out_n, 84); env.append(out_n)
+im = get('facade-night')
+if im: save(seamless(im).resize((1024, 1024), Image.LANCZOS), 'facade-night', 86); env.append('facade-night')
 # 이미 있는 원경도 목록에
-for n in ('beach', 'blossom', 'neon'):
-    if f'bg-{n}' not in env and os.path.exists(os.path.join(TEX, f'bg-{n}.webp')): env.append(f'bg-{n}')
+for n in ('bg-beach', 'bg-blossom', 'bg-neon', 'crowd-night', 'crowd-day', 'facade-night'):
+    if n not in env and os.path.exists(os.path.join(TEX, f'{n}.webp')): env.append(n)
 with open(os.path.join(HERE, '..', 'public', 'kart', 'env.js'), 'w', encoding='utf-8', newline='\n') as f:
     f.write('// tools/kart-env.py가 만든 목록 — 손으로 고치지 말 것\nexport const ENV_ART = ' + json.dumps(sorted(env)) + ';\n')
 print('env', env)

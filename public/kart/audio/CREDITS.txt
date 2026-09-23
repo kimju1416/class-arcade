@@ -31,3 +31,8 @@ BPM은 파형으로 잰 추정값.
   click.mp3      1114 Game click
   select.mp3     2342 Arcade magic notification
   engine.mp3     2721 Motorcycle engine working (0.2초부터 1.5초, 반복용)
+
+엔진 소리 (2026-09-24, Mixkit Sound Effects Free License) — 안정 구간을 잘라 끝을 처음과 겹쳐 이음매 없는 고리로, 모노 wav
+  eng-low.wav   3199 Motorcycle engine working (2~6초, 공회전)
+  eng-mid.wav   2700 Sports bike engine (1~5초, 중간 회전)
+  eng-high.wav  2689 Racing motorcycle engine (6~7.6초, 높은 회전)

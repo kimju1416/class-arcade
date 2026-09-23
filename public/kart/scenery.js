@@ -1,5 +1,6 @@
 // 배경 고급화 — 실시간 하늘(구름 포함)·반사 물·섞어 칠한 지형·잎 카드 나무·풀·먼 산/섬/도시
 import * as T from 'three';
+import { ENV_ART } from './env.js';
 import { Sky } from '/fps/addons/objects/Sky.js';
 import { Water } from '/fps/addons/objects/Water.js';
 import { mergeGeometries } from '/fps/addons/utils/BufferGeometryUtils.js';
@@ -469,7 +470,33 @@ export function skyline(scene, cx, cz, winMat, R) {
 // 한 장 그림을 건물 전체에 늘이면 창 하나가 방만 해져 도트처럼 보인다 → 셰이더로 창 크기를 3m 안팎으로 고정
 export function windowMaterial() {
   const m = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, metalness: 0.6 });
+  const fac = ENV_ART.includes('facade-night') ? tex('facade-night') : null; // 코덱스 밤 빌딩 벽 사진
   m.onBeforeCompile = (sh) => {
+    if (fac) {
+      sh.uniforms.tFac = { value: fac };
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', `#include <common>
+varying vec3 vWP2; varying vec3 vWN2; varying float vSeed;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            vWP2 = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz; vWN2 = normalize(mat3(modelMatrix * instanceMatrix) * normal); vSeed = instanceMatrix[3].x * 0.013 + instanceMatrix[3].z * 0.029;
+          #else
+            vWP2 = (modelMatrix * vec4(position, 1.0)).xyz; vWN2 = normalize(mat3(modelMatrix) * normal); vSeed = 0.0;
+          #endif`);
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>
+uniform sampler2D tFac; varying vec3 vWP2; varying vec3 vWN2; varying float vSeed;`)
+        .replace('#include <map_fragment>', `
+          vec3 n2 = normalize(vWN2); float roof = step(0.6, abs(n2.y));
+          vec2 uv = vec2((abs(n2.x) > abs(n2.z) ? vWP2.z : vWP2.x) / 26.0 + vSeed * 3.7, vWP2.y / 26.0);
+          vec3 fc = texture2D(tFac, uv).rgb;
+          float lum = dot(fc, vec3(0.3, 0.59, 0.11));
+          diffuseColor.rgb = mix(fc * 0.55 * diffuseColor.rgb * 1.6, vec3(0.05, 0.06, 0.09), roof);
+          vec3 winGlow = fc * smoothstep(0.3, 0.75, lum) * (1.0 - roof) * 1.6;`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+ totalEmissiveRadiance += winGlow;`);
+      return;
+    }
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWP2; varying vec3 vWN2; varying float vSeed;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -505,6 +532,8 @@ export function windowMaterial() {
 
 // 관중: 사람 머리·어깨를 음영까지 그린 촘촘한 줄
 export function crowdTexture(night) {
+  // 코덱스 관중 사진이 있으면 그걸로(없으면 아래 그림)
+  if (ENV_ART.includes(night ? 'crowd-night' : 'crowd-day')) { const t = tex(night ? 'crowd-night' : 'crowd-day'); t.wrapT = T.ClampToEdgeWrapping; return t; }
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512;
   const g = cv.getContext('2d');
   g.fillStyle = night ? '#141226' : '#2e3442'; g.fillRect(0, 0, 1024, 512);

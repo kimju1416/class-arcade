@@ -33,21 +33,52 @@ export function loadCar3D(id) {
     const geo = mesh.geometry; geo.applyMatrix4(mesh.matrixWorld); geo.computeVertexNormals(); geo.computeBoundingBox();
     const bb = geo.boundingBox;
     // 재질은 카트마다 따로(색이 다르다) — 셰이더 코드는 같아서 프로그램은 하나로 공유된다
+    // 바퀴 네 개(모양 좌표): 중심 x,y,z · 반지름 r, 반폭 hw. 0·1 = 앞바퀴(꺾임)
+    const wh = R.wh, W4 = [], HW = [];
+    if (wh) {
+      const L = bb.max.z - bb.min.z, X = (q) => bb.min.x + q * (bb.max.x - bb.min.x), Z = (q) => bb.min.z + q * L;
+      for (const [front, left] of [[1, 1], [1, 0], [0, 1], [0, 0]]) {
+        const r = (front ? wh.rf : wh.rr) * L, hw = Math.max((wh.w || 0) * (bb.max.x - bb.min.x), r * 0.8) / 2 * 1.08;
+        const x = left ? X(wh.xl) + hw : X(wh.xr) - hw;
+        W4.push(new T.Vector4(x, bb.min.y + r, Z(front ? wh.zf : wh.zr), r * 1.02)); HW.push(hw);
+      }
+    }
     const make = (paint) => {
       const m = new T.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 });
+      m.userData.u = { wa: { value: 0 }, ws: { value: 0 } };
       m.onBeforeCompile = (sh) => {
+        Object.assign(sh.uniforms, m.userData.u, { whl: { value: W4.length ? W4 : [new T.Vector4(0, -99, 0, 0), new T.Vector4(0, -99, 0, 0), new T.Vector4(0, -99, 0, 0), new T.Vector4(0, -99, 0, 0)] }, whw: { value: HW.length ? HW : [0, 0, 0, 0] } });
         Object.assign(sh.uniforms, { tS: { value: ts }, tF: { value: tf }, tB: { value: tb }, tT: { value: tt }, bmin: { value: bb.min.clone() }, bmax: { value: bb.max.clone() },
           rS: { value: new T.Vector4(...R.s) }, rF: { value: new T.Vector4(...R.f) }, rB: { value: new T.Vector4(...R.b) }, rT: { value: new T.Vector4(...R.t) }, paint: { value: new T.Color(paint) } });
-        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vOP; varying vec3 vON;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position; vON = normal;');
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
+          varying vec3 vOP; varying vec3 vON; uniform vec4 whl[4]; uniform float whw[4]; uniform float wa, ws;
+          // 점 p(또는 방향 v, isDir)가 바퀴 원통 안이면 바퀴 축(x)으로 돌리고, 앞바퀴는 세로축으로 꺾는다
+          vec3 spinW(vec3 p, vec3 v, bool isDir) {
+            for (int i = 0; i < 4; i++) {
+              vec4 W = whl[i];
+              vec2 d = p.yz - W.yz;
+              if (abs(p.x - W.x) < whw[i] && dot(d, d) < W.w * W.w) {
+                vec3 q = isDir ? v : v - W.xyz;
+                float c = cos(wa), s = sin(wa);
+                q = vec3(q.x, c * q.y - s * q.z, s * q.y + c * q.z);
+                if (i < 2) { float c2 = cos(ws), s2 = sin(ws); q = vec3(c2 * q.x + s2 * q.z, q.y, -s2 * q.x + c2 * q.z); }
+                return isDir ? q : q + W.xyz;
+              }
+            }
+            return v;
+          }`)
+          .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = spinW(position, objectNormal, true);')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position; vON = normal; transformed = spinW(position, transformed, false);');
         sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
           uniform sampler2D tS, tF, tB, tT; uniform vec3 bmin, bmax, paint; uniform vec4 rS, rF, rB, rT; varying vec3 vOP; varying vec3 vON;
-          vec3 pick(sampler2D t, vec4 r, float u, float v) { return texture2D(t, vec2(mix(r.x, r.z, u), 1.0 - mix(r.y, r.w, v))).rgb; }`)
+          vec3 pick(sampler2D t, vec4 r, float u, float v, float bias) { return texture(t, vec2(mix(r.x, r.z, u), 1.0 - mix(r.y, r.w, v)), bias).rgb; }`)
           .replace('#include <map_fragment>', `
           vec3 q = (vOP - bmin) / (bmax - bmin); vec3 N = normalize(vON);
-          vec3 cS = pick(tS, rS, 1.0 - q.z, 1.0 - q.y);   // 옆: 앞(+z)이 그림 왼쪽
-          vec3 cF = pick(tF, rF, q.x, 1.0 - q.y);          // 앞: +x가 그림 오른쪽
-          vec3 cB = pick(tB, rB, 1.0 - q.x, 1.0 - q.y);    // 뒤: 좌우 반대
-          vec3 cT = pick(tT, rT, 1.0 - q.x, 1.0 - q.z);    // 위: 앞이 그림 위쪽
+          // 비스듬한 면일수록 흐린 단계로(늘어난 줄무늬 방지)
+          vec3 cS = pick(tS, rS, 1.0 - q.z, 1.0 - q.y, (1.0 - abs(N.x)) * 3.0);   // 옆: 앞(+z)이 그림 왼쪽
+          vec3 cF = pick(tF, rF, q.x, 1.0 - q.y, (1.0 - abs(N.z)) * 3.0);          // 앞: +x가 그림 오른쪽
+          vec3 cB = pick(tB, rB, 1.0 - q.x, 1.0 - q.y, (1.0 - abs(N.z)) * 3.0);    // 뒤: 좌우 반대
+          vec3 cT = pick(tT, rT, 1.0 - q.x, 1.0 - q.z, (1.0 - abs(N.y)) * 3.0);    // 위: 앞이 그림 위쪽
           float wS = pow(abs(N.x), 3.0), wF = pow(max(N.z, 0.0), 3.0), wB = pow(max(-N.z, 0.0), 3.0), wT = pow(max(N.y, 0.0), 3.0) * 1.2, wD = pow(max(-N.y, 0.0), 3.0);
           vec3 col = (cS * (wS + wD * 0.5) + cF * wF + cB * wB + cT * wT + vec3(0.08) * wD * 0.5) / (wS + wF + wB + wT + wD + 1e-4);
           // 흰 차체(밝고 색이 거의 없는 곳)만 고른 색으로 물들인다

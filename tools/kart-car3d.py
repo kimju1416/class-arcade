@@ -69,14 +69,48 @@ def decimate(car, path):
     obj = os.path.join(tmp, 'out.obj'); ms.save_current_mesh(obj)
     trimesh.load(obj, process=False).export(os.path.join(OUT, f'{car}.glb'))
 
+def wheels(car, rc):
+    # 바퀴 자리: 옆모습에서 바닥에 닿는 원(앞·뒤) → 앞뒤 위치·반지름, 앞모습 아래쪽 검은 타이어 → 좌우 위치·폭 (모두 차 크기 비율)
+    im = Image.open(os.path.join(WORK, f'car-{car}-side.png')); W, H = im.size; a = np.asarray(im)
+    g = cv2.cvtColor(a[..., :3], cv2.COLOR_RGB2GRAY); g[a[..., 3] < 40] = 255; g = cv2.medianBlur(g, 5)
+    x0, y0, x1, y1 = rc['s'][0] * W, rc['s'][1] * H, rc['s'][2] * W, rc['s'][3] * H; L, Hc = x1 - x0, y1 - y0
+    cs = cv2.HoughCircles(g, cv2.HOUGH_GRADIENT, dp=1.2, minDist=L * 0.3, param1=120, param2=40, minRadius=int(Hc * 0.18), maxRadius=int(Hc * 0.6))
+    cs = [] if cs is None else [tuple(map(float, c)) for c in cs[0]]
+    cs = sorted([c for c in cs if abs(c[1] + c[2] - y1) < Hc * 0.12 and c[2] < Hc * 0.45], key=lambda c: c[0])
+    if len(cs) < 2: return None
+    f, r = cs[0], cs[-1]
+    if min(f[2], r[2]) / max(f[2], r[2]) < 0.8: f = (f[0], f[1], max(f[2], r[2])); r = (r[0], r[1], max(f[2], r[2]))
+    qz = lambda c: 1 - (c[0] - x0) / L  # 앞(+z)이 그림 왼쪽
+    fr = Image.open(os.path.join(WORK, f'car-{car}-front.png')); FW, FH = fr.size; b = np.asarray(fr)
+    fx0, fy0, fx1, fy1 = rc['f'][0] * FW, rc['f'][1] * FH, rc['f'][2] * FW, rc['f'][3] * FH
+    band = b[int(fy1 - (fy1 - fy0) * 0.18):int(fy1), :]
+    dark = ((cv2.cvtColor(band[..., :3], cv2.COLOR_RGB2GRAY) < 70) & (band[..., 3] > 128)).mean(0) > 0.35
+    cols = np.where(dark)[0]
+    if len(cols) < 4: return None
+    mid = (fx0 + fx1) / 2; left = cols[cols < mid]; right = cols[cols > mid]
+    if len(left) < 2 or len(right) < 2: return None
+    lx0, lx1 = left.min(), left.max(); rx0, rx1 = right.min(), right.max()
+    # 타이어 한 짝 = 가장 바깥에서 이어지는 검은 띠
+    def run(c, frm_left):
+        c = np.sort(c) if frm_left else np.sort(c)[::-1]; out = [c[0]]
+        for v in c[1:]:
+            if abs(v - out[-1]) <= 3: out.append(v)
+            else: break
+        return min(out), max(out)
+    la, lb = run(left, True); ra, rb = run(right, False)
+    qx = lambda px: (px - fx0) / (fx1 - fx0)
+    return {'zf': round(qz(f), 4), 'zr': round(qz(r), 4), 'rf': round(f[2] / L, 4), 'rr': round(r[2] / L, 4),
+            'xl': round(qx((la + lb) / 2), 4), 'xr': round(qx((ra + rb) / 2), 4), 'w': round(((lb - la) + (rb - ra)) / 2 / (fx1 - fx0), 4)}
+
 man_p = os.path.join(OUT, 'rects.json')
 man = json.load(open(man_p)) if os.path.exists(man_p) else {}
 for car in (sys.argv[2:] or ['kart', 'f1', 'gt', 'buggy', 'classic']):
-    if os.path.exists(os.path.join(OUT, f'{car}.glb')) and car in man: print(car, '이미 있음'); continue
+    if os.path.exists(os.path.join(OUT, f'{car}.glb')) and car in man:
+        man[car]['wh'] = wheels(car, man[car]); print(car, '이미 있음 · 바퀴', man[car]['wh']); continue
     rc = prep(car)
     sp = os.path.join(WORK, f'car-{car}-shape.glb')
     if not os.path.exists(sp): sp = shape(car)
-    decimate(car, sp); man[car] = rc
+    decimate(car, sp); rc['wh'] = wheels(car, rc); man[car] = rc
     json.dump(man, open(man_p, 'w'), indent=0); print(car, 'OK', rc)
 with open(os.path.join(HERE, '..', 'public', 'kart', 'car3d.js'), 'w', encoding='utf-8', newline='\n') as f:
     f.write('// tools/kart-car3d.py가 만든 목록 — 손으로 고치지 말 것. s/f/b/t = 옆·앞·뒤·위 그림 속 차 영역 [x0,y0,x1,y1]\n')

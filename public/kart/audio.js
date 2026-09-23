@@ -91,6 +91,16 @@ class Audio {
     this.o1.connect(lp); this.o2.connect(g2); g2.connect(lp); lp.connect(this.eng); this.eng.connect(this.fx);
     this.lp = lp; this.lg = lg;
     this.o1.start(); this.o2.start(); lfo.start();
+    // 실제 엔진 소리(Mixkit): 낮은·중간·높은 회전 고리 셋을 속도에 따라 섞고 빠르기(음높이)를 올린다. 받기 전엔 위 합성음
+    this.engS = null;
+    Promise.all(['eng-low', 'eng-mid', 'eng-high'].map(n => fetch(`/kart/audio/${n}.wav`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status)).then(a => new Promise((res, rej) => c.decodeAudioData(a, res, rej)))))
+      .then(bufs => {
+        const out = c.createGain(); out.gain.value = 0;
+        const lp2 = c.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 3000;
+        out.connect(lp2); lp2.connect(this.fx);
+        const L = bufs.map(b => { const s = c.createBufferSource(); s.buffer = b; s.loop = true; const g = c.createGain(); g.gain.value = 0; s.connect(g); g.connect(out); s.start(0, Math.random() * b.duration); return { s, g }; });
+        this.engS = { out, lp2, L };
+      }).catch(() => { });
   }
   engine(speed01, boost, on) {
     if (!this.ctx || !this.o1) return;
@@ -102,6 +112,19 @@ class Audio {
     this.o1.frequency.setTargetAtTime(f, t, 0.06);
     this.o2.frequency.setTargetAtTime(f * 0.5, t, 0.06);
     this.lp.frequency.setTargetAtTime(500 + speed01 * 1400 + (boost ? 600 : 0), t, 0.08);
+    const S = this.engS;
+    if (S) {
+      // 합성음은 끄고 녹음 소리로: 낮음(공회전)→중간→높음을 속도로 섞고, 기어 안에서 회전수만큼 빠르게
+      this.eng.gain.setTargetAtTime(0, t, 0.1); this.lg.gain.setTargetAtTime(0, t, 0.1);
+      const sm = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+      const wl = 1 - sm(0.04, 0.3, sp), wh = sm(0.55, 0.95, sp), wm = Math.max(0, 1 - wl - wh);
+      const up = boost ? 0.12 : 0;
+      const rate = [0.85 + rpm * 0.7 + up, 0.8 + rpm * 0.55 + up, 0.82 + rpm * 0.45 + up];
+      S.L.forEach((l, i) => { l.g.gain.setTargetAtTime([wl, wm, wh][i], t, 0.08); l.s.playbackRate.setTargetAtTime(rate[i], t, 0.07); });
+      S.out.gain.setTargetAtTime(on ? 0.22 + speed01 * 0.12 : 0, t, 0.1);
+      S.lp2.frequency.setTargetAtTime(1800 + speed01 * 3000 + (boost ? 1500 : 0), t, 0.1);
+      return;
+    }
     this.eng.gain.setTargetAtTime(on ? 0.075 + speed01 * 0.06 : 0, t, 0.1);
     this.lg.gain.setTargetAtTime(on ? 0.018 : 0, t, 0.1);
   }

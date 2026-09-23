@@ -93,7 +93,7 @@ uniform float fm;`)
     // 3D 캐릭터가 있으면 받아서 2D 그림과 바꾼다(받는 동안은 2D 그림)
     if (opts.noDriver) { this.driver.visible = false; this.fist.visible = false; this.noDriver = true; if (car.steer) car.steer.visible = false; if (car.steerCol) car.steerCol.visible = false; } // 차량 선택 화면: 차만
     else if (has3D(char.id)) load3D(char.id).then((d) => {
-      const m = new T.Mesh(d.geo, d.mat); m.castShadow = true; this.body.add(m); this.m3d = m; this.c3d = d;
+      const m = new T.Mesh(d.geo, d.make()); m.castShadow = true; this.body.add(m); this.m3d = m; this.c3d = d;
       this.driver.visible = false; this.fist.visible = false;
       this.placeDriver();
     }).catch(() => { });
@@ -110,6 +110,7 @@ uniform float fm;`)
       m.castShadow = true; m.receiveShadow = true;
       for (const o of car.group.children) if (o !== car.steer && o !== car.steerCol) o.visible = false;
       car.group.add(m); this.car3d = m;
+      this.carMat = m.material; // 바퀴 돌리기·앞바퀴 꺾기는 이 재질의 셰이더가 한다(car3dview.js)
       car.driverY = cd.seat.y * s + m.position.y - 0.06; car.driverZ = cd.seat.z * s + m.position.z;
       const back = cd.min.z * s + m.position.z, h = cd.size.y * s;
       this.flames.forEach((f, i) => f.position.set((i ? 1 : -1) * cd.size.x * s * 0.18, h * 0.32, back + 0.05));
@@ -166,6 +167,9 @@ uniform float fm;`)
     for (const w of this.wheels) w.rotation.x = this.wheelA;
     for (const f of this.fronts) f.rotation.y = -k.steerVis * 0.45;
     this.wheel.rotation.z = k.steerVis * 0.9;
+    // 3D 캐릭터 얼굴: 맞으면 어지러운 얼굴, 시상대에선 우승 얼굴
+    if (this.m3d) this.m3d.material.userData.u.face.value = this.face === 'win' ? 2 : (k.spinT > 0 || (k.dizzyT || 0) > 0 || this.face === 'hit') ? 1 : 0;
+    if (this.carMat && this.carMat.userData.u) { this.carMat.userData.u.wa.value = this.wheelA; this.carMat.userData.u.ws.value = -k.steerVis * 0.45; }
     this.shadow.material.opacity = 0.35 / (1 + k.hop * 0.8);
 
     // 운전자: 카메라가 보는 방향에 따라 8방향(앞·대각앞·옆·대각뒤·뒤, 오른쪽은 좌우 뒤집기)
