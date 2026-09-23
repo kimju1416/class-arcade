@@ -1064,17 +1064,20 @@ function updateCamera(now, dt) {
       const d = race.def, su = (d.bridges && d.bridges[0][0] + 0.04) || (d.tunnels && d.tunnels[0][0]) || (d.open && d.open[0][0]) || 0.5;
       const a = tr.point(su * tr.N, 0), m = tr.point(tr.N * 0.93, 0), g = tr.point(-10 / tr.seg, 0);
       race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000);
-      race.orbDur = race.me ? Math.min(2.8, race.introDur * 0.45) : 0;
+      race.orbDur = race.me ? Math.min(4.6, race.introDur * 0.62) : 0;
       const end = race.me ? ORB(0).add(new T.Vector3(0, 3, 0)) : new T.Vector3(g.x - Math.sin(g.h) * 26, g.y + 12, g.z - Math.cos(g.h) * 26);
-      race.introPath = new T.CatmullRomCurve3([new T.Vector3(a.x, a.y + 28, a.z), new T.Vector3((a.x + m.x) / 2, Math.max(a.y, m.y) + 45, (a.z + m.z) / 2), new T.Vector3(m.x, m.y + 22, m.z), end]);
+      // 경기장 한 바퀴 구경: 출발선 앞 관중석 위를 옆으로 스치며 출발 게이트 쪽을 보고, 내 카트 앞으로 내려온다
+      const V = (p, up) => new T.Vector3(p.x, p.y + up, p.z);
+      const q0 = V(tr.point(-70 / tr.seg, 34), 20), q1 = V(tr.point(-10 / tr.seg, -26), 13), q2 = V(tr.point(25 / tr.seg, 10), 8);
+      race.introPath = new T.CatmullRomCurve3(race.me ? [q0, q1, q2, end] : [new T.Vector3(a.x, a.y + 28, a.z), new T.Vector3((a.x + m.x) / 2, Math.max(a.y, m.y) + 45, (a.z + m.z) / 2), new T.Vector3(m.x, m.y + 22, m.z), end]);
       race.introStartT = now;
-      race.introLook = [a, race.me ? { x: k.x, y: k.y + 0.2, z: k.z } : g];
+      race.introLook = race.me ? [g, { x: k.x, y: k.y + 0.2, z: k.z }] : [a, g];
       if (race.me) { const c = race.me.char; $('mcImg').src = portrait(c); $('mcName').textContent = race.me.name || c.name; $('mcRole').textContent = c.role; $('myCard').style.setProperty('--c', c.color); }
     }
     // 로딩 중엔 t0가 임시값이다 → t0가 정해지거나 바뀌면(건너뛰기 제외) 길이를 다시 잡는다
     if (race.introT0 !== race.t0 && race.t0 - now < 60000 && !race.introSkip) {
       race.introT0 = race.t0; race.introStartT = now;
-      race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000); race.orbDur = race.me ? Math.min(2.8, race.introDur * 0.45) : 0;
+      race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000); race.orbDur = race.me ? Math.min(4.6, race.introDur * 0.62) : 0;
     }
     camIntro = (now - race.introStartT) / 1000; // 실제 시계 기준(느린 기기에서 프레임 시간을 더하면 한 바퀴가 잘림)
     const flyDur = race.introDur - race.orbDur;
@@ -1086,12 +1089,21 @@ function updateCamera(now, dt) {
       camPos.copy(camera.position); camLook.set(lx, ly + 1, lz);
       $('courseCard').hidden = false; $('myCard').hidden = true; race.me && (race.me.view.forceFront = false);
     } else {
-      const u = Math.min(1, (camIntro - flyDur) / race.orbDur), e = u * u * (3 - 2 * u); // 천천히 출발·천천히 도착
-      camera.position.copy(ORB(e));
-      const ly = k.y + 1.25;
-      camera.lookAt(k.x, ly, k.z);
-      camPos.copy(camera.position); camLook.set(k.x, ly, k.z);
-      $('courseCard').hidden = true; $('myCard').hidden = false; race.me.view.forceFront = true;
+      // 두 컷: 정면 샷(앞에서 천천히 다가감) → 뒷모습 샷(뒤에서 경기 카메라 자리로 물러남). 빙빙 돌지 않는다.
+      const t = (camIntro - flyDur) / race.orbDur, half = 0.55;
+      if (t < half) {
+        const u = t / half, e = u * u * (3 - 2 * u);
+        camera.position.copy(ORB(e));
+        const ly = k.y + 1.25; camera.lookAt(k.x, ly, k.z); camPos.copy(camera.position); camLook.set(k.x, ly, k.z);
+        race.me.view.forceFront = true;
+      } else {
+        const u = Math.min(1, (t - half) / (1 - half)), e = u * u * (3 - 2 * u);
+        const ang = k.h + Math.PI + 0.22 * (1 - e), R = 3.4 + (6.6 - 3.4) * e, h = 1.3 + (2.7 - 1.3) * e;
+        camera.position.set(k.x + Math.sin(ang) * R, k.y + h, k.z + Math.cos(ang) * R);
+        const ly = k.y + 1.2 + 0.3 * e; camera.lookAt(k.x, ly, k.z); camPos.copy(camera.position); camLook.set(k.x, ly, k.z);
+        race.me.view.forceFront = false;
+      }
+      $('courseCard').hidden = true; $('myCard').hidden = false;
     }
     camera.fov = 60; camera.updateProjectionMatrix();
     return;
