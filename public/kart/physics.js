@@ -12,7 +12,7 @@ export function makeKart(id, char, tr, s, lat) {
     prog: s, li: ((Math.floor(s) % N) + N) % N, lat, lap: 0,
     drift: 0, driftT: 0, driftLv: 0, hop: 0, hopV: 0,
     boostT: 0, starT: 0, spinT: 0, spinDur: 1, dizzyT: 0, squash: 0,
-    off: false, wallT: 0, bumpT: 0, steerVis: 0, yawVis: 0,
+    off: false, wallT: 0, bumpT: 0, steerVis: 0, yawVis: 0, vs: 0, lockT: 0, scrape: 0, draftT: 0,
     item: null, itemN: 0, rollT: 0, finished: false, finT: 0, rank: 0,
     mul: 1, events: [],
   };
@@ -40,9 +40,11 @@ export function stepKart(k, inp, tr, dt, loc) {
   if (k.off && !boosting && k.starT <= 0) max *= 0.55;
   if (boosting) max *= 1.36;
   if (k.starT > 0) max *= 1.16;
+  if (k.scrape > 0) max *= 0.84; // 벽에 비비며 달리면 손해
 
   let steer = inp.steer, gas = inp.gas;
   if (k.spinT > 0) { steer = 0; gas = 0; }
+  if (k.lockT > 0) { steer *= 0.2; k.lockT -= dt; } // 부딪힌 직후 잠깐 핸들이 먹지 않는다
 
   // 가속·감속
   if (k.spinT > 0) {
@@ -88,8 +90,13 @@ export function stepKart(k, inp, tr, dt, loc) {
   k.yawVis += (yawT - k.yawVis) * Math.min(1, dt * 8);
 
   // 이동
-  const fx = Math.sin(k.h), fz = Math.cos(k.h);
-  k.x += fx * k.spd * dt; k.z += fz * k.spd * dt;
+  // 옆 미끄러짐: 드리프트 중엔 바깥으로 흐르고(반대 핸들이면 덜), 그 밖엔 타이어가 금방 잡아 준다
+  const fx = Math.sin(k.h), fz = Math.cos(k.h), rxk = -fz, rzk = fx;
+  let vsT = 0, grip = k.off ? 5 : 8.5;
+  if (k.drift) { vsT = -k.drift * Math.max(0, k.spd) * 0.2 * (1 - 0.55 * Math.max(0, -inp.steer * k.drift)); grip = 3.2; }
+  else if (k.spd > 18) vsT = -inp.steer * k.spd * 0.035;
+  k.vs += (vsT - k.vs) * Math.min(1, grip * dt);
+  k.x += (fx * k.spd + rxk * k.vs) * dt; k.z += (fz * k.spd + rzk * k.vs) * dt;
 
   // 트랙 위치 → 벽·노면·높이
   tr.locate(k.x, k.z, k.li, loc);
@@ -104,10 +111,15 @@ export function stepKart(k, inp, tr, dt, loc) {
     const toward = (Math.sin(k.h) * tr.rx[loc.i] + Math.cos(k.h) * tr.rz[loc.i]) * sgn > 0;
     if (toward && Math.abs(d) < Math.PI / 2) k.h += d * Math.min(1, 6 * dt);
     if (k.wallT <= 0 && sp > 8) { ev.push('wall'); k.wallT = 0.35; k.spd *= 0.72 - into * 0.2; }
+    // 벽 쪽 옆 속도는 되튕긴다
+    const vWall = k.vs * ((-Math.cos(k.h)) * tr.rx[loc.i] + Math.sin(k.h) * tr.rz[loc.i]) * sgn;
+    if (vWall > 0) k.vs *= -0.3;
+    k.scrape = 0.25;
     loc.lat = lim * sgn;
   }
   if (k.wallT > 0) k.wallT -= dt;
-  k.off = Math.abs(loc.lat) > half + 0.6;
+  if (k.scrape > 0) k.scrape -= dt;
+  k.off = Math.abs(loc.lat) > half + 1.4; // 연석(half~half+1.5)까지는 제 속도
   k.lat = loc.lat;
 
   // 진행도(바퀴 포함 연속값)
@@ -127,25 +139,37 @@ export function stepKart(k, inp, tr, dt, loc) {
   if (k.starT > 0) k.starT -= dt;
   if (k.spinT > 0) k.spinT -= dt;
   if (k.dizzyT > 0) k.dizzyT -= dt;
+  if (k.invT > 0) k.invT -= dt;
   if (k.bumpT > 0) k.bumpT -= dt;
 }
 
 export function spinOut(k, t = 1.3) {
-  if (k.starT > 0) return false;
-  k.spinT = t; k.spinDur = t; k.dizzyT = t + 0.7; k.drift = 0; k.driftLv = 0; k.boostT = 0; k.hopV = 6.5;
+  if (k.starT > 0 || (k.invT || 0) > 0) return false;
+  k.invT = t + 1.5; // 맞은 뒤 잠깐은 또 안 맞는다
+  k.spinT = t; k.spinDur = t; k.dizzyT = t + 0.7; k.drift = 0; k.driftLv = 0; k.boostT = 0; k.hopV = 6.5; k.vs = 0;
   k.events.push('spun');
   return true;
 }
 
-// 카트끼리 밀기 — 내가 조종하는 카트(a)만 움직인다. b는 원격이면 건드리지 않음
+// 카트끼리 부딪힘 — 겹친 만큼 밀어내고, 다가오던 속도를 무게 비율로 되튕긴다(가벼운 쪽이 더 날아감).
+// a는 내가 조종하는 카트. b가 원격이면 b는 건드리지 않는다(그쪽 기기가 알아서 튕긴다).
 export function bump(a, b, moveB) {
   const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz), R = 1.9;
   if (d >= R || d < 1e-4 || Math.abs(a.y - b.y) > 2) return false;
   const wa = a.char.wgt + (a.starT > 0 ? 20 : 0), wb = b.char.wgt + (b.starT > 0 ? 20 : 0);
   const over = R - d, nx = dx / d, nz = dz / d;
-  const fa = moveB ? wb / (wa + wb) : Math.min(1, 2 * wb / (wa + wb));
-  a.x += nx * over * fa; a.z += nz * over * fa;
+  const fa = wb / (wa + wb);
+  a.x += nx * over * (moveB ? fa : Math.min(1, 2 * fa)); a.z += nz * over * (moveB ? fa : Math.min(1, 2 * fa));
   if (moveB) { b.x -= nx * over * (1 - fa); b.z -= nz * over * (1 - fa); }
-  if (a.bumpT <= 0) { a.bumpT = 0.4; a.spd *= 0.93; a.events.push('bump'); }
+  const vel = (k) => { const fx = Math.sin(k.h), fz = Math.cos(k.h); return [fx * k.spd - fz * (k.vs || 0), fz * k.spd + fx * (k.vs || 0)]; };
+  const setVel = (k, vx, vz) => { const fx = Math.sin(k.h), fz = Math.cos(k.h); k.spd = vx * fx + vz * fz; k.vs = vx * -fz + vz * fx; };
+  const [avx, avz] = vel(a), [bvx, bvz] = vel(b);
+  const closing = (avx - bvx) * nx + (avz - bvz) * nz; // 음수면 서로 다가오는 중
+  if (closing < 0) {
+    const J = -closing * 1.35;
+    setVel(a, avx + nx * J * fa, avz + nz * J * fa);
+    if (moveB) setVel(b, bvx - nx * J * (1 - fa), bvz - nz * J * (1 - fa));
+  }
+  if (a.bumpT <= 0) { a.bumpT = 0.4; a.lockT = 0.15; a.events.push('bump'); }
   return true;
 }

@@ -80,6 +80,7 @@ export function botWantsItem(b, race) {
   if (it === 'star') return ai.hold > 0.5;
   if (it === 'mic') return others.some(o => Math.hypot(o.k.x - k.x, o.k.z - k.z) < 22) || ai.hold > 10;
   if (it === 'ball') return others.some(o => { const g = gapTo(o); return g > 5 && g < 45 && Math.abs(o.k.lat - k.lat) < 2.2; }) || ai.hold > 14;
+  if (it === 'soccer') return others.some(o => { const g = gapTo(o); return g > 4 && g < 70; }) || ai.hold > 6;
   if (it === 'hball') return others.some(o => { const g = gapTo(o); return g > 3 && g < 120; }) || ai.hold > 6;
   if (it === 'banana') return others.some(o => { const g = gapTo(o); return g < -3 && g > -20; }) || ai.hold > 9;
   return ai.hold > 5;

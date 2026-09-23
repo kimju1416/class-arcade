@@ -69,6 +69,9 @@ export class KartView {
       this.label.position.set(0, 3.0, 0); this.root.add(this.label);
     }
     this.dizzy = new Dizzy(this.root, _star || (_star = starTex()));
+    // 뒤에 달고 다니는 아이템(방패)
+    this.heldSpr = new T.Sprite(new T.SpriteMaterial({ transparent: true, depthWrite: false }));
+    this.heldSpr.scale.set(1.1, 1.1, 1); this.heldSpr.position.set(0, 0.8, -2.1); this.heldSpr.visible = false; this.body.add(this.heldSpr); this.heldKind = null;
     scene.add(this.root);
     this.wheelA = 0; this.t = Math.random() * 10;
   }
@@ -126,6 +129,13 @@ export class KartView {
       if (sp.visible) { sp.material.color.setHex(lvCol); const s = 0.7 + Math.random() * 0.7; sp.scale.set(s, s, 1); sp.material.rotation = Math.random() * 6; }
     }
     this.dizzy.update((k.dizzyT || 0) > 0, this.t);
+    if ((k.held || null) !== this.heldKind) {
+      this.heldKind = k.held || null; this.heldSpr.visible = !!this.heldKind;
+      if (this.heldKind && KartView.iconTex) { this.heldSpr.material.map = KartView.iconTex(this.heldKind); this.heldSpr.material.needsUpdate = true; }
+    }
+    if (this.heldKind) this.heldSpr.position.y = 0.8 + Math.sin(this.t * 6) * 0.08;
+    // 무적 시간(맞은 직후)에는 깜빡인다
+    this.body.visible = !((k.invT || 0) > 0 && (k.spinT || 0) <= 0 && Math.floor(this.t * 16) % 2 === 0);
     this.aura.visible = k.starT > 0;
     if (this.aura.visible) {
       this.aura.material.color.setHSL((this.t * 1.5) % 1, 1, 0.6);

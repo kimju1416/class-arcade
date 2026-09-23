@@ -11,7 +11,7 @@ module.exports = function createKartServer(WebSocketServer) {
   const rooms = new Map();
 
   const send = (ws, o) => { if (ws.readyState === 1 && ws.bufferedAmount < 262144) ws.send(JSON.stringify(o)); };
-  const bcast = (room, o, except) => { const s = JSON.stringify(o); for (const p of room.players.values()) if (p.ws !== except && p.ws.readyState === 1 && p.ws.bufferedAmount < 262144) p.ws.send(s); };
+  const bcast = (room, o, except) => { const s = JSON.stringify(o); for (const p of room.players.values()) if (p.ws && p.ws !== except && p.ws.readyState === 1 && p.ws.bufferedAmount < 262144) p.ws.send(s); };
   const cleanName = (v) => typeof v === "string" ? (v.replace(/[<>\u0000-\u001f\u007f]/g, "").trim().slice(0, 10) || "레이서") : "레이서";
   const cleanCar = (o) => { const n = (v, lo, hi, d) => Number.isInteger(v) && v >= lo && v <= hi ? v : d; return o && typeof o === "object" ? { b: n(o.b, 0, 4, 0), c: n(o.c, -1, 13, -1), f: n(o.f, 0, 3, 0), w: n(o.w, 0, 3, 0), d: n(o.d, 0, 3, 0), n: n(o.n, 1, 99, 7) } : null; };
   const num = (v, lo, hi) => (typeof v === "number" && Number.isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : null;
@@ -20,13 +20,21 @@ module.exports = function createKartServer(WebSocketServer) {
   function lobbyState(room) {
     return {
       type: "lobby", code: room.code, host: room.host, track: room.track, bots: room.bots, teams: !!room.teams, state: room.state,
-      players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, char: p.char, host: p.id === room.host, racing: p.racing, tv: p.tv })),
+      players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, char: p.char, host: p.id === room.host, racing: p.racing, tv: p.tv, away: !!p.away })),
       max: MAX_RACERS,
     };
   }
   function pickHost(room) {
-    const first = room.players.values().next().value;
-    room.host = first ? first.id : null;
+    const ps = [...room.players.values()];
+    const ok = ps.find(p => p.ws && !p.away && !p.hidden) || ps.find(p => p.ws && !p.away) || ps[0];
+    room.host = ok ? ok.id : null;
+  }
+  // 방장이 떠났거나 화면을 껐으면 봇 운전 권한을 다른 사람에게
+  function handHost(room) {
+    const h = room.players.get(room.host);
+    if (h && h.ws && !h.away && !h.hidden) return;
+    const before = room.host; pickHost(room);
+    if (room.host !== before && room.state === "race") bcast(room, { type: "host", id: room.host });
   }
   function endRace(room, reason) {
     if (room.state !== "race") return;
@@ -59,7 +67,20 @@ module.exports = function createKartServer(WebSocketServer) {
     });
     ws.on("close", () => {
       clearTimeout(hello);
-      if (!room || !me) return;
+      if (!room || !me || me.ws !== ws) return;
+      // 레이스 중 끊기면(새로고침·와이파이 전환) 60초 동안 자리를 지켜 둔다
+      if (room.state === "race" && me.racing) {
+        me.ws = null; me.away = true;
+        const R = room, M = me;
+        M.awayTimer = setTimeout(() => dropPlayer(R, M), 60000);
+        handHost(room);
+        bcast(room, lobbyState(room));
+        return;
+      }
+      dropPlayer(room, me);
+    });
+    function dropPlayer(room, me) {
+      if (room.players.get(me.id) !== me) return;
       room.players.delete(me.id);
       if (!room.players.size) { clearTimeout(room.endTimer); rooms.delete(room.code); return; }
       if (room.host === me.id) { pickHost(room); if (room.state === "race") bcast(room, { type: "host", id: room.host }); }
@@ -69,10 +90,28 @@ module.exports = function createKartServer(WebSocketServer) {
       }
       bcast(room, { type: "left", id: me.id });
       bcast(room, lobbyState(room));
-    });
+    }
 
     function handle(m, now) {
       if (m.t === "ping") { send(ws, { type: "pong", c: num(m.c, 0, 1e15), s: now }); return; }
+      if (m.t === "hello" && !me && m.rejoin && typeof m.rejoin === "object") {
+        const r = rooms.get(String(m.rejoin.code || "").toUpperCase().slice(0, 4));
+        const p = r && r.players.get(String(m.rejoin.id || "").slice(0, 12));
+        if (p && typeof m.rejoin.token === "string" && p.token === m.rejoin.token) {
+          clearTimeout(hello); clearTimeout(p.awayTimer);
+          if (p.ws && p.ws !== ws) try { p.ws.terminate(); } catch (e) { }
+          room = r; me = p; p.ws = ws; p.away = false; p.hidden = false;
+          send(ws, { type: "welcome", id: p.id, code: r.code, s: now, token: p.token, rejoined: true });
+          if (r.state === "race" && p.racing) {
+            const rc = r.race;
+            send(ws, { type: "start", race: rc.id, track: r.track, t0: rc.t0, grid: rc.grid, host: r.host, laps: 3, teams: !!r.teams, resume: rc.poses[p.id] || null, fin: rc.fin });
+          }
+          bcast(r, lobbyState(r));
+          return;
+        }
+        send(ws, { type: "err", msg: "다시 들어가지 못했어요. 방 코드로 새로 들어와 주세요.", norejoin: true });
+        return;
+      }
       if (m.t === "hello" && !me) {
         let code = typeof m.room === "string" ? m.room.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4) : "";
         if (m.create) {
@@ -84,10 +123,10 @@ module.exports = function createKartServer(WebSocketServer) {
         if (!room) { send(ws, { type: "err", msg: "그런 방이 없어요. 코드를 다시 확인해 주세요." }); return; }
         if (room.players.size >= MAX_ROOM) { send(ws, { type: "err", msg: "방이 꽉 찼어요 (최대 40명)." }); room = null; return; }
         clearTimeout(hello);
-        me = { id: "p" + crypto.randomBytes(4).toString("hex"), ws, name: cleanName(m.name), char: Math.floor(num(m.char, 0, CHAR_N - 1) || 0), racing: false, tv: !!(m.create && m.tv), car: cleanCar(m.car) };
+        me = { id: "p" + crypto.randomBytes(4).toString("hex"), token: crypto.randomBytes(8).toString("hex"), ws, name: cleanName(m.name), char: Math.floor(num(m.char, 0, CHAR_N - 1) || 0), racing: false, tv: !!(m.create && m.tv), car: cleanCar(m.car) };
         room.players.set(me.id, me);
         if (!room.host) room.host = me.id;
-        send(ws, { type: "welcome", id: me.id, code: room.code, s: now });
+        send(ws, { type: "welcome", id: me.id, code: room.code, s: now, token: me.token });
         bcast(room, lobbyState(room));
         return;
       }
@@ -95,6 +134,7 @@ module.exports = function createKartServer(WebSocketServer) {
       const isHost = room.host === me.id;
       switch (m.t) {
         case "car": { me.car = cleanCar(m.car); break; }
+        case "vis": { me.hidden = m.hidden === true; handHost(room); break; }
         case "char": {
           const c = num(m.char, 0, CHAR_N - 1); if (c == null) return;
           me.char = Math.floor(c); bcast(room, lobbyState(room)); break;
@@ -151,18 +191,18 @@ module.exports = function createKartServer(WebSocketServer) {
         }
         case "item": { // 아이템 사용 — 서버가 번호와 시각을 붙여 모두에게
           if (room.state !== "race") return;
-          const kind = ["ball", "hball", "banana", "mic", "star", "boost"].includes(m.k) ? m.k : null; if (!kind) return;
+          const kind = ["ball", "hball", "banana", "mic", "star", "boost", "soccer"].includes(m.k) ? m.k : null; if (!kind) return;
           const by = typeof m.by === "string" && (m.by === me.id || (isHost && /^b\d$/.test(m.by))) ? m.by : null; if (!by) return;
           const s = num(m.s, -1e5, 1e6), lat = num(m.lat, -40, 40); if (s === null || lat === null) return;
           const target = typeof m.tg === "string" ? m.tg.slice(0, 12) : null;
-          bcast(room, { type: "item", id: room.seq++, k: kind, by, s, lat, tg: target, at: now, n: num(m.n, 0, 1e9) });
+          bcast(room, { type: "item", id: room.seq++, k: kind, by, s, lat, tg: target, at: now, n: num(m.n, 0, 1e9), dir: m.dir === -1 ? -1 : 1 });
           break;
         }
         case "gone": { const id = num(m.id, 0, 1e9); if (id !== null && room.state === "race") bcast(room, { type: "gone", id }, ws); break; }
         case "hit": {
           if (room.state !== "race") return;
           const v = typeof m.v === "string" ? m.v.slice(0, 12) : null, by = typeof m.by === "string" ? m.by.slice(0, 12) : null;
-          if (v && by) bcast(room, { type: "hit", v, by, k: typeof m.k === "string" ? m.k.slice(0, 8) : "" });
+          if (v && by) bcast(room, { type: "hit", v, by, k: typeof m.k === "string" ? m.k.slice(0, 8) : "", id: num(m.id, 0, 1e9) });
           break;
         }
         case "fin": {

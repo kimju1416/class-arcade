@@ -11,6 +11,7 @@ import { KartView, driverTextures } from './kart.js';
 import { buildWorld } from './world.js';
 import { audio } from './audio.js';
 import { icon } from './icons.js';
+KartViewIconHook();
 import { botInput, botWantsItem } from './ai.js';
 import { Net } from './net.js';
 import { Particles, Skids, softDot } from './fx.js';
@@ -205,6 +206,21 @@ function openOnline() {
   if (q) $('joinCode').value = q.toUpperCase().slice(0, 4);
   show('online');
 }
+let reconnecting = false;
+// 레이스 중 연결이 끊기면 2초마다 다시 붙어 본다(60초 안에). 서버가 자리를 지켜 둔다.
+function tryRejoin() {
+  const rj = store.get('rejoin', null);
+  if (!rj || reconnecting) return;
+  reconnecting = true; toast('연결이 끊겼어요 — 다시 연결하는 중…');
+  let tries = 0;
+  const attempt = () => {
+    if (!reconnecting) return;
+    if (++tries > 30) { reconnecting = false; toast('다시 연결하지 못했어요'); return; }
+    net = new Net(onNet); net.connect({ rejoin: rj });
+    setTimeout(() => { if (reconnecting && (!net || !net.open)) attempt(); }, 2500);
+  };
+  attempt();
+}
 function connect(hello) {
   if (net) net.close();
   $('onErr').textContent = '연결하는 중…';
@@ -272,33 +288,72 @@ function renderRoom() {
 
 function onNet(m) {
   switch (m.type) {
-    case 'err': if (room && screen === 'room') { toast(m.msg); break; } $('onErr').textContent = m.msg; if (net) { net.close(); net = null; } break;
-    case 'welcome': $('onErr').textContent = ''; history.replaceState(null, '', `/kart/?room=${m.code}`); break;
+    case 'err': if (m.norejoin) { store.set('rejoin', null); reconnecting = false; $('onErr').textContent = m.msg; if (race && race.online) { toast(m.msg); quitRace(); } break; }
+      if (room && screen === 'room') { toast(m.msg); break; } $('onErr').textContent = m.msg; if (net) { net.close(); net = null; } break;
+    case 'welcome': $('onErr').textContent = ''; history.replaceState(null, '', `/kart/?room=${m.code}`); if (m.token) store.set('rejoin', { code: m.code, id: m.id, token: m.token, at: Date.now() }); if (m.rejoined) { toast('레이스에 다시 들어왔어요'); reconnecting = false; } break;
     case 'lobby':
       room = m;
+      // 끊겼다 돌아왔더니 그사이 레이스가 끝나 있으면 대기실로
+      if (race && race.online && !race.ended && m.state === 'lobby') { disposeRace(); show('room'); renderRoom(); toast('레이스가 끝났어요'); break; }
       if (screen === 'online' || screen === 'select') show('room');
       if (screen === 'room') renderRoom();
       break;
     case 'start': {
       const def = TRACKS.find(t => t.id === m.track) || TRACKS[0];
-      startRace({ def, grid: m.grid, t0: m.t0, online: true, myId: net.id, host: m.host === net.id, teams: !!m.teams });
+      if (race && race.online && race.raceId === m.race && m.resume) { resumePose(m.resume); break; }
+      startRace({ def, grid: m.grid, t0: m.t0, online: true, myId: net.id, host: m.host === net.id, teams: !!m.teams, raceId: m.race, resume: m.resume, fin: m.fin });
       break;
     }
     case 'ss': if (race && race.online) onPoses(m); break;
     case 'item': if (race && race.online) onItem(m); break;
     case 'gone': if (race) { const h = race.hazards.get(m.id); if (h) killHazard(h, false); } break;
-    case 'hit': if (race) feedHit(m.by, m.v, m.k); break;
+    case 'hit': if (race) { feedHit(m.by, m.v, m.k); const h = m.k === 'soccer' && race.hazards.get(m.id); if (h && !h.hitSet.has(m.v)) { h.hitSet.add(m.v); if (++h.hits >= 3) killHazard(h, false); } } break;
     case 'fin': if (race) onFin(m); break;
     case 'closing': if (race && !(race.me && race.me.k.finished)) feed(`${m.sec}초 뒤 레이스가 끝나요`); break;
     case 'results': if (race && race.online) showResults(m.order); break;
     case 'host': if (race) becomeHost(m.id); break;
     case 'left': if (race) { const r = race.byId[m.id]; if (r && !r.bot) { r.gone = true; r.view.root.visible = false; feed(`${r.name} 님이 나갔어요`); } } break;
     case 'closed':
-      if (race && race.online) { toast('서버 연결이 끊어졌어요'); }
+      if (race && race.online && !race.ended) { net = null; tryRejoin(); return; }
       else if (screen === 'room' || screen === 'online') { $('onErr').textContent = '서버 연결이 끊어졌어요. 다시 시도해 주세요.'; show('online'); }
       net = null; break;
   }
 }
+
+// ---------------- 로딩·화면 유지·자동 화질 ----------------
+const LOAD_TIPS = ['드리프트를 오래 하면 파랑 → 주황 → 분홍 불꽃! 떼는 순간 부스터', 'GO 직전에 드리프트 버튼을 누르면 로켓 스타트', '아이템 상자는 코스마다 네 줄 있어요', '뒤처지면 좋은 아이템이 더 잘 나와요', '같은 팀끼리는 아이템에 안 맞아요'];
+function loadBar(p) { $('loadBar').style.width = p + '%'; }
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && 'wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && race && !race.ended) keepAwake(true);
+  if (net && net.open) net.send({ t: 'vis', hidden: document.visibilityState === 'hidden' });
+});
+// 프레임이 느리면 해상도를 조금씩 내리고(하한 0.6), 여유 있으면 올린다. 그래도 느리면 풀 개수를 줄인다.
+const DEBUG = new URLSearchParams(location.search).has('debug');
+if (DEBUG) $('dbg').hidden = false;
+const adapt = {
+  buf: [], t: 0, pr: 1, max: 1,
+  reset(q) { this.max = Math.min(devicePixelRatio || 1, q >= 2 ? 2 : 1.3); this.pr = Math.min(renderer.getPixelRatio(), this.max); this.buf.length = 0; this.t = 0; this.cool = 2; },
+  tick(ms, dt) {
+    this.buf.push(ms); if (this.buf.length > 60) this.buf.shift();
+    this.t += dt; if (this.cool > 0) this.cool -= dt;
+    if (this.t < 1 || this.buf.length < 30) return;
+    this.t = 0;
+    const avg = this.buf.reduce((a, b) => a + b, 0) / this.buf.length;
+    if (DEBUG) $('dbg').textContent = `fps ${(1000 / avg).toFixed(0)}  ${avg.toFixed(1)}ms  해상도 ${this.pr.toFixed(2)}  풀 ${race && race.world.lod ? race.world.lod.map(m => m.count).join('/') : '-'}`;
+    if (this.cool > 0) return;
+    if (avg > 21 && this.pr > 0.6) { this.set(this.pr - (avg > 32 ? 0.25 : 0.1)); this.cool = 1.2; }
+    else if (avg > 21 && race && race.world.lod) { for (const m of race.world.lod) m.count = Math.floor(m.count * 0.7); this.cool = 2; }
+    else if (avg < 12.5 && this.pr < this.max - 0.01) { this.set(this.pr + 0.1); this.cool = 4; }
+  },
+  set(v) { this.pr = Math.max(0.6, Math.min(this.max, v)); renderer.setPixelRatio(this.pr); resize(); },
+};
 
 // ---------------- 레이스 ----------------
 let race = null;
@@ -308,6 +363,9 @@ const touch = { l: false, r: false, drift: false, brake: false };
 
 async function startRace(opt) {
   $('loading').hidden = false; $('loadTxt').textContent = '코스를 만드는 중…';
+  const firstTime = !store.get('seen', false); store.set('seen', true);
+  $('loadTip').textContent = firstTime ? '처음 한 번은 그래픽 준비로 조금 더 걸려요' : LOAD_TIPS[Math.floor(Math.random() * LOAD_TIPS.length)];
+  loadBar(8);
   await new Promise(r => setTimeout(r, 30));
   const buildStart = performance.now(); window.__kartBuild = 0;
   if (race) disposeRace();
@@ -315,6 +373,7 @@ async function startRace(opt) {
   const def = opt.def, tr = buildTrack(def);
   const q = qualityLevel();
   const world = buildWorld(scene, tr, def, q, renderer);
+  loadBar(55); await new Promise(r => setTimeout(r, 0));
   renderer.toneMappingExposure = world.theme.exposure;
   // 블룸은 성능 여유가 있을 때만
   if (q >= 2) {
@@ -331,7 +390,7 @@ async function startRace(opt) {
     def, tr, world, online: opt.online, myId: opt.myId, host: opt.host, clock, t0: opt.t0, laps: def.laps,
     racers: [], byId: {}, hazards: new Map(), nonce: 1, finOrder: [], phase: 'intro', lastSend: 0, time: 0,
     myFinT: 0, doneAt: 0, rings: [], started: false, lastRank: 0, lapShown: 0, ended: false,
-    ta: !!opt.ta, teams: !!opt.teams, me: null, spec: false, specIdx: 0, rec: [], recT: 0, rsPress: null,
+    ta: !!opt.ta, teams: !!opt.teams, raceId: opt.raceId, me: null, spec: false, specIdx: 0, rec: [], recT: 0, rsPress: null,
   };
   opt.grid.forEach((g, slot) => {
     const row = Math.floor(slot / 2), side = slot % 2 ? 1 : -1;
@@ -350,6 +409,8 @@ async function startRace(opt) {
   });
   race.fx = { add: new Particles(scene, 2600, true), dust: new Particles(scene, 1400, false), skids: new Skids(scene) };
   race.spec = !race.me;
+  if (opt.resume) resumePose(opt.resume);
+  if (opt.fin) for (const f of opt.fin) onFin({ id: f.id, rank: opt.fin.indexOf(f) + 1, time: f.time });
   document.body.classList.toggle('spec', race.spec);
   $('specBanner').hidden = !race.spec;
   $('specBanner').textContent = room && (room.players.find(p => p.id === race.myId) || {}).tv ? 'LIVE 실시간 중계' : '이번 판은 관전 — 다음 판에 먼저 달려요';
@@ -369,14 +430,18 @@ async function startRace(opt) {
   $('teamBar').hidden = !race.teams;
   drawMiniBase();
   // 셰이더를 미리 굽는다 — 안 하면 첫 화면에서 몇 초 멈춘다
-  $('loadTxt').textContent = '그래픽을 준비하는 중…';
+  $('loadTxt').textContent = '그래픽을 준비하는 중…'; loadBar(75);
   { const c = tr.point(-10 / tr.seg, 0); camera.position.set(c.x, c.y + 12, c.z + 30); camera.lookAt(c.x, c.y, c.z); }
   const myRace = race;
   try { await renderer.compileAsync(scene, camera); } catch (e) { }
   if (race !== myRace) return;
   window.__kartBuild = performance.now() - buildStart;
   if (!opt.online) race.t0 = performance.now() + 5200;
+  loadBar(100);
   $('loading').hidden = true;
+  adapt.reset(qualityLevel());
+  keepAwake(true);
+  if (IS_TOUCH && innerHeight > innerWidth) { $('rotHint').hidden = false; setTimeout(() => { $('rotHint').hidden = true; }, 3500); }
   show('race');
   $('hud').hidden = false; $('lapNum').textContent = '1';
   setItem(race.ta ? 'boost3' : null); if (race.ta) $('itemN').textContent = 3;
@@ -387,6 +452,7 @@ async function startRace(opt) {
 }
 
 function disposeRace() {
+  keepAwake(false);
   $('scr-results').classList.remove('over'); $('podTitle').hidden = true; document.body.classList.remove('spec');
   if (!race) return;
   if (race.driftLoop) race.driftLoop.stop();
@@ -403,6 +469,13 @@ function onPoses(m) {
     r.buf.push({ t: m.s, x: a[1], y: a[2], z: a[3], h: a[4], spd: a[5], f: a[6], prog: a[7], yaw: a[8] });
     if (r.buf.length > 30) r.buf.shift();
   }
+}
+function resumePose(p) {
+  if (!race || !race.me) return;
+  const k = race.me.k;
+  [k.x, k.y, k.z, k.h, k.spd] = [p[0], p[1], p[2], p[3], p[4]]; k.prog = p[6];
+  k.li = race.tr.locate(k.x, k.z, -1, loc).i; k.finished = !!(p[5] & 128);
+  race.lapShown = Math.max(1, Math.floor(k.prog / N) + 1);
 }
 function lerpAng(a, b, t) { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; }
 function interpRemote(r, now, dt) {
@@ -424,6 +497,7 @@ function interpRemote(r, now, dt) {
   if (k.spinT > 0) k.spinT -= dt;
   if (k.dizzyT > 0) k.dizzyT -= dt;
   k.finished = !!(f & 128);
+  k.held = HOLDABLE[((f >> 8) & 7) - 1] || null;
   const turn = lerpAng(0, k.h - ph, 1) / Math.max(dt, 1e-3);
   k.steerVis += (Math.max(-1, Math.min(1, -turn / 1.5)) - k.steerVis) * Math.min(1, dt * 8);
   tr_locate(k);
@@ -431,7 +505,7 @@ function interpRemote(r, now, dt) {
 }
 function tr_locate(k) { race.tr.locate(k.x, k.z, k.li, loc); }
 function flagsOf(k) {
-  return (k.starT > 0 ? 1 : 0) | (k.spinT > 0 ? 2 : 0) | (k.boostT > 0 ? 4 : 0) | (k.drift > 0 ? 8 : 0) | (k.drift < 0 ? 16 : 0) | ((k.driftLv & 3) << 5) | (k.finished ? 128 : 0);
+  return (k.starT > 0 ? 1 : 0) | (k.spinT > 0 ? 2 : 0) | (k.boostT > 0 ? 4 : 0) | (k.drift > 0 ? 8 : 0) | (k.drift < 0 ? 16 : 0) | ((k.driftLv & 3) << 5) | (k.finished ? 128 : 0) | ((HOLDABLE.indexOf(k.held) + 1) << 8);
 }
 function sendPoses(now) {
   if (!race.online || now - race.lastSend < 66) return;
@@ -451,6 +525,22 @@ function becomeHost(id) {
 }
 
 // ---------------- 아이템 ----------------
+function KartViewIconHook() { KartView.iconTex = (k) => hazTex[k] || (hazTex[k] = hazardTexture(k)); }
+const HOLDABLE = ['ball', 'banana', 'hball', 'soccer'];
+// 누르면: 던지는 아이템은 뒤에 달고(방패), 떼면 던진다. 아래로 당긴 채 떼면 뒤로.
+function pressItem(r) {
+  const k = r.k;
+  if (!k.item || k.rollT > 0 || k.spinT > 0 || k.held) return;
+  if (HOLDABLE.includes(k.item)) { k.held = k.item; k.heldAt = performance.now(); audio.play('click', 0.35, 1.3); }
+  else useItem(r);
+}
+function releaseItem(r) {
+  const k = r.k;
+  if (!k.held) return;
+  const back = !!(keys.ArrowDown || keys.KeyS || (joy.id !== null && joy.y > 0.5));
+  k.held = null;
+  useItem(r, back ? -1 : 1);
+}
 const iconURL = {};
 function setItem(k) {
   const cv = $('itemCv'), g = cv.getContext('2d');
@@ -474,7 +564,14 @@ function tickRoll(r, dt) {
   if (k.rollT <= 0) return;
   k.rollT -= dt;
   if (r.me) {
-    const keys = Object.keys(ITEMS); setItem(keys[Math.floor(performance.now() / 80) % keys.length]);
+    // 슬롯머신처럼 세로로 돌다가 느려지며 멈춘다
+    const ks = Object.keys(ITEMS), sp = 3 + 14 * Math.pow(Math.max(0, k.rollT) / 1.1, 2);
+    k.reel = (k.reel || 0) + sp * dt;
+    const i = Math.floor(k.reel), f = k.reel - i, cv = $('itemCv'), g = cv.getContext('2d');
+    g.clearRect(0, 0, 160, 160);
+    g.drawImage(icon(ks[i % ks.length], 160), 12, 12 - f * 160, 136, 136);
+    g.drawImage(icon(ks[(i + 1) % ks.length], 160), 12, 172 - f * 160, 136, 136);
+    if (Math.floor(k.reel) !== k.reelLast) { k.reelLast = Math.floor(k.reel); audio.play('click', 0.15, 1.6); }
   }
   if (k.rollT <= 0) {
     k.item = k.pending; k.itemN = k.item === 'boost3' ? 3 : 1;
@@ -482,7 +579,7 @@ function tickRoll(r, dt) {
     if (r.me) { setItem(k.item); $('itemN').textContent = k.itemN > 1 ? k.itemN : ''; audio.play('select', 0.5); }
   }
 }
-function useItem(r) {
+function useItem(r, dir = 1) {
   const k = r.k, it = k.item;
   if (!it || k.rollT > 0 || k.spinT > 0) return;
   const tr = race.tr;
@@ -498,7 +595,7 @@ function useItem(r) {
     return;
   }
   let s = k.prog, lat = k.lat, tg = null;
-  if (it === 'ball') s = k.prog + 3 / tr.seg;
+  if (it === 'ball' || it === 'soccer') s = k.prog + dir * 3 / tr.seg;
   if (it === 'hball') {
     s = k.prog + 3 / tr.seg;
     const ranked = rankList(); const i = ranked.indexOf(r);
@@ -507,7 +604,8 @@ function useItem(r) {
   if (it === 'banana') s = k.prog - 3 / tr.seg;
   consume();
   if (r.me) audio.play('throw', 0.8); else nearSound(r, 'throw', 0.5);
-  const msg = { k: it, by: r.id, s, lat, tg };
+  if (it !== 'ball') dir = 1;
+  const msg = { k: it, by: r.id, s, lat, tg, dir };
   if (race.online) {
     const n = race.nonce++;
     net.send({ t: 'item', ...msg, n });
@@ -529,7 +627,7 @@ let glowTex = null;
 function hazardTexture(k) { const t = new T.CanvasTexture(icon(k, 128)); t.colorSpace = T.SRGBColorSpace; return t; }
 const hazTex = {};
 function spawnHazard(m) {
-  const h = { ...m, dead: false, life: m.k === 'banana' ? 90000 : m.k === 'hball' ? 8000 : m.k === 'mic' ? 900 : 3600 };
+  const h = { ...m, dead: false, hits: 0, hitSet: new Set(), life: m.k === 'banana' ? 90000 : m.k === 'hball' ? 8000 : m.k === 'mic' ? 900 : m.k === 'soccer' ? 6500 : 3600 };
   const tr = race.tr;
   if (m.k === 'mic') {
     // 샤우팅: 주변 30m 안의 내 쪽 레이서들을 돌려 버린다
@@ -559,11 +657,12 @@ function spawnHazard(m) {
   race.hazards.set(h.id, h);
   placeHazard(h, race.clock());
 }
-const HSPD = { ball: 50, hball: 60 };
+const HSPD = { ball: 50, hball: 60, soccer: 40 };
 function placeHazard(h, now) {
   const tr = race.tr, el = Math.max(0, now - h.at);
   let s = h.s, lat = h.lat;
-  if (h.k === 'ball') s = h.s + HSPD.ball * el / 1000 / tr.seg;
+  if (h.k === 'ball') s = h.s + (h.dir || 1) * HSPD.ball * el / 1000 / tr.seg;
+  if (h.k === 'soccer') { s = h.s + HSPD.soccer * el / 1000 / tr.seg; lat = h.lat * 0.4 + Math.sin(el / 260) * tr.half * 0.55; }
   if (h.k === 'hball') {
     s = h.s + HSPD.hball * el / 1000 / tr.seg;
     const t = race.byId[h.tg];
@@ -598,21 +697,35 @@ function hazardsTick(now) {
       let hit = Math.hypot(k.x - h.x, k.z - h.z) < (h.k === 'banana' ? 1.6 : 1.8) && Math.abs(k.y + 0.6 - h.y) < 2.2;
       if (!hit && h.k === 'hball' && h.tg === r.id && h.cs >= k.prog - 0.3) hit = true;
       if (!hit) continue;
+      if (h.k === 'soccer' && h.hitSet.has(r.id)) continue;
+      // 뒤에 단 아이템이 뒤에서 온 것을 막는다
+      if (k.held && h.k !== 'banana' && h.cs < k.prog) { k.held = null; k.item = null; k.itemN = 0; if (r.me) { setItem(null); audio.play('bump', 0.7); } killHazard(h, true); fxBurst(h.x, h.y, h.z, 2); break; }
+      if (h.k === 'soccer') {
+        h.hitSet.add(r.id); h.hits++;
+        if (spinOut(k, 1.2)) onSpun(r, h.by, h.k, h.id);
+        if (h.hits >= 3) killHazard(h, true);
+        break;
+      }
       killHazard(h, true);
       if (k.starT > 0) { if (r.me) audio.play('bump', 0.6); break; }
-      if (spinOut(k, h.k === 'banana' ? 1.0 : 1.35)) onSpun(r, h.by, h.k);
+      if (spinOut(k, h.k === 'banana' ? 1.0 : 1.35)) onSpun(r, h.by, h.k, h.id);
       break;
     }
   }
 }
-function onSpun(r, by, kind) {
+function onSpun(r, by, kind, hid) {
   fxBurst(r.k.x, r.k.y + 1, r.k.z, 1);
+  if (r.me) {
+    try { navigator.vibrate && navigator.vibrate(90); } catch (e) { }
+    const fl = $('hitFlash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
+    if (!race.online) race.slowT = 0.16; // 맞는 순간 잠깐 느리게(혼자일 때만)
+  }
   if (r.me) { audio.play('hit', 1); shake = 0.5; }
   else nearSound(r, 'hit', 0.7);
-  if (race.online) net.send({ t: 'hit', v: r.id, by, k: kind });
+  if (race.online) net.send({ t: 'hit', v: r.id, by, k: kind, id: typeof hid === 'number' ? hid : undefined });
   feedHit(by, r.id, kind);
 }
-const KIND_N = { ball: '야구공', hball: '농구공', banana: '바나나', mic: '샤우팅', star: '슈퍼스타' };
+const KIND_N = { ball: '야구공', hball: '농구공', banana: '바나나', mic: '샤우팅', star: '슈퍼스타', soccer: '축구공' };
 function feedHit(by, v, kind) {
   const a = race.byId[by], b = race.byId[v];
   if (!a || !b || a === b) return;
@@ -680,6 +793,8 @@ function fxKart(r, dt) {
     const ex = k.x + (-c * sd) - s * 1.6, ez = k.z + (s * sd) - c * 1.6;
     F.add.emit(ex, k.y + 0.5, ez, -s * 6 + (Math.random() - 0.5), 0.6, -c * 6 + (Math.random() - 0.5), 0.22, 0.7, 1, 0.55 + Math.random() * 0.3, 0.15, 0, 1);
   }
+  // 슬립스트림 바람줄
+  if ((k.draftT || 0) > 0.2 && tick) for (let i = 0; i < 2; i++) { const a = Math.random() * 6.28; F.add.emit(k.x + Math.cos(a) * 1.2 + s * 2, k.y + 0.8 + Math.sin(a) * 0.8, k.z + Math.sin(a) * 1.2 + c * 2, -s * 18, 0, -c * 18, 0.2, 0.18, 0.8, 0.9, 1, 0, 3); }
   // 슈퍼스타 무지개 가루
   if (k.starT > 0 && tick) { const h = (performance.now() / 300) % 1; const col = new T.Color().setHSL(h, 1, 0.6); F.add.emit(k.x + (Math.random() - 0.5) * 2, k.y + Math.random() * 2, k.z + (Math.random() - 0.5) * 2, 0, 1, 0, 0.6, 0.5, col.r, col.g, col.b, -1); }
 }
@@ -727,11 +842,11 @@ addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (!race) return;
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-  if (e.code === 'KeyX' || e.code === 'KeyE' || e.code === 'ControlLeft' || e.code === 'KeyK') { if (race.phase === 'race' && race.me) useItem(race.me); }
+  if (e.code === 'KeyX' || e.code === 'KeyE' || e.code === 'ControlLeft' || e.code === 'KeyK') { if (race.phase === 'race' && race.me) pressItem(race.me); }
   if (race.spec && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) specStep(e.code === 'ArrowRight' ? 1 : -1);
   if (e.code === 'Escape' || e.code === 'KeyP') togglePause();
 });
-addEventListener('keyup', (e) => { keys[e.code] = false; });
+addEventListener('keyup', (e) => { keys[e.code] = false; if (race && race.me && ['KeyX', 'KeyE', 'ControlLeft', 'KeyK'].includes(e.code)) releaseItem(race.me); });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 function hold(id, key) {
   const el = $(id);
@@ -764,7 +879,8 @@ const joy = { id: null, cx: 0, cy: 0, x: 0, y: 0 };
   const end = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joy.x = joy.y = 0; knob.style.transform = ''; el.classList.remove('on'); home(); };
   zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
 }
-$('tItem').addEventListener('pointerdown', (e) => { e.preventDefault(); if (race && race.phase === 'race' && race.me) useItem(race.me); });
+$('tItem').addEventListener('pointerdown', (e) => { e.preventDefault(); if (race && race.phase === 'race' && race.me) pressItem(race.me); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('tItem').addEventListener(ev, (e) => { e.preventDefault(); if (race && race.me) releaseItem(race.me); });
 function specStep(d) { if (!race) return; const n = race.racers.filter(r => !r.gone).length; race.specIdx = (race.specIdx + d + n) % n; race.specHold = 20; }
 $('specPrev').onclick = () => specStep(-1); $('specNext').onclick = () => specStep(1);
 $('bPause').onclick = () => togglePause();
@@ -913,11 +1029,14 @@ let lastT = performance.now();
 function frame() {
   requestAnimationFrame(frame);
   const t = performance.now();
-  let dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
+  const rawMs = t - lastT;
+  let dt = Math.min(0.05, rawMs / 1000); lastT = t;
+  if (race && !race.ended && document.visibilityState === 'visible') adapt.tick(rawMs, dt);
   if (!race) { renderIdle(dt); return; }
   if (screen === 'garage' && garage) { renderIdle(dt); return; }
   if (paused && !race.online) { render(); return; }
   if (race.podium) { podiumFrame(dt); return; }
+  if (race.slowT > 0) { race.slowT -= dt; dt *= 0.35; }
   const now = race.clock();
   race.time += dt;
   const toGo = race.t0 - now;
@@ -1036,6 +1155,19 @@ function frame() {
         if (o.k.starT > 0 && k.starT <= 0 && !sameTeam(r.id, o.id) && Math.hypot(o.k.x - k.x, o.k.z - k.z) < 2.3) { if (spinOut(k, 1.2)) onSpun(r, o.id, 'star'); continue; }
         if (o.local && o.id < r.id) continue; // 로컬끼리는 한 번만
         bump(k, o.k, o.local);
+      }
+      // 슬립스트림: 앞 카트 바로 뒤(2~12m, 옆 2m 안)에 1.2초 붙어 있으면 작은 부스터
+      if (k.spd > 16 && k.boostT <= 0) {
+        let behind = false;
+        for (const o of race.racers) {
+          if (o === r || o.gone) continue;
+          const gap = (o.k.prog - k.prog) * tr.seg;
+          if (gap > 2 && gap < 12 && Math.abs(o.k.lat - k.lat) < 2 && o.k.spd > 14) { behind = true; break; }
+        }
+        k.draftT = behind ? k.draftT + dt : Math.max(0, k.draftT - dt * 2);
+        if (k.draftT > 1.2) { k.draftT = 0; k.boostT = 0.75; if (r.me) { audio.play('boost', 0.5, 1.2); feed('슬립스트림!'); } }
+      }
+      {
       }
     }
     hazardsTick(now);
@@ -1237,7 +1369,10 @@ function confetti(n) {
 // ---------------- 시작 ----------------
 // 캐릭터 그림 미리 받아 두기
 for (const c of CHARS) { const i = new Image(); i.src = portrait(c); }
+{ const rj = store.get('rejoin', null); if (rj && ROOM_Q === rj.code && Date.now() - rj.at < 10 * 60000) setTimeout(() => { S.mode = 'online'; show('online'); $('onErr').textContent = '하던 레이스로 돌아가는 중…'; net = new Net(onNet); net.connect({ rejoin: rj }); }, 300); }
 if (ROOM_Q) { S.mode = 'online'; const b = $('bOnline'); b.classList.add('primary'); $('bSolo').classList.remove('primary'); b.innerHTML = `<b>방 ${ROOM_Q} 들어가기</b><small>캐릭터를 고르면 바로 입장해요</small>`; }
 requestAnimationFrame(frame);
+// 두 번째 방문부터 그림·소리를 기기에 저장해 두고 바로 쓴다
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/kart/sw.js', { scope: '/kart/' }).catch(() => { });
 // 디버그용(검사 스크립트가 상태를 읽는다)
 window.__kart = { get race() { return race; }, S, startSolo, keys, touch };

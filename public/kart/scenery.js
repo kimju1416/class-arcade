@@ -339,8 +339,10 @@ export function plantGrass(scene, list, W, tint) {
   const g = mergeGeometries([card(2.4, 0.95, 0, 0.45, 0, 0), card(2.4, 0.95, 0, 0.45, 0, Math.PI / 2)]);
   // 풀은 위를 향한 법선이라야 땅과 같은 밝기로 보인다
   const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
-  placeInstanced(scene, g, leaf.m, list, false);
+  const im = placeInstanced(scene, g, leaf.m, list, false);
   W.update.push((dt, t) => { leaf.u.time.value = t; });
+  (W.lod = W.lod || []).push(im); // 느린 기기에서 개수를 줄인다
+  return im;
 }
 
 export function placeRocks(scene, list) {

@@ -40,13 +40,29 @@ let fail = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); i
   await wait(200);
   const items = A.msgs.filter(m => m.type === 'item');
   ok(items.length === 1 && items[0].n === 7 && typeof items[0].id === 'number', '아이템: 없는 종류·봇 사칭 차단, 번호 붙임');
+  // 레이스 중 끊겼다 다시 들어오기 + 방장이 화면을 끄면 봇 권한 이관
+  const wB = last(B, 'welcome');
+  ok(typeof wB.token === 'string' && wB.token.length >= 8, '입장 때 재접속 토큰을 준다');
+  A.send(JSON.stringify({ t: 'vis', hidden: true })); await wait(300);
+  ok(B.msgs.some(m => m.type === 'host' && m.id === wB.id), '방장이 화면을 끄면 다른 사람이 봇을 맡는다');
+  B.close(); await wait(300);
+  const lobA = last(A, 'lobby'); ok(lobA.players.find(p => p.id === wB.id && p.away), '레이스 중 끊긴 사람은 자리를 지킨다(away)');
+  const B2 = await open();
+  B2.send(JSON.stringify({ t: 'hello', rejoin: { code, id: wB.id, token: 'wrong' } })); await wait(300);
+  ok(B2.msgs.some(m => m.type === 'err' && m.norejoin), '토큰이 틀리면 다시 못 들어온다');
+  const B3 = await open();
+  B3.send(JSON.stringify({ t: 'hello', rejoin: { code, id: wB.id, token: wB.token } })); await wait(400);
+  const w3 = last(B3, 'welcome'), s3 = last(B3, 'start');
+  ok(w3 && w3.rejoined && w3.id === wB.id, '같은 자리로 다시 들어온다');
+  ok(s3 && Array.isArray(s3.resume) && s3.resume[6] === 50, '레이스 정보와 마지막 위치를 다시 받는다');
   // 도배
   const C = await open(); let closed = false; C.on('close', () => closed = true);
   for (let i = 0; i < 300; i++) C.send('{"t":"ping","c":1}');
   await wait(400); ok(closed, '초당 메시지 도배는 연결 끊음');
-  // 방장 나가면 넘겨받기
-  A.close(); await wait(400);
-  ok(B.msgs.some(m => m.type === 'host' && m.id === bId), '방장이 나가면 남은 사람이 방장');
-  B.close();
+  // 봇을 맡던 사람이 끊기면 남은 사람이 넘겨받는다
+  A.send(JSON.stringify({ t: 'vis', hidden: false })); await wait(150);
+  B3.close(); await wait(400);
+  ok(A.msgs.some(m => m.type === 'host' && m.id === last(A, 'welcome').id), '방장이 끊기면 남은 사람이 봇을 맡는다');
+  A.close();
   console.log(fail ? `실패 ${fail}` : '모두 통과'); process.exit(fail ? 1 : 0);
 })();

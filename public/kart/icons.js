@@ -83,6 +83,17 @@ const DRAW = {
     g.drawImage(t, s * 0.48, s * 0.08, s * 0.72, s * 0.72);
     g.drawImage(t, s * 0.14, s * 0.26, s * 0.72, s * 0.72);
   },
+  soccer(g, s) { // 축구공
+    const c = s / 2, r = s * 0.4;
+    g.fillStyle = shade(g, c, c, r, '#ffffff', '#c9ced8'); g.beginPath(); g.arc(c, c, r, 0, 7); g.fill();
+    g.save(); g.beginPath(); g.arc(c, c, r, 0, 7); g.clip();
+    const pent = (x, y, rr, rot) => { g.beginPath(); for (let i = 0; i < 5; i++) { const a = rot + i * Math.PI * 2 / 5; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); g.fillStyle = '#1b1d24'; g.fill(); };
+    pent(c, c, r * 0.3, -Math.PI / 2);
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 5; pent(c + Math.cos(a) * r * 0.82, c + Math.sin(a) * r * 0.82, r * 0.26, a + Math.PI); }
+    g.strokeStyle = '#6b7080'; g.lineWidth = s * 0.012;
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 5; g.beginPath(); g.moveTo(c + Math.cos(a) * r * 0.3, c + Math.sin(a) * r * 0.3); g.lineTo(c + Math.cos(a) * r * 0.6, c + Math.sin(a) * r * 0.6); g.stroke(); }
+    g.restore();
+  },
   box(g, s) { // 아이템 상자 옆면
     const gr = g.createLinearGradient(0, 0, s, s);
     gr.addColorStop(0, 'rgba(255,90,160,.85)'); gr.addColorStop(0.33, 'rgba(255,210,60,.85)'); gr.addColorStop(0.66, 'rgba(60,220,160,.85)'); gr.addColorStop(1, 'rgba(70,150,255,.85)');

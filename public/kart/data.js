@@ -52,6 +52,7 @@ export const ITEMS = {
   banana: { name: '바나나',     icon: 'banana', w: [6, 3, 1] },
   star:   { name: '슈퍼스타',    icon: 'star',   w: [0, 1, 4] },
   mic:    { name: '샤우팅 마이크', icon: 'mic',    w: [0, 1, 3] },
+  soccer: { name: '축구공',     icon: 'soccer', w: [1, 3, 3] },
 };
 
 export function rollItem(rank, total, rnd = Math.random) {
