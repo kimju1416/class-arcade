@@ -1,0 +1,24 @@
+const { chromium } = require('C:/Users/USER/Downloads/teacherdesk2/node_modules/playwright');
+const OUT = process.argv[2];
+(async () => {
+  const b = await chromium.launch({ args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
+  const ctx = await b.newContext({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto('http://localhost:3000/kart/'); await p.waitForTimeout(800);
+  await p.evaluate(() => { __kart.S.track = 1; __kart.S.ta = false; __kart.startSolo(); });
+  await p.waitForFunction(() => __kart.race && __kart.race.phase === 'race', null, { timeout: 60000 });
+  await p.waitForTimeout(1500);
+  const box = await p.locator('#joyZone').boundingBox();
+  const x0 = box.x + 150, y0 = box.y + box.height - 90;
+  const ev = (type, x, y) => p.dispatchEvent('#joyZone', type, { pointerId: 7, clientX: x, clientY: y, bubbles: true, isPrimary: true, pointerType: 'touch' });
+  const h0 = await p.evaluate(() => __kart.race.me.k.h);
+  await ev('pointerdown', x0, y0); await ev('pointermove', x0 + 45, y0 + 5);
+  await p.waitForTimeout(500); await p.screenshot({ path: OUT + '/j1.png' });
+  const mid = await p.evaluate(() => ({ h: __kart.race.me.k.h, steerVis: __kart.race.me.k.steerVis }));
+  await ev('pointermove', x0, y0 + 60); await p.waitForTimeout(400);
+  const br = await p.evaluate(() => __kart.race.me.k.spd);
+  await ev('pointerup', x0, y0 + 60); await p.waitForTimeout(3000);
+  await p.screenshot({ path: OUT + '/j2.png' });
+  console.log(JSON.stringify({ h0, mid, br, errs }));
+  await b.close();
+})();
