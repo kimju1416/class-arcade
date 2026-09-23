@@ -14,7 +14,7 @@ import { icon } from './icons.js';
 import { botInput, botWantsItem } from './ai.js';
 import { Net } from './net.js';
 import { Particles, Skids, softDot } from './fx.js';
-import { BODIES, PAINTS, FINISHES, RIMS, DECALS, defaultCar, cleanCar } from './carbody.js';
+import { BODIES } from './carbody.js';
 import { Garage } from './garage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -29,7 +29,7 @@ const S = {
   track: store.get('track', 0), diff: store.get('diff', 1), qual: store.get('qual', 'auto'),
   mode: 'solo',
 };
-S.car = cleanCar(store.get('car', null), S.char);
+S.car = { b: 0, c: -1, f: 0, w: 0, d: 0, n: 1 }; S.car.b = (store.get('car', null) || {}).b | 0; if (S.car.b < 0 || S.car.b > 4) S.car.b = 0;
 function qualityLevel() {
   if (S.qual === 'high') return 2; if (S.qual === 'low') return 1;
   return IS_TOUCH || (navigator.hardwareConcurrency || 4) <= 4 ? 1 : 2;
@@ -126,32 +126,25 @@ $('bSelNext').onclick = () => {
 
 // ---------------- 카트 꾸미기 ----------------
 let garage = null;
+// 차량은 차종만 고른다 — 색은 캐릭터 색, 휠·장식은 기본
+const onlyBody = (b) => ({ b: Number.isInteger(b) && b >= 0 && b < BODIES.length ? b : 0, c: -1, f: 0, w: 0, d: 0, n: 1 });
 function garageUI() {
-  const c = S.car;
-  const opts = (el, list, key) => { el.innerHTML = ''; list.forEach((o, i) => { const b = document.createElement('button'); b.textContent = o.name; b.className = c[key] === i ? 'on' : ''; b.onclick = () => setCar(key, i); el.appendChild(b); }); };
-  opts($('gBody'), BODIES, 'b'); opts($('gFinish'), FINISHES, 'f'); opts($('gRim'), RIMS, 'w'); opts($('gDecal'), DECALS, 'd');
-  const sw = $('gPaint'); sw.innerHTML = '';
-  [-1, ...PAINTS.keys()].forEach((i) => {
-    const b = document.createElement('button'); b.style.background = i < 0 ? CHARS[S.char].color : PAINTS[i];
-    b.className = (c.c === i ? 'on' : '') + (i < 0 ? ' me' : ''); b.title = i < 0 ? '캐릭터 색' : '';
-    b.onclick = () => setCar('c', i); sw.appendChild(b);
-  });
-  $('gNumWrap').hidden = !(c.d === 2 || (c.d === 3 && ![2, 3].includes(c.b)));
-  $('gNum').value = c.n;
+  const el = $('gBody'); el.innerHTML = '';
+  const DESC = ['작고 가벼운 기본 경주 카트', '날렵한 F1 경주차', '낮고 매끈한 오픈카', '큰 바퀴의 산악 버기', '1950년대 클래식 경주차'];
+  BODIES.forEach((o, i) => { const b = document.createElement('button'); b.innerHTML = `<b>${o.name}</b><small>${DESC[i]}</small>`; b.className = 'car' + (S.car.b === i ? ' on' : ''); b.onclick = () => setCar(i); el.appendChild(b); });
 }
-function setCar(key, v) {
-  S.car = cleanCar({ ...S.car, [key]: v }, S.char); store.set('car', S.car);
+function setCar(i) {
+  S.car = onlyBody(i); store.set('car', S.car);
   audio.play('click', 0.5); garageUI(); garage.show(CHARS[S.char], S.car);
   if (net && net.id) net.send({ t: 'car', car: S.car });
 }
-$('gNum').onchange = () => setCar('n', Math.max(1, Math.min(99, parseInt($('gNum').value, 10) || 1)));
 function openGarage() {
   if (!garage) { garage = new Garage(renderer); garage.bind($('garDrag')); }
   garage.show(CHARS[S.char], S.car); garageUI(); show('garage');
 }
 $('bGarage').onclick = () => { audio.play('click', 0.6); openGarage(); };
 $('bGarDone').onclick = () => { audio.play('select', 0.7); show('select'); };
-function randomCar(k) { const r = (n) => Math.floor(Math.random() * n); return { b: r(BODIES.length), c: r(PAINTS.length + 1) - 1, f: r(FINISHES.length), w: r(RIMS.length), d: r(DECALS.length), n: k + 2 }; }
+function randomCar() { return onlyBody(Math.floor(Math.random() * BODIES.length)); }
 
 // ---------------- 코스 고르기 ----------------
 function trackThumb(def) {
@@ -349,7 +342,7 @@ async function startRace(opt) {
     k.mul = g.bot ? (g.skill || 0.95) : 1;
     const me = g.id === opt.myId;
     const r = { id: g.id, name: g.name, char: ch, bot: !!g.bot, skill: g.skill || 1, k, me, buf: [], gone: false, team: opt.teams ? g.team : undefined,
-      view: new KartView(ch, scene, { team: opt.teams ? g.team : undefined, label: me || (g.bot && !opt.online && !opt.teams) ? null : g.name, car: g.car || (g.bot ? randomCar(slot) : null) }) };
+      view: new KartView(ch, scene, { team: opt.teams ? g.team : undefined, label: me || (g.bot && !opt.online && !opt.teams) ? null : g.name, car: g.car ? onlyBody(g.car.b) : (g.bot ? randomCar() : null) }) };
     if (def.theme === 'neon' || def.theme === 'kpop') r.view.driverMat.color.setScalar(0.72);
     r.local = me || (r.bot && opt.host);
     race.racers.push(r); race.byId[g.id] = r;

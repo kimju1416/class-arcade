@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/kart/style.css?v=4">
+<link rel="stylesheet" href="/kart/style.css?v=5">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -56,22 +56,17 @@
   </div>
   <footer class="bar foot">
     <label class="nick">내 이름 <input id="nick" maxlength="10" autocomplete="off" placeholder="이름을 적어요"></label>
-    <button id="bGarage" class="btn">카트 꾸미기</button>
+    <button id="bGarage" class="btn">차량 선택</button>
     <button id="bSelNext" class="btn primary">다음</button>
   </footer>
 </section>
 
-<!-- 카트 꾸미기 -->
+<!-- 차량 선택 -->
 <section id="scr-garage" class="scr">
   <div class="gar-drag" id="garDrag" aria-label="끌어서 차를 돌려 봐요"></div>
-  <header class="bar"><button class="back" data-back>‹</button><h2>카트 꾸미기</h2><span class="step">끌어서 돌려 보기</span></header>
+  <header class="bar"><button class="back" data-back>‹</button><h2>차량 선택</h2><span class="step">끌어서 돌려 보기</span></header>
   <aside class="gar-panel">
-    <h4>차종</h4><div class="opts" id="gBody"></div>
-    <h4>색</h4><div class="swatches" id="gPaint"></div>
-    <h4>마감</h4><div class="opts" id="gFinish"></div>
-    <h4>휠</h4><div class="opts" id="gRim"></div>
-    <h4>장식</h4><div class="opts" id="gDecal"></div>
-    <label class="gnum" id="gNumWrap">번호 <input id="gNum" type="number" min="1" max="99" inputmode="numeric"></label>
+    <h4>어떤 차로 달릴까요?</h4><div class="opts" id="gBody"></div>
     <button class="btn primary" id="bGarDone">완료</button>
   </aside>
 </section>
@@ -168,6 +163,6 @@
 <div id="toast"></div>
 
 <script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
-<script type="module" src="/kart/main.js?v=4"></script>
+<script type="module" src="/kart/main.js?v=5"></script>
 </body>
 </html>
