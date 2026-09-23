@@ -1492,6 +1492,16 @@ for (const c of CHARS) { const i = new Image(); i.src = portrait(c); }
 if (ROOM_Q) { S.mode = 'online'; const b = $('bOnline'); b.classList.add('primary'); $('bSolo').classList.remove('primary'); b.innerHTML = `<b>방 ${ROOM_Q} 들어가기</b><small>캐릭터를 고르면 바로 입장해요</small>`; }
 requestAnimationFrame(frame);
 // 두 번째 방문부터 그림·소리를 기기에 저장해 두고 바로 쓴다
+// 폰·태블릿: 처음 누르는 순간 주소창 없는 전체 화면으로(브라우저는 누를 때만 허락한다). 빠져나가도 다음에 누르면 다시.
+const TOUCH_DEV = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1;
+function goFull() {
+  if (!TOUCH_DEV || document.fullscreenElement || document.webkitFullscreenElement || navigator.standalone || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) return;
+  const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!fn) return;
+  try { const p = fn.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => { }); } catch (e) { }
+}
+addEventListener('pointerup', goFull, { capture: true });
+addEventListener('touchend', goFull, { capture: true, passive: true });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/kart/sw.js', { scope: '/kart/' }).catch(() => { });
 // 디버그용(검사 스크립트가 상태를 읽는다)
 window.__kart = { get race() { return race; }, get scene() { return scene; }, get renderer() { return renderer; }, S, startSolo, keys, touch };

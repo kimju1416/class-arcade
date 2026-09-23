@@ -1,0 +1,13 @@
+{
+  "name": "슈퍼스타 카트",
+  "short_name": "슈퍼스타 카트",
+  "start_url": "/kart/",
+  "scope": "/kart/",
+  "display": "fullscreen",
+  "background_color": "#0e1320",
+  "theme_color": "#0e1320",
+  "icons": [
+    { "src": "/kart/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/kart/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
