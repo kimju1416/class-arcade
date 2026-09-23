@@ -3,7 +3,7 @@
 // 카트 물리는 각자 폰/PC에서 돌리고(117ms 왕복을 기다리지 않게), 서버는 값이 말이 되는지만 거른다.
 const crypto = require("crypto");
 
-const MAX_ROOM = 40, MAX_RACERS = 12, GRID = 8, TICK_MS = 66, TRACKS = ["beach", "neon", "blossom"];
+const MAX_ROOM = 40, MAX_RACERS = 12, GRID = 8, TICK_MS = 66, TRACKS = ["beach", "neon", "blossom", "kpop"];
 const CHAR_N = 10;
 
 module.exports = function createKartServer(WebSocketServer) {
@@ -13,12 +13,13 @@ module.exports = function createKartServer(WebSocketServer) {
   const send = (ws, o) => { if (ws.readyState === 1 && ws.bufferedAmount < 262144) ws.send(JSON.stringify(o)); };
   const bcast = (room, o, except) => { const s = JSON.stringify(o); for (const p of room.players.values()) if (p.ws !== except && p.ws.readyState === 1 && p.ws.bufferedAmount < 262144) p.ws.send(s); };
   const cleanName = (v) => typeof v === "string" ? (v.replace(/[<>\u0000-\u001f\u007f]/g, "").trim().slice(0, 10) || "레이서") : "레이서";
+  const cleanCar = (o) => { const n = (v, lo, hi, d) => Number.isInteger(v) && v >= lo && v <= hi ? v : d; return o && typeof o === "object" ? { b: n(o.b, 0, 4, 0), c: n(o.c, -1, 13, -1), f: n(o.f, 0, 3, 0), w: n(o.w, 0, 3, 0), d: n(o.d, 0, 3, 0), n: n(o.n, 1, 99, 7) } : null; };
   const num = (v, lo, hi) => (typeof v === "number" && Number.isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : null;
   const newCode = () => { const A = "ABCDEFGHJKLMNPQRSTUVWXYZ"; let c; do { c = ""; for (let i = 0; i < 4; i++) c += A[crypto.randomInt(A.length)]; } while (rooms.has(c)); return c; };
 
   function lobbyState(room) {
     return {
-      type: "lobby", code: room.code, host: room.host, track: room.track, bots: room.bots, state: room.state,
+      type: "lobby", code: room.code, host: room.host, track: room.track, bots: room.bots, teams: !!room.teams, state: room.state,
       players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, char: p.char, host: p.id === room.host, racing: p.racing, tv: p.tv })),
       max: MAX_RACERS,
     };
@@ -83,7 +84,7 @@ module.exports = function createKartServer(WebSocketServer) {
         if (!room) { send(ws, { type: "err", msg: "그런 방이 없어요. 코드를 다시 확인해 주세요." }); return; }
         if (room.players.size >= MAX_ROOM) { send(ws, { type: "err", msg: "방이 꽉 찼어요 (최대 40명)." }); room = null; return; }
         clearTimeout(hello);
-        me = { id: "p" + crypto.randomBytes(4).toString("hex"), ws, name: cleanName(m.name), char: Math.floor(num(m.char, 0, CHAR_N - 1) || 0), racing: false, tv: !!(m.create && m.tv) };
+        me = { id: "p" + crypto.randomBytes(4).toString("hex"), ws, name: cleanName(m.name), char: Math.floor(num(m.char, 0, CHAR_N - 1) || 0), racing: false, tv: !!(m.create && m.tv), car: cleanCar(m.car) };
         room.players.set(me.id, me);
         if (!room.host) room.host = me.id;
         send(ws, { type: "welcome", id: me.id, code: room.code, s: now });
@@ -93,6 +94,7 @@ module.exports = function createKartServer(WebSocketServer) {
       if (!me || !room) return;
       const isHost = room.host === me.id;
       switch (m.t) {
+        case "car": { me.car = cleanCar(m.car); break; }
         case "char": {
           const c = num(m.char, 0, CHAR_N - 1); if (c == null) return;
           me.char = Math.floor(c); bcast(room, lobbyState(room)); break;
@@ -101,6 +103,7 @@ module.exports = function createKartServer(WebSocketServer) {
           if (!isHost || room.state !== "lobby") return;
           if (TRACKS.includes(m.track)) room.track = m.track;
           if (typeof m.bots === "boolean") room.bots = m.bots;
+          if (typeof m.teams === "boolean") room.teams = m.teams;
           bcast(room, lobbyState(room)); break;
         }
         case "start": {
@@ -112,7 +115,7 @@ module.exports = function createKartServer(WebSocketServer) {
           const riders = humans.slice(0, MAX_RACERS);
           room.sat = new Set(humans.slice(MAX_RACERS).map(p => p.id));
           for (let i = riders.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [riders[i], riders[j]] = [riders[j], riders[i]]; }
-          const grid = riders.map(p => ({ id: p.id, name: p.name, char: p.char, bot: false }));
+          const grid = riders.map(p => ({ id: p.id, name: p.name, char: p.char, bot: false, car: p.car }));
           if (room.bots) {
             const used = new Set(grid.map(g => g.char));
             const free = [...Array(CHAR_N).keys()].filter(c => !used.has(c));
@@ -123,10 +126,12 @@ module.exports = function createKartServer(WebSocketServer) {
               grid.unshift({ id: "b" + k, name: names[k % names.length], char: c, bot: true, skill: 0.9 + (k / GRID) * 0.08 }); k++;
             }
           }
+          // 팀전: 사람과 봇을 번갈아 빨강(0)·파랑(1)으로
+          if (room.teams) { const hs = grid.filter(g => !g.bot), bs = grid.filter(g => g.bot); hs.forEach((g, i) => g.team = i % 2); const c0 = hs.filter(g => g.team === 0).length; bs.forEach((g, i) => g.team = (c0 + i) % 2 === 0 ? 0 : 1); }
           room.state = "race";
           room.race = { id: crypto.randomBytes(3).toString("hex"), grid, t0: now + 9000, fin: [], prog: {}, poses: {}, firstFin: 0 };
           for (const p of room.players.values()) p.racing = riders.includes(p);
-          bcast(room, { type: "start", race: room.race.id, track: room.track, t0: room.race.t0, grid, host: room.host, laps: 3 });
+          bcast(room, { type: "start", race: room.race.id, track: room.track, t0: room.race.t0, grid, host: room.host, laps: 3, teams: !!room.teams });
           bcast(room, lobbyState(room));
           room.endTimer = setTimeout(() => endRace(room, "timeout"), 8 * 60 * 1000);
           break;

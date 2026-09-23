@@ -240,6 +240,40 @@ body.touch .how > div:first-child { display: none; }
   .results { grid-template-columns: 1fr 1fr; grid-template-rows: none; }
 }
 
+/* ---- 팀전 ---- */
+#teamBar { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top)); transform: translateX(-50%); display: flex; border-radius: 999px; overflow: hidden; font-family: Pretendard, sans-serif; font-weight: 800; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+#teamBar[hidden] { display: none; }
+#teamBar span { padding: 6px 16px; color: #fff; }
+#teamBar .tr { background: #e0303e; } #teamBar .tb { background: #2a6bff; }
+#teamBar b { font-family: var(--disp); font-weight: 400; font-size: 20px; margin: 0 4px; }
+body.spec #teamBar { top: calc(52px + env(safe-area-inset-top)); }
+#feed { top: calc(56px + env(safe-area-inset-top)); }
+.res-list li.t0 { box-shadow: inset 5px 0 0 #e0303e; } .res-list li.t1 { box-shadow: inset 5px 0 0 #2a6bff; }
+#board div.t0 i { box-shadow: 0 0 0 2px #e0303e; } #board div.t1 i { box-shadow: 0 0 0 2px #2a6bff; }
+.pl.t0 { box-shadow: inset 0 -4px 0 #e0303e; } .pl.t1 { box-shadow: inset 0 -4px 0 #2a6bff; }
+
+/* ---- 카트 꾸미기 ---- */
+#scr-garage { flex-direction: column; background: transparent; }
+#scr-garage .bar { position: relative; z-index: 2; background: linear-gradient(180deg, rgba(8,11,20,.7), transparent); }
+.gar-drag { position: absolute; inset: 0; z-index: 1; touch-action: none; cursor: grab; }
+.gar-panel { position: absolute; z-index: 2; right: 0; top: 0; bottom: 0; width: min(400px, 44vw); overflow-y: auto; padding: calc(70px + env(safe-area-inset-top)) 22px calc(20px + env(safe-area-inset-bottom)); background: rgba(10,13,22,.86); border-left: 1px solid var(--line); backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 8px; }
+.gar-panel h4 { margin: 10px 0 2px; font-size: 13px; color: var(--sub); font-weight: 700; letter-spacing: .04em; }
+.gar-panel .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.gar-panel .opts button { border: 1px solid var(--line); background: rgba(255,255,255,.05); color: #fff; border-radius: var(--r1); padding: 9px 12px; font-weight: 700; font-size: 14px; }
+.gar-panel .opts button.on { background: var(--yel); color: #1a1405; border-color: transparent; }
+.swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 7px; }
+.swatches button { aspect-ratio: 1; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); padding: 0; }
+.swatches button.on { border-color: #fff; box-shadow: 0 0 0 3px var(--yel); }
+.swatches button.me { background-image: linear-gradient(135deg, transparent 45%, rgba(255,255,255,.9) 46% 54%, transparent 55%); }
+.gnum { display: flex; align-items: center; gap: 10px; color: var(--sub); font-size: 14px; }
+.gnum input { width: 90px; }
+#bGarDone { margin-top: 14px; }
+@media (max-width: 760px) {
+  .gar-panel { top: auto; left: 0; width: auto; height: 52%; padding-top: 14px; border-left: 0; border-top: 1px solid var(--line); }
+  .gar-drag { bottom: 52%; }
+  .swatches { grid-template-columns: repeat(8, 1fr); gap: 5px; }
+}
+
 /* ---- v2: 교실 대회·관전·시상식·기록 ---- */
 .tvlink { margin-top: 14px; display: inline-flex; align-items: baseline; gap: 10px; background: none; border: 0; padding: 4px 0; color: #fff; font-weight: 700; font-size: 15px; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(255,255,255,.4); }
 .tvlink small { font-weight: 500; color: var(--sub); text-decoration: none; }

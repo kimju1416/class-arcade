@@ -2,6 +2,7 @@
 import * as T from 'three';
 import { mergeGeometries } from '/fps/addons/utils/BufferGeometryUtils.js';
 import { icon } from './icons.js';
+import { kpopArena } from './arena.js';
 import { makeSky, makeWater, splatMaterial, windowMaterial, crowdTexture, plantPalms, plantCherries, plantPines, plantGrass, placeRocks, islands, mountains, skyline } from './scenery.js';
 
 const loader = new T.TextureLoader();
@@ -39,6 +40,10 @@ export const THEMES = {
     fog: 0x1d1745, fogNear: 160, fogFar: 1700, hemi: [0x6a6cff, 0x151228, 0.95], sun: [0x9fb2ff, 0.85],
     wall: 'neon', curb: ['#ff2fa0', '#1ee6ff'], sea: null, exposure: 1.15, envInt: 0.7, night: true,
   },
+  kpop: {
+    fog: 0x140a2a, fogNear: 140, fogFar: 1100, hemi: [0x8a5cff, 0x120a22, 0.9], sun: [0xc9b0ff, 0.7],
+    wall: 'led', curb: ['#ff3fbf', '#7a5cff'], sea: null, exposure: 1.15, envInt: 0.7, night: true,
+  },
   blossom: {
     fog: 0xc6daee, fogNear: 320, fogFar: 3000, hemi: [0xdcefff, 0x5d7a45, 1.2], sun: [0xfff3e0, 3.0],
     wall: 'wood', curb: ['#d93a3a', '#ffffff'], sea: -2.2, exposure: 0.92, envInt: 0.9,
@@ -46,6 +51,9 @@ export const THEMES = {
 };
 
 export function buildWorld(scene, tr, def, quality, renderer) {
+  const NIGHT = def.theme === 'neon' || def.theme === 'kpop'; // 밤 도시 계열(네온·공연장)
+  let _pt = performance.now(); const _prof = (window.__kartProf = []); // 코스 만들기 구간별 시간(검사용)
+  const PROF = (n) => { const t = performance.now(); _prof.push([n, Math.round(t - _pt)]); _pt = t; };
   const th = THEMES[def.theme];
   const W = { update: [], boxes: [], pads: [], theme: th, groundAt: null };
   const R = rng(def.id.length * 7919 + 13);
@@ -56,9 +64,10 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   // ---------- 조명 ----------
   const hemi = new T.HemisphereLight(th.hemi[0], th.hemi[1], th.hemi[2]); scene.add(hemi);
   const sun = new T.DirectionalLight(th.sun[0], th.sun[1]);
+  PROF('// ---------- ');
   // ---------- 하늘 (실시간 대기·구름 / 밤하늘) ----------
   const sd = makeSky(scene, def.theme, renderer, W).clone();
-  if (def.theme === 'neon') sd.set(0.4, 0.8, 0.3).normalize();
+  if (NIGHT) sd.set(0.4, 0.8, 0.3).normalize();
   sd.y = Math.max(sd.y, 0.32); sd.normalize(); // 해가 낮아도 그림자가 너무 길지 않게
   sun.userData.dir = sd;
   scene.environmentIntensity = th.envInt;
@@ -70,6 +79,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   scene.add(sun); scene.add(sun.target);
   W.sun = sun;
 
+  PROF('// ---------- ');
   // ---------- 지형 높이 ----------
   const b = tr.bounds, M = 300;
   const gx0 = b.minx - M, gz0 = b.minz - M, GW = b.maxx - b.minx + 2 * M, GD = b.maxz - b.minz + 2 * M;
@@ -79,24 +89,43 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   const ND = new Float32Array(H.length), NY = new Float32Array(H.length); // 가까운 도로까지 거리·그 높이 (칠할 때 다시 쓴다)
   function farH(x, z, ny) {
     if (def.theme === 'beach') return -4.5 + fbm(x * 0.006, z * 0.006) * 5;
-    if (def.theme === 'neon') return 0;
+    if (NIGHT) return 0;
     // 벚꽃: 산이 멀수록 높아진다
     return ny + 3 + fbm(x * 0.008, z * 0.008) * 34;
   }
+  // 도로까지 거리: 칸마다 가장 가까운 도로를 찾지 않고, 도로 표본에서 주변 칸으로 거리를 찍어 나간다(훨씬 빠름)
+  const W1 = NX + 1, RS = edge + 76;
+  ND.fill(1e9);
+  const rC = Math.ceil(RS / RES);
+  for (let k = 0; k < tr.N; k += 2) {
+    const px = tr.x[k], pz = tr.z[k], py = tr.y[k];
+    const ci = Math.round((px - gx0) / RES), cj = Math.round((pz - gz0) / RES);
+    for (let j = Math.max(0, cj - rC); j <= Math.min(NZ, cj + rC); j++) {
+      const dz = gz0 + j * RES - pz, dz2 = dz * dz, row = j * W1;
+      for (let i = Math.max(0, ci - rC); i <= Math.min(NX, ci + rC); i++) {
+        const dx = gx0 + i * RES - px, d2 = dx * dx + dz2;
+        if (d2 < ND[row + i]) { ND[row + i] = d2; NY[row + i] = py; }
+      }
+    }
+  }
+  // 멀리 있는 칸의 도로 높이는 성긴 격자로 대충
+  const CR = 8, CNX = Math.ceil(NX / CR) + 1, CNZ = Math.ceil(NZ / CR) + 1, CY = new Float32Array(CNX * CNZ);
+  for (let j = 0; j < CNZ; j++) for (let i = 0; i < CNX; i++) CY[j * CNX + i] = tr.nearest(gx0 + i * CR * RES, gz0 + j * CR * RES, 900).y;
   for (let j = 0; j <= NZ; j++) for (let i = 0; i <= NX; i++) {
-    const x = gx0 + i * RES, z = gz0 + j * RES;
-    const n = tr.nearest(x, z, 160);
-    ND[j * (NX + 1) + i] = n.d; NY[j * (NX + 1) + i] = n.y;
-    const near = n.y - 0.12;
+    const x = gx0 + i * RES, z = gz0 + j * RES, q = j * W1 + i;
+    let d = ND[q] < 1e8 ? Math.sqrt(ND[q]) : 1e4;
+    if (d > RS) { const ci = Math.min(CNX - 1, Math.round(i / CR)), cj = Math.min(CNZ - 1, Math.round(j / CR)); NY[q] = CY[cj * CNX + ci]; }
+    ND[q] = d;
+    const ny = NY[q], near = ny - 0.12;
     let h;
-    if (n.d < edge + 1) h = near;
+    if (d < edge + 1) h = near;
     else {
-      const t = smooth(edge + 1, edge + (def.theme === 'blossom' ? 70 : 42), n.d);
-      const fh = farH(x, z, n.y);
+      const t = smooth(edge + 1, edge + (def.theme === 'blossom' ? 70 : 42), d);
+      const fh = farH(x, z, ny);
       h = near + (fh - near) * t;
       if (def.theme === 'blossom' && t > 0) h = Math.max(h, near - 0.5 * t * 8);
     }
-    H[j * (NX + 1) + i] = h;
+    H[q] = h;
   }
   const groundAt = (x, z) => {
     const fi = (x - gx0) / RES, fj = (z - gz0) / RES;
@@ -107,6 +136,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   };
   W.groundAt = groundAt;
 
+  PROF('// 지형 메시: 모래·풀');
   // 지형 메시: 모래·풀·바위·흙을 경사·높이·노이즈로 섞어 칠한다
   {
     const g = new T.PlaneGeometry(GW, GD, NX, NZ); g.rotateX(-Math.PI / 2);
@@ -145,23 +175,25 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     g.computeVertexNormals();
     const names = def.theme === 'beach' ? ['tex-sand', 'tex-grass', 'tex-rock', 'tex-dirt']
       : def.theme === 'blossom' ? ['tex-grass', 'tex-dirt', 'tex-rock', 'tex-sand'] : ['tex-neon', 'tex-asphalt', 'tex-rock', 'tex-dirt'];
-    const m = splatMaterial(names, def.theme === 'neon' ? { rough: 0.35, metal: 0.3, scales: [12, 10, 14, 8] } : { scales: def.theme === 'beach' ? [11, 9, 16, 8] : [8, 7, 16, 11] });
-    if (def.theme === 'neon') { m.emissive = new T.Color(0x3a3a70); m.emissiveIntensity = 0.5; }
+    const m = splatMaterial(names, NIGHT ? { rough: 0.35, metal: 0.3, scales: [12, 10, 14, 8] } : { scales: def.theme === 'beach' ? [11, 9, 16, 8] : [8, 7, 16, 11] });
+    if (NIGHT) { m.emissive = new T.Color(0x3a3a70); m.emissiveIntensity = 0.5; }
     const mesh = new T.Mesh(g, m); mesh.receiveShadow = true; scene.add(mesh);
-    const far = new T.Mesh(new T.CircleGeometry(3200, 32).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ color: def.theme === 'neon' ? 0x0c0b1c : def.theme === 'beach' ? 0x2a8fb0 : 0x6f9a62, roughness: 1 }));
-    far.position.y = def.theme === 'beach' ? -6 : def.theme === 'neon' ? -0.3 : -6; scene.add(far);
+    const far = new T.Mesh(new T.CircleGeometry(3200, 32).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ color: NIGHT ? 0x0c0b1c : def.theme === 'beach' ? 0x2a8fb0 : 0x6f9a62, roughness: 1 }));
+    far.position.y = def.theme === 'beach' ? -6 : NIGHT ? -0.3 : -6; scene.add(far);
   }
 
+  PROF('// ---------- ');
   // ---------- 바다·호수 (반사하는 물) ----------
   if (th.sea != null) makeWater(scene, th.sea, def.theme, W.sunDir || sd, quality, W);
 
+  PROF('// ---------- ');
   // ---------- 도로 ----------
   const roadT = canvasTex(512, 512, (g, w, h) => {
-    g.fillStyle = def.theme === 'neon' ? '#1c1c26' : '#4a4d55'; g.fillRect(0, 0, w, h);
+    g.fillStyle = NIGHT ? '#1c1c26' : '#4a4d55'; g.fillRect(0, 0, w, h);
     // 결: 잔자갈
     for (let i = 0; i < 9000; i++) { const v = Math.random(); g.fillStyle = `rgba(${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${0.03 + Math.random() * 0.05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
     // 가장자리 흰 선
-    g.fillStyle = def.theme === 'neon' ? '#e8f6ff' : '#f4f4f0';
+    g.fillStyle = NIGHT ? '#e8f6ff' : '#f4f4f0';
     g.fillRect(w * 0.035, 0, w * 0.018, h); g.fillRect(w * 0.947, 0, w * 0.018, h);
     // 타이어 자국
     g.strokeStyle = 'rgba(10,10,12,.18)'; g.lineWidth = 14;
@@ -184,7 +216,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
     g.setIndex(idx); g.computeVertexNormals();
-    const m = new T.MeshStandardMaterial({ map: roadT, roughness: def.theme === 'neon' ? 0.45 : 0.82, metalness: def.theme === 'neon' ? 0.2 : 0 });
+    const m = new T.MeshStandardMaterial({ map: roadT, roughness: NIGHT ? 0.45 : 0.82, metalness: NIGHT ? 0.2 : 0 });
     // 실제 아스팔트 사진을 곱해 결을 살린다
     m.onBeforeCompile = (sh) => {
       sh.uniforms.asphalt = { value: asphalt };
@@ -197,11 +229,11 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   // ---------- 연석(굽은 곳만) ----------
   {
     const curbT = canvasTex(64, 128, (g, w, h) => {
-      g.fillStyle = def.theme === 'neon' ? th.curb[0] : th.curb[0]; g.fillRect(0, 0, w, h / 2);
-      g.fillStyle = def.theme === 'neon' ? th.curb[1] : '#dedad2'; g.fillRect(0, h / 2, w, h / 2);
+      g.fillStyle = NIGHT ? th.curb[0] : th.curb[0]; g.fillRect(0, 0, w, h / 2);
+      g.fillStyle = NIGHT ? th.curb[1] : '#dedad2'; g.fillRect(0, h / 2, w, h / 2);
     });
     const curbM = new T.MeshStandardMaterial({ map: curbT, roughness: 0.6 });
-    if (def.theme === 'neon') { curbM.emissiveMap = curbT; curbM.emissive = new T.Color(0xffffff); curbM.emissiveIntensity = 0.45; }
+    if (NIGHT) { curbM.emissiveMap = curbT; curbM.emissive = new T.Color(0xffffff); curbM.emissiveIntensity = 0.45; }
     const pos = [], uv = [], idx = [];
     const on = new Uint8Array(N);
     for (let i = 0; i < N; i++) { let m = 0; for (let k = -25; k <= 25; k++) m = Math.max(m, Math.abs(tr.curv[(i + k + N) % N])); on[i] = m > 0.16 ? 1 : 0; }
@@ -248,6 +280,15 @@ export function buildWorld(scene, tr, def, quality, renderer) {
         g.fillStyle = 'rgba(0,0,0,.15)'; g.fillRect(0, h - 8, w, 8);
       });
       wm = new T.MeshStandardMaterial({ map: wallT, roughness: 0.5 });
+    } else if (th.wall === 'led') {
+      // 공연장 LED 펜스: 무지개 띠가 흘러간다
+      wallT = canvasTex(1024, 64, (g, w, h) => {
+        g.fillStyle = '#0b0714'; g.fillRect(0, 0, w, h);
+        for (let x = 0; x < w; x += 4) { g.fillStyle = `hsl(${(x / w) * 360 * 2}, 100%, 60%)`; g.fillRect(x, 10, 3, h - 20); }
+        g.fillStyle = 'rgba(0,0,0,.55)'; for (let x = 0; x < w; x += 8) g.fillRect(x, 0, 1, h);
+      });
+      wm = new T.MeshStandardMaterial({ map: wallT, emissiveMap: wallT, emissive: new T.Color(0xffffff), emissiveIntensity: 1.3, roughness: 0.4 });
+      W.update.push((dt, t) => { wallT.offset.x = t * 0.12; });
     } else if (th.wall === 'neon') {
       wallT = canvasTex(512, 64, (g, w, h) => {
         g.fillStyle = '#12101e'; g.fillRect(0, 0, w, h);
@@ -321,6 +362,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   }
   const vcMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
 
+  PROF('// ---------- ');
   // ---------- 테마별 소품 ----------
   const dense = quality >= 2 ? 1 : 0.6;
   if (def.theme === 'beach') {
@@ -441,9 +483,53 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     petals(scene, W, R);
   }
 
+  PROF('// ---------- ');
+  if (def.theme === 'kpop') {
+    const ct = crowdTexture(true);
+    kpopArena(scene, W, tr, def, edge, quality, R, { crowdTex: ct });
+    fireworks(scene, W, tr, R);
+    // 트랙 위 트러스 게이트(LED)
+    const trussM = new T.MeshStandardMaterial({ color: 0x9aa0ae, metalness: 0.9, roughness: 0.35 });
+    for (let k = 0; k < 10; k++) {
+      const i = Math.floor(((k + 0.3) / 10) * N), g = new T.Group();
+      for (const sx of [-1, 1]) { const p = new T.Mesh(new T.BoxGeometry(0.9, 9, 0.9), trussM); p.position.set(sx * (edge - 0.4), 4.5, 0); g.add(p); }
+      const beam = new T.Mesh(new T.BoxGeometry(2 * edge, 0.9, 0.9), trussM); beam.position.y = 9; g.add(beam);
+      const led = new T.Mesh(new T.BoxGeometry(2 * edge - 2, 1.4, 0.2), new T.MeshBasicMaterial({ color: [0xff3fbf, 0x39e0ff, 0xffe14a][k % 3] })); led.position.set(0, 7.9, 0); g.add(led);
+      g.position.set(tr.x[i], tr.y[i], tr.z[i]); g.rotation.y = Math.atan2(tr.fx[i], tr.fz[i]); scene.add(g);
+    }
+  }
+  // ---------- 점프대 ----------
+  W.ramps = [];
+  if (def.ramps) {
+    const rT = canvasTex(128, 256, (g, w, h) => {
+      g.fillStyle = '#12081e'; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 4; k++) { const y = k * 64 + 8; g.fillStyle = k % 2 ? '#ff3fbf' : '#39e0ff'; g.beginPath(); g.moveTo(10, y + 40); g.lineTo(64, y); g.lineTo(118, y + 40); g.lineTo(118, y + 56); g.lineTo(64, y + 18); g.lineTo(10, y + 56); g.closePath(); g.fill(); }
+    });
+    const rM = new T.MeshStandardMaterial({ map: rT, emissiveMap: rT, emissive: new T.Color(0xffffff), emissiveIntensity: 1.1, roughness: 0.4 });
+    const sideM = new T.MeshStandardMaterial({ color: 0x1a1024, metalness: 0.6, roughness: 0.3 });
+    for (const u of def.ramps) {
+      const s0 = u * N, L = 7 / tr.seg, HGT = 1.1, SEGS = 10, hw = half + 0.2;
+      const pos = [], uv = [], idx = [];
+      for (let k = 0; k <= SEGS; k++) {
+        const s = s0 + L * k / SEGS, p = tr.point(s, 0), hgt = HGT * Math.pow(k / SEGS, 1.4), i0 = Math.floor(((s % N) + N) % N);
+        const rx = tr.rx[i0], rz = tr.rz[i0];
+        pos.push(p.x - rx * hw, p.y + hgt + 0.03, p.z - rz * hw, p.x + rx * hw, p.y + hgt + 0.03, p.z + rz * hw);
+        uv.push(0, k / SEGS * 1.2, 1, k / SEGS * 1.2);
+        if (k < SEGS) { const a = k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+      scene.add(new T.Mesh(g, rM));
+      // 끝 벽면(뒤에서 보이는 턱)
+      const e = tr.point(s0 + L, 0), i1 = Math.floor(((s0 + L) % N + N) % N);
+      const back = new T.Mesh(new T.BoxGeometry(2 * hw, HGT, 0.3), sideM); back.position.set(e.x, e.y + HGT / 2, e.z); back.rotation.y = Math.atan2(tr.fx[i1], tr.fz[i1]); scene.add(back);
+      W.ramps.push({ s0, L, H: HGT });
+    }
+  }
+
   // ---------- 출발 게이트 + 관중석 + 대형 화면 ----------
   startArea(scene, W, tr, def, edge, quality, R);
 
+  PROF('// ---------- ');
   // ---------- 부스터 발판 ----------
   const padT = canvasTex(128, 256, (g, w, h) => {
     g.fillStyle = '#1a1206'; g.fillRect(0, 0, w, h);
@@ -487,13 +573,14 @@ export function buildWorld(scene, tr, def, quality, renderer) {
       bx.mesh.position.y = bx.y + 1.2 + Math.sin(t * 2.5 + bx.ph) * 0.18;
     }
   });
+  PROF('끝');
   return W;
 }
 
 function startArea(scene, W, tr, def, edge, quality, R) {
   const i = 0, h = Math.atan2(tr.fx[i], tr.fz[i]);
   const gate = new T.Group();
-  const night = def.theme === 'neon';
+  const night = def.theme === 'neon' || def.theme === 'kpop';
   const pillarM = new T.MeshStandardMaterial({ color: night ? 0x22243a : 0xf2f2f2, roughness: 0.4, metalness: 0.3 });
   for (const sx of [-1, 1]) { const p = new T.Mesh(new T.BoxGeometry(1.4, 9, 1.4), pillarM); p.position.set(sx * (edge + 0.6), 4.5, 0); p.castShadow = true; gate.add(p); }
   const banT = canvasTex(1024, 128, (g, w, hh) => {

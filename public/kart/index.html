@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/kart/style.css?v=3">
+<link rel="stylesheet" href="/kart/style.css?v=4">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -56,8 +56,24 @@
   </div>
   <footer class="bar foot">
     <label class="nick">내 이름 <input id="nick" maxlength="10" autocomplete="off" placeholder="이름을 적어요"></label>
+    <button id="bGarage" class="btn">카트 꾸미기</button>
     <button id="bSelNext" class="btn primary">다음</button>
   </footer>
+</section>
+
+<!-- 카트 꾸미기 -->
+<section id="scr-garage" class="scr">
+  <div class="gar-drag" id="garDrag" aria-label="끌어서 차를 돌려 봐요"></div>
+  <header class="bar"><button class="back" data-back>‹</button><h2>카트 꾸미기</h2><span class="step">끌어서 돌려 보기</span></header>
+  <aside class="gar-panel">
+    <h4>차종</h4><div class="opts" id="gBody"></div>
+    <h4>색</h4><div class="swatches" id="gPaint"></div>
+    <h4>마감</h4><div class="opts" id="gFinish"></div>
+    <h4>휠</h4><div class="opts" id="gRim"></div>
+    <h4>장식</h4><div class="opts" id="gDecal"></div>
+    <label class="gnum" id="gNumWrap">번호 <input id="gNum" type="number" min="1" max="99" inputmode="numeric"></label>
+    <button class="btn primary" id="bGarDone">완료</button>
+  </aside>
 </section>
 
 <!-- 트랙 고르기 (혼자) -->
@@ -66,6 +82,7 @@
   <div class="track-grid" id="trackGrid"></div>
   <div class="diff">
     <div class="seg" id="taMode"><button data-m="race" class="on">AI와 레이스</button><button data-m="ta">타임 어택</button></div>
+    <label class="tog" id="soloTeamWrap"><input type="checkbox" id="soloTeams"> 팀전</label>
     <div id="diffWrap"><span>AI 실력</span> <div class="seg" id="diff"><button data-d="0">쉬움</button><button data-d="1" class="on">보통</button><button data-d="2">어려움</button></div></div>
   </div>
   <footer class="bar foot"><span class="hint">3바퀴 · 타임 어택은 내 최고 기록 고스트와 달려요</span><button id="bGo" class="btn primary">출발!</button></footer>
@@ -104,6 +121,7 @@
         <h4>코스</h4>
         <div class="seg col" id="roomTracks"></div>
         <label class="tog"><input type="checkbox" id="roomBots" checked> 빈 자리를 AI로 채우기</label>
+        <label class="tog"><input type="checkbox" id="roomTeams"> 팀전 (빨강팀 vs 파랑팀)</label>
         <button id="bRoomStart" class="btn primary">출발!</button>
         <p class="wait" id="roomWait">방장이 출발을 누르면 시작돼요.</p>
       </div>
@@ -132,6 +150,7 @@
   <div id="center"></div>
   <div id="speedLines"></div>
   <div id="board"></div>
+  <div id="teamBar" hidden><span class="tr">빨강팀 <b id="tsR">0</b></span><span class="tb"><b id="tsB">0</b> 파랑팀</span></div>
   <div id="specBar"><span id="specBanner" hidden></span><div class="specnav"><button id="specPrev" aria-label="이전 선수">◀</button><b id="specName"></b><button id="specNext" aria-label="다음 선수">▶</button></div></div>
   <button id="bPause" class="pausebtn" aria-label="멈춤">Ⅱ</button>
   <div id="touch">
@@ -149,6 +168,6 @@
 <div id="toast"></div>
 
 <script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
-<script type="module" src="/kart/main.js?v=3"></script>
+<script type="module" src="/kart/main.js?v=4"></script>
 </body>
 </html>

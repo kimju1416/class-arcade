@@ -26,7 +26,7 @@ export const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) /
 export function makeSky(scene, theme, renderer, W) {
   const sunDir = new T.Vector3();
   const envScene = new T.Scene();
-  if (theme !== 'neon') {
+  if (theme !== 'neon' && theme !== 'kpop') {
     const P = theme === 'beach'
       ? { elev: 9, azim: 70, turbidity: 4.5, rayleigh: 2.2, mie: 0.003, g: 0.75, cov: 0.45, dens: 0.6, elevC: 0.55, gain: 0.5 }
       : { elev: 48, azim: 140, turbidity: 2.2, rayleigh: 1.1, mie: 0.004, g: 0.8, cov: 0.4, dens: 0.5, elevC: 0.5, gain: 0.5 };
