@@ -73,9 +73,10 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   // ---------- 지형 높이 ----------
   const b = tr.bounds, M = 300;
   const gx0 = b.minx - M, gz0 = b.minz - M, GW = b.maxx - b.minx + 2 * M, GD = b.maxz - b.minz + 2 * M;
-  const RES = quality >= 2 ? 3 : 4;
+  const RES = quality >= 2 ? 4 : 5;
   const NX = Math.ceil(GW / RES), NZ = Math.ceil(GD / RES);
   const H = new Float32Array((NX + 1) * (NZ + 1));
+  const ND = new Float32Array(H.length), NY = new Float32Array(H.length); // 가까운 도로까지 거리·그 높이 (칠할 때 다시 쓴다)
   function farH(x, z, ny) {
     if (def.theme === 'beach') return -4.5 + fbm(x * 0.006, z * 0.006) * 5;
     if (def.theme === 'neon') return 0;
@@ -85,6 +86,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   for (let j = 0; j <= NZ; j++) for (let i = 0; i <= NX; i++) {
     const x = gx0 + i * RES, z = gz0 + j * RES;
     const n = tr.nearest(x, z, 160);
+    ND[j * (NX + 1) + i] = n.d; NY[j * (NX + 1) + i] = n.y;
     const near = n.y - 0.12;
     let h;
     if (n.d < edge + 1) h = near;
@@ -116,7 +118,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
       const x = gx0 + i * RES, z = gz0 + j * RES;
       pos.setX(k, x); pos.setZ(k, z); pos.setY(k, h);
       const slope = Math.hypot(Hs(i + 1, j) - Hs(i - 1, j), Hs(i, j + 1) - Hs(i, j - 1)) / (2 * RES);
-      const nd = tr.nearest(x, z, 60).d;
+      const nd = ND[k];
       const n1 = fbm(x * 0.02, z * 0.02), n2 = fbm(x * 0.07 + 40, z * 0.07);
       let w0 = 0, w1 = 0, w2 = 0, w3 = 0, tint = 1;
       if (def.theme === 'beach') {       // 0 모래, 1 풀, 2 바위, 3 흙
@@ -128,7 +130,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
       } else if (def.theme === 'blossom') { // 0 풀, 1 흙, 2 바위, 3 모래
         w0 = 1;
         w1 = (1 - smooth(half + 1, edge + 2.5, nd)) * 0.9 + smooth(0.62, 0.75, n2) * 0.5;
-        w2 = Math.max(smooth(0.35, 0.7, slope), smooth(25, 45, h - tr.y[tr.nearest(x, z, 200).i || 0]) * 0.8);
+        w2 = Math.max(smooth(0.35, 0.7, slope), smooth(25, 45, h - NY[k]) * 0.8);
         w3 = smooth(-0.6, -1.8, h - th.sea) ;
         tint = 0.92 + n1 * 0.16;
       } else {                            // 0 네온 타일, 1 아스팔트, 2 바위, 3 흙

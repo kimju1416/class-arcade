@@ -127,7 +127,7 @@ input:focus { border-color: var(--yel); }
 .res-list li { display: grid; grid-template-columns: 34px 40px 1fr auto; align-items: center; gap: 10px; padding: 7px 12px; border-radius: var(--r1); background: rgba(255,255,255,.05); border: 1px solid transparent; }
 .res-list li.me { border-color: var(--yel); background: rgba(255,210,58,.12); }
 .res-list .rk { font-family: var(--disp); font-size: 22px; text-align: center; }
-.res-list .av { width: 40px; height: 40px; border-radius: 8px; background: var(--cc) center 18% / 150% no-repeat; }
+.res-list .av { width: 40px; height: 40px; border-radius: 8px; background-position: center 18%; background-size: 150%; background-repeat: no-repeat; }
 .res-list .nm b { display: block; font-size: 15px; }
 .res-list .nm small { color: var(--sub); font-size: 12px; }
 .res-list .tm { font-variant-numeric: tabular-nums; font-weight: 700; color: #dfe4ef; }
@@ -233,4 +233,58 @@ body.touch .how > div:first-child { display: none; }
   .sel-wrap { grid-template-columns: 34% 1fr; grid-template-rows: none; }
   .track-grid { grid-template-columns: repeat(3, 1fr); }
   .results { grid-template-columns: 1fr 1fr; grid-template-rows: none; }
+}
+
+/* ---- v2: 교실 대회·관전·시상식·기록 ---- */
+.tvlink { margin-top: 14px; display: inline-flex; align-items: baseline; gap: 10px; background: none; border: 0; padding: 4px 0; color: #fff; font-weight: 700; font-size: 15px; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(255,255,255,.4); }
+.tvlink small { font-weight: 500; color: var(--sub); text-decoration: none; }
+.tc .best { display: inline-block; margin-top: 6px; font-style: normal; font-size: 12px; font-weight: 700; color: #1a1405; background: var(--yel); padding: 2px 8px; border-radius: 999px; }
+.diff { flex-wrap: wrap; }
+#diffWrap { display: inline-flex; align-items: center; gap: 10px; }
+#diffWrap[hidden] { display: none; }
+.room-code .qr { display: none; }
+.rc-txt { display: flex; align-items: center; gap: 14px; }
+.rurl { display: none; }
+#scr-room.tv .room-code { gap: 24px; }
+#scr-room.tv .room-code .qr { display: block; width: 190px; height: 190px; background: #fff; border-radius: 12px; padding: 8px; flex: none; }
+#scr-room.tv .qr svg { width: 100%; height: 100%; display: block; }
+#scr-room.tv .rc-txt { flex-direction: column; align-items: flex-start; gap: 2px; }
+#scr-room.tv .room-code b { font-size: 76px; line-height: 1; }
+#scr-room.tv .rurl { display: block; font-size: 22px; font-weight: 800; color: #fff; }
+#scr-room.tv .players { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+#scr-room.tv .pl { aspect-ratio: 3/3.3; }
+#board { display: none; position: absolute; left: 14px; top: calc(80px + env(safe-area-inset-top)); width: 230px; font-family: Pretendard, sans-serif; }
+#board div { display: grid; grid-template-columns: 24px 10px 1fr auto; align-items: center; gap: 8px; padding: 5px 10px; margin-bottom: 3px; border-radius: 8px; background: rgba(10,14,24,.62); font-size: 14px; font-weight: 700; }
+#board div b { font-family: var(--disp); font-weight: 400; font-size: 18px; text-align: center; }
+#board div i { width: 10px; height: 10px; border-radius: 50%; }
+#board div span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#board div small { color: var(--sub); font-size: 12px; }
+#board div.on { background: rgba(255,210,58,.9); color: #1a1405; }
+#board div.on small { color: #3a2a00; }
+#board div.fin small { color: #7ee2a8; }
+#specBar { display: none; position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); flex-direction: column; align-items: center; gap: 8px; pointer-events: auto; font-family: Pretendard, sans-serif; }
+#specBanner { background: var(--red); color: #fff; font-weight: 800; font-size: 14px; padding: 5px 14px; border-radius: 999px; letter-spacing: .04em; }
+.specnav { display: flex; align-items: center; gap: 10px; background: rgba(10,14,24,.7); border-radius: 999px; padding: 6px 8px; }
+.specnav b { min-width: 150px; text-align: center; font-size: 16px; }
+.specnav button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: #fff; }
+body.spec #board, body.spec #specBar { display: flex; }
+body.spec #board { display: block; }
+body.spec #itemSlot, body.spec #rankBox, body.spec #speedo, body.spec #touch, body.spec #bPause { display: none !important; }
+#podTitle { position: fixed; left: 0; right: 0; top: 12%; z-index: 7; text-align: center; pointer-events: none; animation: cpop .6s cubic-bezier(.2, 1.4, .4, 1); }
+#podTitle small { display: block; font-weight: 800; color: #fff; font-size: 16px; letter-spacing: .1em; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+#podTitle b { display: block; font-family: var(--disp); font-weight: 400; font-size: clamp(40px, 8vw, 84px); color: var(--yel); -webkit-text-stroke: 3px #3a2000; paint-order: stroke fill; text-shadow: 0 6px 0 #c2410c; }
+#podTitle[hidden] { display: none; }
+.res-side { display: flex; align-items: flex-end; }
+.record { margin: 0; background: rgba(10,14,24,.75); border: 1px solid var(--line); border-radius: var(--r2); padding: 14px 18px; font-size: 18px; font-weight: 700; }
+.record b { color: var(--yel); font-family: var(--disp); font-weight: 400; font-size: 28px; margin-right: 8px; }
+.record small { color: var(--sub); font-size: 13px; }
+#scr-results.over { background: linear-gradient(90deg, rgba(8,11,20,0) 0%, rgba(8,11,20,0) 45%, rgba(8,11,20,.72) 62%); }
+#scr-results.over .foot { background: rgba(8,11,20,.72); }
+#scr-results.over .res-list li { background: rgba(10,14,24,.72); }
+@media (max-width: 760px) {
+  #board { width: 170px; top: calc(70px + env(safe-area-inset-top)); }
+  #board div { font-size: 12px; padding: 3px 8px; }
+  #scr-results.over { background: linear-gradient(180deg, rgba(8,11,20,0) 0%, rgba(8,11,20,0) 30%, rgba(8,11,20,.8) 45%); }
+  #scr-room.tv .room-code .qr { width: 130px; height: 130px; }
+  #scr-room.tv .room-code b { font-size: 48px; }
 }

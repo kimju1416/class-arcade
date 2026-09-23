@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/kart/style.css?v=1">
+<link rel="stylesheet" href="/kart/style.css?v=2">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -26,8 +26,9 @@
     <p class="lead">야구 에이스, 아이돌, 태권도 국가대표까지.<br>좋아하는 스타를 골라 3D 서킷을 달려요.</p>
     <div class="menu">
       <button id="bSolo" class="btn big primary"><b>혼자 달리기</b><small>AI 레이서 7명과 3바퀴</small></button>
-      <button id="bOnline" class="btn big"><b>친구와 달리기</b><small>방 코드로 최대 8명</small></button>
+      <button id="bOnline" class="btn big"><b>친구와 달리기</b><small>방 코드로 함께 · 빈 자리는 AI</small></button>
     </div>
+    <button id="bTV" class="tvlink">선생님용 · 교실 대회 열기 <small>TV에 QR을 띄우고 학생은 폰으로 참가</small></button>
     <div class="how">
       <div><kbd>←</kbd><kbd>→</kbd> 핸들 <kbd>Space</kbd> 드리프트 <kbd>X</kbd> 아이템 <kbd>↓</kbd> 브레이크</div>
       <div class="how-touch">폰은 화면 버튼으로 조작해요. 가속은 자동이에요.</div>
@@ -63,8 +64,11 @@
 <section id="scr-track" class="scr panel-scr">
   <header class="bar"><button class="back" data-back>‹</button><h2>코스 고르기</h2><span class="step">2 / 2</span></header>
   <div class="track-grid" id="trackGrid"></div>
-  <div class="diff"><span>AI 실력</span><div class="seg" id="diff"><button data-d="0">쉬움</button><button data-d="1" class="on">보통</button><button data-d="2">어려움</button></div></div>
-  <footer class="bar foot"><span class="hint">3바퀴 · 레이서 8명</span><button id="bGo" class="btn primary">출발!</button></footer>
+  <div class="diff">
+    <div class="seg" id="taMode"><button data-m="race" class="on">AI와 레이스</button><button data-m="ta">타임 어택</button></div>
+    <div id="diffWrap"><span>AI 실력</span> <div class="seg" id="diff"><button data-d="0">쉬움</button><button data-d="1" class="on">보통</button><button data-d="2">어려움</button></div></div>
+  </div>
+  <footer class="bar foot"><span class="hint">3바퀴 · 타임 어택은 내 최고 기록 고스트와 달려요</span><button id="bGo" class="btn primary">출발!</button></footer>
 </section>
 
 <!-- 온라인 입장 -->
@@ -90,7 +94,8 @@
   <header class="bar"><button class="back" data-back>‹</button><h2>대기실</h2><span class="step" id="roomState"></span></header>
   <div class="room">
     <div class="room-code">
-      <small>방 코드</small><b id="roomCode">----</b>
+      <div class="qr" id="roomQR"></div>
+      <div class="rc-txt"><small>방 코드</small><b id="roomCode">----</b><span class="rurl" id="roomURL"></span></div>
       <button id="bCopy" class="chip">링크 복사</button>
     </div>
     <div class="room-main">
@@ -110,7 +115,7 @@
 <section id="scr-results" class="scr panel-scr">
   <header class="bar"><h2>레이스 결과</h2><span class="step" id="resTrack"></span></header>
   <div class="results">
-    <div class="podium" id="podium"></div>
+    <div class="res-side"><p class="record" id="resRecord" hidden></p></div>
     <ol class="res-list" id="resList"></ol>
   </div>
   <footer class="bar foot"><button id="bResMenu" class="btn">처음으로</button><button id="bResAgain" class="btn primary">한 판 더</button></footer>
@@ -126,6 +131,8 @@
   <div id="feed"></div>
   <div id="center"></div>
   <div id="speedLines"></div>
+  <div id="board"></div>
+  <div id="specBar"><span id="specBanner" hidden></span><div class="specnav"><button id="specPrev" aria-label="이전 선수">◀</button><b id="specName"></b><button id="specNext" aria-label="다음 선수">▶</button></div></div>
   <button id="bPause" class="pausebtn" aria-label="멈춤">Ⅱ</button>
   <div id="touch">
     <button id="tL" aria-label="왼쪽">◀</button><button id="tR" aria-label="오른쪽">▶</button>
@@ -134,6 +141,7 @@
     <button id="tDrift" aria-label="드리프트">드리프트</button>
   </div>
 </div>
+<div id="podTitle" hidden></div>
 <div id="pause" hidden>
   <div class="pbox"><h3>잠깐 멈춤</h3><button id="bResume" class="btn primary">계속 달리기</button><button id="bRestart" class="btn">다시 시작</button><button id="bQuit" class="btn">그만하기</button></div>
 </div>
@@ -141,6 +149,6 @@
 <div id="toast"></div>
 
 <script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
-<script type="module" src="/kart/main.js?v=1"></script>
+<script type="module" src="/kart/main.js?v=2"></script>
 </body>
 </html>
