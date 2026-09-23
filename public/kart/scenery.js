@@ -28,7 +28,7 @@ export function makeSky(scene, theme, renderer, W) {
   const envScene = new T.Scene();
   if (theme !== 'neon') {
     const P = theme === 'beach'
-      ? { elev: 7, azim: 70, turbidity: 8, rayleigh: 3, mie: 0.0035, g: 0.76, cov: 0.5, dens: 0.6, elevC: 0.55, gain: 0.42 }
+      ? { elev: 9, azim: 70, turbidity: 4.5, rayleigh: 2.2, mie: 0.003, g: 0.75, cov: 0.45, dens: 0.6, elevC: 0.55, gain: 0.5 }
       : { elev: 48, azim: 140, turbidity: 2.2, rayleigh: 1.1, mie: 0.004, g: 0.8, cov: 0.4, dens: 0.5, elevC: 0.5, gain: 0.5 };
     const phi = T.MathUtils.degToRad(90 - P.elev), th = T.MathUtils.degToRad(P.azim);
     sunDir.setFromSphericalCoords(1, phi, th);
@@ -122,8 +122,9 @@ export function makeWater(scene, y, theme, sunDir, quality, W) {
     W.update.push((dt) => { water.material.uniforms.time.value += dt * 0.55; });
     return water;
   }
-  normals.repeat.set(160, 160);
-  const m = new T.MeshStandardMaterial({ color: theme === 'beach' ? 0x1a86a6 : 0x3a8fc2, roughness: 0.05, metalness: 0.35, normalMap: normals, normalScale: new T.Vector2(0.4, 0.4) });
+  normals.repeat.set(220, 220);
+  // 폰: 반사 렌더 없이 환경맵 + 물결 노멀로 반짝이게
+  const m = new T.MeshPhysicalMaterial({ color: theme === 'beach' ? 0x06607e : 0x2a78a8, roughness: 0.2, metalness: 0.0, normalMap: normals, normalScale: new T.Vector2(0.6, 0.6), clearcoat: 0.6, clearcoatRoughness: 0.1, envMapIntensity: 0.7 });
   const water = new T.Mesh(new T.PlaneGeometry(size, size).rotateX(-Math.PI / 2), m);
   water.position.y = y; scene.add(water);
   W.update.push((dt, t) => { normals.offset.set(t * 0.006, t * 0.009); });
@@ -267,7 +268,7 @@ export function plantCherries(scene, list, quality, W) {
   const blobs = [];
   const centers = [[0, 6.6, 0, 2.3], [-1.9, 5.9, 0.4, 1.7], [1.9, 6.1, -0.5, 1.8], [0.3, 8.0, 0.6, 1.6], [-0.7, 6.9, -1.8, 1.6], [1.0, 6.8, 1.8, 1.5], [-2.6, 6.4, -0.9, 1.2], [2.5, 7.0, 1.0, 1.2], [0.0, 5.4, -1.6, 1.3], [-1.2, 7.8, 1.3, 1.2]];
   for (const [x, y, z, r] of centers) {
-    const g = new T.IcosahedronGeometry(r, 3);
+    const g = new T.IcosahedronGeometry(r, 2);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const v = new T.Vector3().fromBufferAttribute(p, i).normalize();
@@ -442,4 +443,69 @@ export function skyline(scene, cx, cz, winMat, R) {
   // 꼭대기 빨간 항공등
   const tops = list.filter(o => o.sy > 180).map(o => ({ x: o.x, y: o.sy - 1, z: o.z, r: 0, s: 3 }));
   placeInstanced(scene, new T.SphereGeometry(1, 8, 6), new T.MeshBasicMaterial({ color: 0xff3040, fog: false }), tops, false);
+}
+
+// ---------------- 빌딩 창문: 월드 좌표로 창을 찍는다 ----------------
+// 한 장 그림을 건물 전체에 늘이면 창 하나가 방만 해져 도트처럼 보인다 → 셰이더로 창 크기를 3m 안팎으로 고정
+export function windowMaterial() {
+  const m = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, metalness: 0.6 });
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWP2; varying vec3 vWN2; varying float vSeed;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          vWP2 = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
+          vWN2 = normalize(mat3(modelMatrix * instanceMatrix) * normal);
+          vSeed = instanceMatrix[3].x * 0.013 + instanceMatrix[3].z * 0.029;
+        #else
+          vWP2 = (modelMatrix * vec4(position, 1.0)).xyz; vWN2 = normalize(mat3(modelMatrix) * normal); vSeed = 0.0;
+        #endif`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWP2; varying vec3 vWN2; varying float vSeed;
+        float hh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
+      .replace('#include <map_fragment>', `
+        vec3 n2 = normalize(vWN2);
+        float roof = step(0.6, abs(n2.y));
+        float u = (abs(n2.x) > abs(n2.z) ? vWP2.z : vWP2.x) / 3.1;
+        float v = vWP2.y / 3.5;
+        vec2 cell = floor(vec2(u, v)); vec2 f = fract(vec2(u, v));
+        float win = step(0.16, f.x) * step(f.x, 0.84) * step(0.22, f.y) * step(f.y, 0.8) * (1.0 - roof) * step(1.2, vWP2.y);
+        float r = hh(cell + vSeed * 37.0);
+        float lit = step(0.56, r) * win;
+        vec3 wc = mix(vec3(1.0, 0.86, 0.55), vec3(0.62, 0.9, 1.0), step(0.78, hh(cell + 3.1)));
+        wc = mix(wc, vec3(1.0, 0.55, 0.85), step(0.93, hh(cell + 7.7)));
+        vec3 wall = diffuseColor.rgb * mix(0.10, 0.16, hh(vec2(floor(v * 0.5), vSeed)));
+        diffuseColor.rgb = mix(wall, vec3(0.05, 0.07, 0.12), win) * (1.0 - roof * 0.4);
+        vec3 winGlow = wc * lit * (0.35 + 0.65 * hh(cell + 11.0));`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += winGlow * 1.05;');
+  };
+  return m;
+}
+
+// 관중: 사람 머리·어깨를 음영까지 그린 촘촘한 줄
+export function crowdTexture(night) {
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512;
+  const g = cv.getContext('2d');
+  g.fillStyle = night ? '#141226' : '#2e3442'; g.fillRect(0, 0, 1024, 512);
+  const shirts = ['#e8413c', '#ffcf3a', '#2f9bff', '#35c07f', '#ff7fc4', '#f4f4f4', '#ff8a2f', '#8a6bff', '#1f2a44', '#c0392b'];
+  const skins = ['#f3cfae', '#e8b58f', '#c98f66', '#f6dcc4'];
+  const hairs = ['#1c1410', '#3a2618', '#5a3b22', '#101018'];
+  for (let row = 0; row < 8; row++) {
+    const y = row * 64 + 30;
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, y + 26, 1024, 8); // 계단 그림자
+    for (let i = 0; i < 38; i++) {
+      const x = i * 27 + (row % 2) * 13 + (Math.random() - 0.5) * 6, s = 0.9 + Math.random() * 0.25;
+      const sh = shirts[Math.floor(Math.random() * shirts.length)];
+      const grd = g.createLinearGradient(0, y, 0, y + 30); grd.addColorStop(0, sh); grd.addColorStop(1, 'rgba(0,0,0,.55)');
+      g.fillStyle = grd; g.beginPath(); g.ellipse(x, y + 20 * s, 11 * s, 12 * s, 0, Math.PI, 0); g.fill(); g.fillRect(x - 11 * s, y + 20 * s, 22 * s, 10);
+      g.fillStyle = skins[Math.floor(Math.random() * skins.length)]; g.beginPath(); g.arc(x, y + 2, 8 * s, 0, 7); g.fill();
+      g.fillStyle = hairs[Math.floor(Math.random() * hairs.length)]; g.beginPath(); g.arc(x, y - 1, 8.2 * s, Math.PI * 1.05, Math.PI * 1.95); g.fill();
+      if (Math.random() < 0.28) { g.strokeStyle = sh; g.lineWidth = 4; g.lineCap = 'round'; g.beginPath(); g.moveTo(x + 8, y + 16); g.lineTo(x + 14, y - 10); g.stroke(); }
+      if (Math.random() < 0.12) { g.fillStyle = shirts[Math.floor(Math.random() * 6)]; g.fillRect(x - 12, y - 24, 24, 13); } // 응원 피켓
+      if (night && Math.random() < 0.3) { g.fillStyle = ['#ff4fd8', '#39e0ff', '#ffe14a'][Math.floor(Math.random() * 3)]; g.fillRect(x + 10, y - 18, 3, 16); }
+    }
+  }
+  const t = new T.CanvasTexture(cv); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 8;
+  return t;
 }

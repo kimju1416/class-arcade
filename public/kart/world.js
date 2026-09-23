@@ -2,7 +2,7 @@
 import * as T from 'three';
 import { mergeGeometries } from '/fps/addons/utils/BufferGeometryUtils.js';
 import { icon } from './icons.js';
-import { makeSky, makeWater, splatMaterial, plantPalms, plantCherries, plantPines, plantGrass, placeRocks, islands, mountains, skyline } from './scenery.js';
+import { makeSky, makeWater, splatMaterial, windowMaterial, crowdTexture, plantPalms, plantCherries, plantPines, plantGrass, placeRocks, islands, mountains, skyline } from './scenery.js';
 
 const loader = new T.TextureLoader();
 function tex(name, rep = 1, srgb = true) {
@@ -353,27 +353,24 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   }
 
   if (def.theme === 'neon') {
-    // 빌딩 — 창문이 빛나는 텍스처
-    const winT = canvasTex(256, 512, (g, w, h) => {
-      g.fillStyle = '#0d0f1c'; g.fillRect(0, 0, w, h);
-      const pal = ['#ffe9a8', '#9fe8ff', '#ff9fd8', '#fff4d6'];
-      for (let y = 0; y < 32; y++) for (let x = 0; x < 8; x++) {
-        if (Math.random() < 0.45) continue;
-        g.fillStyle = pal[Math.floor(Math.random() * pal.length)]; g.globalAlpha = 0.5 + Math.random() * 0.5;
-        g.fillRect(x * 32 + 6, y * 16 + 4, 20, 9);
-      }
-      g.globalAlpha = 1;
-    });
-    const bm = new T.MeshStandardMaterial({ map: winT, emissiveMap: winT, emissive: new T.Color(0xffffff), emissiveIntensity: 1.2, roughness: 0.35, metalness: 0.5 });
+    // 빌딩 — 창문은 셰이더로 3m 격자에 찍는다(크기가 달라도 창 크기는 같게)
+    const bm = windowMaterial();
     const bg = new T.BoxGeometry(1, 1, 1); bg.translate(0, 0.5, 0);
-    // 윗면·아랫면에는 창문이 없게 uv를 0 영역으로
-    const uvA = bg.attributes.uv; for (let k = 8; k < 16; k++) uvA.setXY(k, 0.01, 0.01);
-    const blds = scatter(Math.round(260 * dense), 10, 150).map(o => {
-      const w = 12 + R() * 16, d = 12 + R() * 16, hh = 18 + R() * R() * 110;
-      return { ...o, sx: w, sy: hh, sz: d, r: tr.nearest(o.x, o.z).i >= 0 ? Math.atan2(tr.fx[o.i], tr.fz[o.i]) : 0 };
+    const blds = scatter(Math.round(200 * dense), 16, 170).map(o => {
+      const w = 14 + R() * 18, d = 14 + R() * 18, hh = 24 + R() * R() * 130;
+      return { ...o, y: o.y - 0.5, sx: w, sy: hh, sz: d, r: tr.nearest(o.x, o.z).i >= 0 ? Math.atan2(tr.fx[o.i], tr.fz[o.i]) : 0 };
     });
-    const bldM = instanced(bg, bm, blds, true, () => new T.Color().setHSL(0.6 + R() * 0.3, 0.3, 0.55 + R() * 0.4));
-    bldM.material.map.repeat.set(1, 1);
+    instanced(bg, bm, blds, true, () => new T.Color().setHSL(0.62 + R() * 0.2, 0.35, 0.5 + R() * 0.3));
+    // 옥상 네온 테두리·간판
+    const signCols = [0xff2fa0, 0x1ee6ff, 0xffd24a, 0x7dff8a, 0xb47bff];
+    const rims = [], signs = [];
+    blds.forEach((o, k) => {
+      if (R() < 0.55) rims.push({ ...o, y: o.y + o.sy, sy: 0.6, sx: o.sx * 1.02, sz: o.sz * 1.02, c: signCols[k % 5] });
+      if (R() < 0.3) { const c = Math.cos(o.r), sn = Math.sin(o.r); signs.push({ x: o.x - sn * 0 + c * 0, y: o.y + o.sy * (0.45 + R() * 0.35), z: o.z, r: o.r + (R() < 0.5 ? 0 : Math.PI / 2), s: 1, sx: o.sx * 1.04, sy: 5 + R() * 4, sz: 1.2, c: signCols[(k + 2) % 5] }); }
+    });
+    const rimM = new T.MeshBasicMaterial({ color: 0xffffff, fog: true });
+    const rimI = instanced(new T.BoxGeometry(1, 1, 1), rimM, rims, false, (o) => new T.Color(o.c).multiplyScalar(1.4));
+    const signI = instanced(new T.BoxGeometry(1, 1, 1), rimM, signs, false, (o) => new T.Color(o.c).multiplyScalar(1.1));
     // 네온 아치
     const archCols = [0xff2fa0, 0x1ee6ff, 0xffd24a];
     for (let k = 0; k < 14; k++) {
@@ -411,7 +408,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
 
   if (def.theme === 'blossom') {
     // 벚나무 — 꽃송이 사진 카드로 부풀린 수관
-    plantCherries(scene, scatter(Math.round(260 * dense), 2.5, 70).map(o => ({ ...o, s: 0.85 + R() * 0.4 })), quality, W);
+    plantCherries(scene, scatter(Math.round(300 * dense), 1.5, 70).map(o => ({ ...o, s: 1.0 + R() * 0.5 })), quality, W);
     // 소나무
     plantPines(scene, scatter(Math.round(200 * dense), 22, 150).map(o => ({ ...o, s: 1 + R() * 0.6 })), quality, W);
     // 바위
@@ -518,17 +515,8 @@ function startArea(scene, W, tr, def, edge, quality, R) {
   gate.position.set(tr.x[i], tr.y[i], tr.z[i]); gate.rotation.y = h; scene.add(gate);
 
   // 관중석 (출발선 앞뒤 직선 바깥쪽)
-  const crowdT = canvasTex(512, 256, (g, w, hh) => {
-    g.fillStyle = night ? '#1a1830' : '#3b4252'; g.fillRect(0, 0, w, hh);
-    const pal = ['#ff5a5a', '#ffd23a', '#2fb0ff', '#3ad28f', '#ff8ad0', '#ffffff', '#ff9a3a', '#9a7bff'];
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 40; x++) {
-      const cx = x * 12.8 + 6 + (Math.random() - 0.5) * 3, cy = y * 32 + 12;
-      g.fillStyle = pal[Math.floor(Math.random() * pal.length)]; g.fillRect(cx - 4.5, cy + 4, 9, 12);
-      g.fillStyle = ['#f1c7a3', '#d9a47c', '#8a5a3c', '#f5d6b8'][Math.floor(Math.random() * 4)]; g.beginPath(); g.arc(cx, cy, 4.2, 0, 7); g.fill();
-      if (night && Math.random() < 0.3) { g.fillStyle = pal[Math.floor(Math.random() * 5)]; g.fillRect(cx + 3, cy - 12, 2.5, 10); }
-    }
-  });
-  crowdT.repeat.set(6, 1);
+  const crowdT = crowdTexture(night);
+  crowdT.repeat.set(3, 1);
   const standM = [new T.MeshStandardMaterial({ color: night ? 0x2a2c44 : 0xd8dbe2 }), new T.MeshStandardMaterial({ map: crowdT, emissiveMap: night ? crowdT : null, emissive: new T.Color(night ? 0x888888 : 0x000000) })];
   for (const side of [1, -1]) {
     const len = 70, d = edge + 9;
@@ -546,7 +534,7 @@ function startArea(scene, W, tr, def, edge, quality, R) {
     scene.add(stand);
     if (side < 0 && def.theme !== 'beach') continue;
   }
-  W.update.push((dt, t) => { crowdT.offset.y = Math.sin(t * 9) > 0.6 ? 0.012 : 0; });
+  W.update.push((dt, t) => { crowdT.offset.y = Math.sin(t * 9) > 0.6 ? 0.006 : 0; });
 
   // 대형 화면: 키아트
   const kt = loader.load('/kart/tex/keyart.webp'); kt.colorSpace = T.SRGBColorSpace;

@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/kart/style.css?v=2">
+<link rel="stylesheet" href="/kart/style.css?v=3">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -31,7 +31,7 @@
     <button id="bTV" class="tvlink">선생님용 · 교실 대회 열기 <small>TV에 QR을 띄우고 학생은 폰으로 참가</small></button>
     <div class="how">
       <div><kbd>←</kbd><kbd>→</kbd> 핸들 <kbd>Space</kbd> 드리프트 <kbd>X</kbd> 아이템 <kbd>↓</kbd> 브레이크</div>
-      <div class="how-touch">폰은 화면 버튼으로 조작해요. 가속은 자동이에요.</div>
+      <div class="how-touch">왼쪽 원을 좌우로 밀어 핸들, 아래로 당기면 브레이크. 가속은 자동이에요.</div>
     </div>
   </div>
   <div class="corner">
@@ -135,8 +135,8 @@
   <div id="specBar"><span id="specBanner" hidden></span><div class="specnav"><button id="specPrev" aria-label="이전 선수">◀</button><b id="specName"></b><button id="specNext" aria-label="다음 선수">▶</button></div></div>
   <button id="bPause" class="pausebtn" aria-label="멈춤">Ⅱ</button>
   <div id="touch">
-    <button id="tL" aria-label="왼쪽">◀</button><button id="tR" aria-label="오른쪽">▶</button>
-    <button id="tBrake" aria-label="브레이크">브레이크</button>
+    <div id="joyZone" aria-label="조이스틱: 좌우로 밀어 핸들, 아래로 당기면 브레이크"></div>
+    <div id="joy"><div class="base"></div><div class="knob"></div><span class="hint">밀어서 핸들</span></div>
     <button id="tItem" aria-label="아이템">아이템</button>
     <button id="tDrift" aria-label="드리프트">드리프트</button>
   </div>
@@ -149,6 +149,6 @@
 <div id="toast"></div>
 
 <script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
-<script type="module" src="/kart/main.js?v=2"></script>
+<script type="module" src="/kart/main.js?v=3"></script>
 </body>
 </html>

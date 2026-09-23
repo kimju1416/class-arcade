@@ -172,12 +172,19 @@ input:focus { border-color: var(--yel); }
 body.touch #touch { display: block; }
 #touch button { pointer-events: auto; position: absolute; border: 2px solid rgba(255,255,255,.55); background: rgba(10,14,24,.42); color: #fff; font-family: Pretendard, sans-serif; font-weight: 800; border-radius: 50%; touch-action: none; user-select: none; -webkit-user-select: none; backdrop-filter: blur(3px); }
 #touch button.on { background: rgba(255,210,58,.55); border-color: var(--yel); }
-#tL, #tR { width: 88px; height: 88px; bottom: calc(22px + env(safe-area-inset-bottom)); font-size: 30px; }
-#tL { left: 18px; } #tR { left: 118px; }
+/* 떠오르는 원 조이스틱: 왼쪽 아무 데나 누르면 그 자리에 생긴다 */
+#joyZone { position: absolute; left: 0; bottom: 0; width: 52%; height: 62%; pointer-events: auto; touch-action: none; }
+#joy { position: absolute; left: 34px; bottom: calc(26px + env(safe-area-inset-bottom)); width: 132px; height: 132px; pointer-events: none; }
+#joy .base { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, rgba(10,14,24,.18) 0 55%, rgba(10,14,24,.42) 56% 100%); border: 2px solid rgba(255,255,255,.5); backdrop-filter: blur(2px); }
+#joy .base::before { content: ""; position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px 0 0 -46px; border-radius: 50%; border: 1px dashed rgba(255,255,255,.25); }
+#joy .knob { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%; background: radial-gradient(circle at 38% 32%, #fff, #d9dde8 55%, #aab2c4); box-shadow: 0 4px 10px rgba(0,0,0,.35); transition: transform .08s; }
+#joy.on .knob { transition: none; }
+#joy .hint { position: absolute; left: 0; right: 0; top: -22px; text-align: center; font: 700 12px Pretendard, sans-serif; color: rgba(255,255,255,.75); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+#joy.on .hint, #joy.used .hint { display: none; }
 #tDrift { width: 96px; height: 96px; right: 18px; bottom: calc(22px + env(safe-area-inset-bottom)); font-size: 15px; }
 #tItem { width: 76px; height: 76px; right: 126px; bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 14px; }
 #tItem.has { background-size: 70%; background-position: center; background-repeat: no-repeat; color: transparent; border-color: var(--yel); }
-#tBrake { width: 62px; height: 62px; right: 36px; bottom: calc(132px + env(safe-area-inset-bottom)); font-size: 12px; }
+
 body.touch #speedo { display: none; }
 body.touch #rankBox { right: auto; left: 16px; top: calc(116px + env(safe-area-inset-top)); bottom: auto; }
 body.touch #rankNum { font-size: 64px; }
@@ -223,11 +230,9 @@ body.touch .how > div:first-child { display: none; }
   .pausebtn { left: 102px; }
   body.touch #rankBox { top: calc(100px + env(safe-area-inset-top)); }
   #tItem { right: 28px; bottom: calc(134px + env(safe-area-inset-bottom)); }
-  #tBrake { right: 116px; bottom: calc(132px + env(safe-area-inset-bottom)); }
 }
 @media (max-height: 480px) and (orientation: landscape) {
   #tItem { right: 126px; bottom: calc(40px + env(safe-area-inset-bottom)); }
-  #tBrake { right: 214px; bottom: calc(40px + env(safe-area-inset-bottom)); }
   .lead, .how { display: none; }
   .logo b { font-size: 70px; }
   .sel-wrap { grid-template-columns: 34% 1fr; grid-template-rows: none; }

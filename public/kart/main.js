@@ -704,17 +704,43 @@ function hold(id, key) {
   const off = (e) => { e.preventDefault(); touch[key] = false; el.classList.remove('on'); };
   el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
 }
-hold('tL', 'l'); hold('tR', 'r'); hold('tDrift', 'drift'); hold('tBrake', 'brake');
+hold('tDrift', 'drift');
+// 원 조이스틱 — 왼쪽 영역 아무 데나 누르면 그 자리가 중심. 좌우 = 핸들(아날로그), 아래로 깊이 = 브레이크
+const joy = { id: null, cx: 0, cy: 0, x: 0, y: 0 };
+{
+  const zone = $('joyZone'), el = $('joy'), knob = el.querySelector('.knob'), R = 56;
+  const home = () => { el.style.left = ''; el.style.top = ''; el.style.bottom = ''; };
+  zone.addEventListener('pointerdown', (e) => {
+    if (joy.id !== null) return;
+    e.preventDefault(); audio.init();
+    joy.id = e.pointerId; try { zone.setPointerCapture(e.pointerId); } catch (er) { }
+    joy.cx = e.clientX; joy.cy = e.clientY; joy.x = joy.y = 0;
+    const r = $('hud').getBoundingClientRect();
+    el.style.left = (e.clientX - r.left - 66) + 'px'; el.style.top = (e.clientY - r.top - 66) + 'px'; el.style.bottom = 'auto';
+    el.classList.add('on', 'used'); knob.style.transform = '';
+  });
+  zone.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== joy.id) return;
+    let dx = e.clientX - joy.cx, dy = e.clientY - joy.cy;
+    const d = Math.hypot(dx, dy); if (d > R) { dx *= R / d; dy *= R / d; }
+    joy.x = dx / R; joy.y = dy / R;
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  });
+  const end = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joy.x = joy.y = 0; knob.style.transform = ''; el.classList.remove('on'); home(); };
+  zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
+}
 $('tItem').addEventListener('pointerdown', (e) => { e.preventDefault(); if (race && race.phase === 'race' && race.me) useItem(race.me); });
 function specStep(d) { if (!race) return; const n = race.racers.filter(r => !r.gone).length; race.specIdx = (race.specIdx + d + n) % n; race.specHold = 20; }
 $('specPrev').onclick = () => specStep(-1); $('specNext').onclick = () => specStep(1);
 $('bPause').onclick = () => togglePause();
 function myInput() {
-  const L = keys.ArrowLeft || keys.KeyA || touch.l, Rr = keys.ArrowRight || keys.KeyD || touch.r;
+  const L = keys.ArrowLeft || keys.KeyA, Rr = keys.ArrowRight || keys.KeyD;
+  let steer = (Rr ? 1 : 0) - (L ? 1 : 0);
+  if (joy.id !== null) { const ax = Math.abs(joy.x); steer = ax < 0.12 ? 0 : Math.sign(joy.x) * Math.min(1, (ax - 0.12) / 0.7); }
   return {
-    steer: (Rr ? 1 : 0) - (L ? 1 : 0),
+    steer,
     gas: 1,
-    brake: !!(keys.ArrowDown || keys.KeyS || touch.brake),
+    brake: !!(keys.ArrowDown || keys.KeyS || (joy.id !== null && joy.y > 0.72 && Math.abs(joy.x) < 0.6)),
     drift: !!(keys.Space || keys.ShiftLeft || keys.ShiftRight || touch.drift),
   };
 }
