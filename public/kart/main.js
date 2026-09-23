@@ -355,7 +355,9 @@ const adapt = {
     const avg = this.buf.reduce((a, b) => a + b, 0) / this.buf.length;
     if (DEBUG) $('dbg').textContent = `fps ${(1000 / avg).toFixed(0)}  ${avg.toFixed(1)}ms  해상도 ${this.pr.toFixed(2)}  풀 ${race && race.world.lod ? race.world.lod.map(m => m.count).join('/') : '-'}`;
     if (this.cool > 0) return;
-    if (avg > 21 && this.pr > 0.6) { this.set(this.pr - (avg > 32 ? 0.25 : 0.1)); this.cool = 1.2; }
+    // 느리면 빛 번짐(블룸)부터 끈다 — 해상도를 낮춘 채 블룸을 켜 두면 밤 코스 바닥이 분홍 점으로 깨진다
+    if (avg > 21 && bloom && bloom.enabled) { bloom.enabled = false; this.cool = 1.2; }
+    else if (avg > 21 && this.pr > 0.6) { this.set(this.pr - (avg > 32 ? 0.25 : 0.1)); this.cool = 1.2; }
     else if (avg > 21 && race && race.world.lod) { for (const m of race.world.lod) m.count = Math.floor(m.count * 0.7); this.cool = 2; }
     else if (avg < 12.5 && this.pr < this.max - 0.01) { this.set(this.pr + 0.1); this.cool = 4; }
   },

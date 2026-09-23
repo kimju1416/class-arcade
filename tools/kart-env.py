@@ -43,6 +43,9 @@ for n in ('asphalt', 'asphalt-wet', 'sand', 'grass', 'dirt', 'rock', 'bark', 'bl
         a = np.asarray(out).astype(np.float32); m0 = lum(np.asarray(Image.open(ref).convert('RGB'))).mean(); m1 = lum(a).mean()
         k = m0 / max(1, m1)
         if n == 'asphalt-wet': k *= 0.7
+        if n == 'asphalt-wet':  # 밤 코스: 네온 불빛에 잔자갈이 반짝이는 점으로 깨지지 않게 대비를 낮추고 살짝 흐리게
+            from PIL import ImageFilter
+            a = np.asarray(out.filter(ImageFilter.GaussianBlur(1.2))).astype(np.float32); a = a.mean((0, 1)) + (a - a.mean((0, 1))) * 0.45; out = Image.fromarray(a.clip(0, 255).astype(np.uint8)); a = a
         # 밝기만 맞추고 대비는 사진 그대로(너무 튀면 0.6~1.6 안으로)
         out = Image.fromarray((a * min(1.6, max(0.6, k))).clip(0, 255).astype(np.uint8))
     save(out, f'tex-{n}')

@@ -191,9 +191,9 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     g.setAttribute('splat', new T.BufferAttribute(spl, 4));
     g.computeVertexNormals();
     const names = def.theme === 'beach' ? ['tex-sand', 'tex-grass', 'tex-rock', 'tex-dirt']
-      : def.theme === 'blossom' ? ['tex-grass', 'tex-dirt', 'tex-rock', 'tex-sand'] : ['tex-neon', 'tex-asphalt', 'tex-rock', 'tex-dirt'];
+      : def.theme === 'blossom' ? ['tex-grass', 'tex-dirt', 'tex-rock', 'tex-sand'] : ['tex-neon', 'tex-asphalt-wet', 'tex-rock', 'tex-dirt'];
     // 요철은 높은 화질·낮 코스만(폰 해상도·네온 반사에선 반짝이는 점으로 깨짐)
-    const m = splatMaterial(names, NIGHT ? { rough: 0.35, metal: 0.3, scales: [12, 10, 14, 8], bump: 0 } : { scales: def.theme === 'beach' ? [11, 9, 16, 8] : [8, 7, 16, 11], bump: quality >= 2 ? 1.4 : 0 });
+    const m = splatMaterial(names, NIGHT ? { rough: 0.75, metal: 0.05, scales: [12, 10, 14, 8], bump: 0 } : { scales: def.theme === 'beach' ? [11, 9, 16, 8] : [8, 7, 16, 11], bump: quality >= 2 ? 1.4 : 0 });
     if (NIGHT) { m.emissive = new T.Color(0x3a3a70); m.emissiveIntensity = 0.5; }
     const mesh = new T.Mesh(g, m); mesh.receiveShadow = true; scene.add(mesh);
     const far = new T.Mesh(new T.CircleGeometry(3200, 32).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ color: NIGHT ? 0x0c0b1c : def.theme === 'beach' ? 0x2a8fb0 : 0x6f9a62, roughness: 1 }));
@@ -209,7 +209,8 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   const roadT = canvasTex(512, 512, (g, w, h) => {
     g.fillStyle = NIGHT ? '#1c1c26' : '#4a4d55'; g.fillRect(0, 0, w, h);
     // 결: 잔자갈
-    for (let i = 0; i < 9000; i++) { const v = Math.random(); g.fillStyle = `rgba(${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${0.03 + Math.random() * 0.05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+    // 밤 코스는 네온에 반짝이는 점으로 보여서 뺀다
+    for (let i = 0; i < (NIGHT ? 0 : 9000); i++) { const v = Math.random(); g.fillStyle = `rgba(${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${0.03 + Math.random() * 0.05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
     // 가장자리 흰 선
     g.fillStyle = NIGHT ? '#e8f6ff' : '#f4f4f0';
     g.fillRect(w * 0.035, 0, w * 0.018, h); g.fillRect(w * 0.947, 0, w * 0.018, h);
@@ -235,14 +236,15 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
     g.setIndex(idx); g.computeVertexNormals();
-    const m = new T.MeshStandardMaterial({ map: roadT, roughness: NIGHT ? 0.45 : 0.82, metalness: NIGHT ? 0.2 : 0 });
+    // 밤 코스: 반들거리면 밤하늘(별·관중 불빛) 반사가 분홍 점으로 깨진다 → 덜 반들·반사 약하게
+    const m = new T.MeshStandardMaterial({ map: roadT, roughness: NIGHT ? 0.72 : 0.82, metalness: NIGHT ? 0.05 : 0, envMapIntensity: NIGHT ? 0.3 : 1 });
     // 실제 아스팔트 사진을 곱해 결을 살린다
     m.onBeforeCompile = (sh) => {
       sh.uniforms.asphalt = { value: asphalt };
       sh.fragmentShader = sh.fragmentShader.replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform sampler2D asphalt;')
-        .replace('#include <map_fragment>', '#include <map_fragment>\n vec3 asp = texture2D(asphalt, vMapUv * vec2(3.0, 3.0)).rgb; diffuseColor.rgb *= mix(vec3(1.0), asp * ASP_GAIN, 0.75);')
+        .replace('#include <map_fragment>', '#include <map_fragment>\n vec3 asp = texture2D(asphalt, vMapUv * vec2(3.0, 3.0)).rgb; diffuseColor.rgb *= mix(vec3(1.0), asp * ASP_GAIN, ASP_MIX);')
         .replace('#include <normal_fragment_maps>', quality >= 2 && !NIGHT ? BUMP_GLSL('dot(asp, vec3(0.3, 0.59, 0.11))', '0.45') : '#include <normal_fragment_maps>')
-        .replace('ASP_GAIN', W.aspGain.toFixed(2));
+        .replace('ASP_GAIN', W.aspGain.toFixed(2)).replace('ASP_MIX', NIGHT ? '0.4' : '0.75');
     };
     const road = new T.Mesh(g, m); road.receiveShadow = true; scene.add(road);
   }

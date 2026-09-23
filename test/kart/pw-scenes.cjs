@@ -9,6 +9,9 @@ const OUT = process.argv[2] || './out';
   const start = async (t) => { await p.evaluate((t) => { window.__kartCam = null; window.__kartAuto = true; __kart.S.qual = 'high'; __kart.S.track = t; __kart.S.ta = false; __kart.S.teams = false; __kart.startSolo(); }, t); await p.waitForFunction(() => __kart.race && __kart.race.phase === 'race', null, { timeout: 60000 }); };
   const look = async (u, lat, h, back, name) => {
     await p.evaluate(([u, lat, h, back]) => { const tr = __kart.race.tr, s = u * tr.N, a = tr.point(s, lat), c = tr.point(s - back / tr.seg, lat * 0.6); window.__kartCam = { pos: [c.x, c.y + h, c.z], look: [a.x, a.y + 1, a.z], fov: 62 }; }, [u, lat, h, back]);
+    if (process.env.EXP === 'env') await p.evaluate(() => { __kart.scene.environment = null; });
+    if (process.env.EXP === 'metal') await p.evaluate(() => { __kart.scene.traverse(o => { if (o.material && o.material.metalness !== undefined) { o.material.metalness = 0; o.material.roughness = 1; } }); });
+    if (process.env.NOHUD) await p.addStyleTag({ content: '#hud{display:none!important}' });
     await p.waitForTimeout(1200); await p.screenshot({ path: `${OUT}/sc-${name}.png` });
   };
   // 해변: 열린 구간 + 물 빠짐
