@@ -49,7 +49,8 @@ module.exports = function createKartServer(WebSocketServer) {
     ws.on("message", (raw) => {
       const now = Date.now();
       tokens = Math.min(80, tokens + (now - last) * 0.05); last = now;
-      if (--tokens < 0) { ws.close(1008, "rate"); return; }
+      // Render 앞단 프록시를 거치면 close 프레임이 안 닿는 일이 있어 바로 끊는다
+      if (--tokens < 0) { ws.terminate(); return; }
       let m; try { m = JSON.parse(raw); } catch { return; }
       if (!m || typeof m !== "object" || typeof m.t !== "string") return;
       try { handle(m, now); } catch (e) { console.error("[kart]", e && e.message); }
