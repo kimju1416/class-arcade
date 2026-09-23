@@ -1,6 +1,44 @@
 // 차체 만들기 — 레이싱 카트 / 포뮬러 / 스포츠카 / 오프로드 버기 / 클래식 레이서
 // 모든 차는 +z가 앞, 바닥이 y=0. 운전자 그림은 좌석(driverZ)에 허리부터 앉힌다.
 import * as T from 'three';
+import { mergeGeometries } from '/fps/addons/utils/BufferGeometryUtils.js';
+
+// root 아래(skip 가지 제외) 메시를 root 기준 좌표로 구워 재질별로 합친다
+function mergeStatic(root, skip) {
+  root.updateMatrixWorld(true);
+  const inv = new T.Matrix4().copy(root.matrixWorld).invert(), groups = new Map(), olds = [];
+  const walk = (o) => {
+    for (const c of [...o.children]) {
+      if (skip.has(c)) continue;
+      if (c.isMesh && !c.isInstancedMesh && !c.isSkinnedMesh && !Array.isArray(c.material)) {
+        const g = c.geometry, vc = !!c.material.vertexColors;
+        if (!g.attributes.position || !g.attributes.normal) { walk(c); continue; }
+        const key = c.material.uuid + (vc ? 'c' : '') + (c.castShadow ? 's' : '') + (c.renderOrder || 0);
+        const m = new T.Matrix4().multiplyMatrices(inv, c.matrixWorld);
+        let ng = g.clone(); ng.applyMatrix4(m);
+        for (const n of Object.keys(ng.attributes)) if (!['position', 'normal', 'uv', ...(vc ? ['color'] : [])].includes(n)) ng.deleteAttribute(n);
+        if (!ng.attributes.uv) ng.setAttribute('uv', new T.Float32BufferAttribute(new Float32Array(ng.attributes.position.count * 2), 2));
+        if (vc && !ng.attributes.color) ng.setAttribute('color', new T.Float32BufferAttribute(new Float32Array(ng.attributes.position.count * 3).fill(1), 3));
+        ng.morphAttributes = {};
+        if (!ng.index) { const n = ng.attributes.position.count, ix = new Uint32Array(n); for (let i = 0; i < n; i++) ix[i] = i; ng.setIndex(new T.BufferAttribute(ix, 1)); }
+        if (m.determinant() < 0) { const ix = ng.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
+        ng.clearGroups();
+        if (!groups.has(key)) groups.set(key, { mat: c.material, cast: c.castShadow, recv: c.receiveShadow, ro: c.renderOrder, list: [] });
+        groups.get(key).list.push(ng); olds.push(c);
+      }
+      walk(c);
+    }
+  };
+  walk(root);
+  if (olds.length < 3) return;
+  for (const c of olds) { c.parent.remove(c); for (const k of [...c.children]) { root.attach(k); } }
+  for (const gr of groups.values()) {
+    const merged = gr.list.length === 1 ? gr.list[0] : mergeGeometries(gr.list, false);
+    if (!merged) continue;
+    const mesh = new T.Mesh(merged, gr.mat); mesh.castShadow = gr.cast; mesh.receiveShadow = gr.recv; mesh.renderOrder = gr.ro;
+    root.add(mesh);
+  }
+}
 
 export const BODIES = [
   { id: 'kart', name: '레이싱 카트' },
@@ -297,6 +335,10 @@ function build(cfg, char) {
     for (const sx of [-1, 1]) { const p = mesh(new T.PlaneGeometry(1.7, 0.42), m, sx * (out.sideX + 0.015), out.numberAt[1], 0.55); p.rotation.y = sx * Math.PI / 2; if (sx < 0) p.scale.x = -1; G.add(p); }
   }
   G.traverse(o => { if (o.isMesh && o.material !== M.glass) o.castShadow = true; });
+  // 그리기 호출 줄이기: 움직이지 않는 부품은 재질별로 한 덩어리로(카트 하나 90개 → 10여 개)
+  const skip = new Set([...out.fronts, ...out.wheels.map(w => w.parent), out.steer].filter(Boolean));
+  mergeStatic(G, skip);
+  for (const w of out.wheels) mergeStatic(w, new Set());
   return out;
 }
 export { build as buildCar };

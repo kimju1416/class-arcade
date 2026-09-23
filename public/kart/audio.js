@@ -4,15 +4,17 @@ const SFX = ['countdown', 'go', 'itembox', 'roulette', 'boost', 'drift', 'spark'
 class Audio {
   constructor() {
     this.ctx = null; this.buf = {}; this.on = true; this.bgmName = null;
-    try { this.on = localStorage.getItem('kart_sound') !== '0'; } catch (e) { }
+    this.mScale = 1; this.fScale = 1;
+    try { this.on = localStorage.getItem('kart_sound') !== '0'; const v = JSON.parse(localStorage.getItem('kart_vol') || 'null'); if (v) { this.mScale = +v.m; this.fScale = +v.f; } } catch (e) { }
+    if (!(this.mScale >= 0 && this.mScale <= 1)) this.mScale = 1; if (!(this.fScale >= 0 && this.fScale <= 1)) this.fScale = 1;
   }
   init() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain(); this.master.gain.value = this.on ? 1 : 0; this.master.connect(this.ctx.destination);
-    this.music = this.ctx.createGain(); this.music.gain.value = 0.42; this.music.connect(this.master);
-    this.fx = this.ctx.createGain(); this.fx.gain.value = 0.85; this.fx.connect(this.master);
+    this.music = this.ctx.createGain(); this.music.gain.value = 0.42 * this.mScale; this.music.connect(this.master);
+    this.fx = this.ctx.createGain(); this.fx.gain.value = 0.85 * this.fScale; this.fx.connect(this.master);
     for (const n of SFX) this.load(n);
     this.engineSetup();
   }
@@ -23,6 +25,11 @@ class Audio {
       .then(b => { this.buf[n] = b; return b; }).catch(() => { this.buf[n] = null; return null; });
     this.buf[n] = p;
     return p;
+  }
+  setVol(m, f) {
+    this.mScale = m; this.fScale = f;
+    try { localStorage.setItem('kart_vol', JSON.stringify({ m, f })); } catch (e) { }
+    if (this.ctx) { this.music.gain.setTargetAtTime(0.42 * m, this.ctx.currentTime, 0.05); this.fx.gain.setTargetAtTime(0.85 * f, this.ctx.currentTime, 0.05); }
   }
   setOn(v) {
     this.on = v; try { localStorage.setItem('kart_sound', v ? '1' : '0'); } catch (e) { }
@@ -43,7 +50,7 @@ class Audio {
   // 맞았을 때 등: 음악을 잠깐 낮춘다
   duck(v = 0.4, sec = 0.6) {
     if (!this.music) return;
-    const t = this.ctx.currentTime, base = this.music.gain.value > 0.05 ? 0.42 : this.music.gain.value;
+    const t = this.ctx.currentTime, base = 0.42 * this.mScale;
     this.music.gain.cancelScheduledValues(t); this.music.gain.setTargetAtTime(base * v, t, 0.03); this.music.gain.setTargetAtTime(base, t + sec, 0.25);
   }
   loop(n, vol) { // 반복 효과음(드리프트 끼익·관중)
@@ -68,7 +75,7 @@ class Audio {
     this.cur = { s, g };
   }
   musicRate(r) { if (this.cur) this.cur.s.playbackRate.setTargetAtTime(r, this.ctx.currentTime, 0.3); }
-  musicVol(v) { if (this.music) this.music.gain.setTargetAtTime(v, this.ctx.currentTime, 0.3); }
+  musicVol(v) { if (this.music) this.music.gain.setTargetAtTime(v * this.mScale, this.ctx.currentTime, 0.3); }
 
   // 엔진: 톱니파 두 개 + 저역통과. 속도에 따라 음높이가 오른다
   engineSetup() {

@@ -22,6 +22,9 @@ const $ = (id) => document.getElementById(id);
 const ROOM_Q = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (IS_TOUCH) document.body.classList.add('touch');
+function vib(ms) { if (store.get('vib', true)) try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { } }
+const CAM_K = { near: 0.78, mid: 1, far: 1.28 };
+let camSet = null; // 카메라 거리(매 프레임 localStorage를 읽지 않게)
 const store = { get(k, d) { try { const v = localStorage.getItem('kart_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('kart_' + k, JSON.stringify(v)); } catch (e) { } } };
 
 // ---------------- 설정 ----------------
@@ -92,7 +95,7 @@ $('bQual').onclick = () => { S.qual = S.qual === 'auto' ? 'high' : S.qual === 'h
 
 // ---------------- 캐릭터 고르기 ----------------
 const STAT_N = [['spd', '최고 속도'], ['acc', '가속'], ['han', '핸들링'], ['wgt', '무게']];
-function portrait(c) { return `/kart/chars/${c.id}-front.webp`; }
+function portrait(c) { return `/kart/chars/${c.id}-portrait.webp`; }
 function buildCharGrid() {
   const g = $('charGrid'); g.innerHTML = '';
   CHARS.forEach((c, i) => {
@@ -723,7 +726,7 @@ function onSpun(r, by, kind, hid) {
   fxBurst(r.k.x, r.k.y + 1, r.k.z, 1);
   if (r.me) {
     audio.duck(0.35, 0.7); audio.play('bump', 0.5, 0.7);
-    try { navigator.vibrate && navigator.vibrate(90); } catch (e) { }
+    vib(90);
     const fl = $('hitFlash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
     if (!race.online) race.slowT = 0.16; // 맞는 순간 잠깐 느리게(혼자일 때만)
   }
@@ -860,6 +863,7 @@ function finishRacer(r, now) {
   }
   if (r.me) {
     race.myFinT = now;
+    (race.lapTimes || (race.lapTimes = [])).push(now - (race.lapAt || race.t0));
     if (!race.online) race.slowT = 0.55; // 결승 순간 느리게
     audio.play('finish', 1); audio.bgm('bgm-win', 0.9);
     const rk = rankList().indexOf(r) + 1;
@@ -934,6 +938,21 @@ function myInput() {
   };
 }
 let paused = false;
+function openSettings() {
+  audio.init();
+  $('sMusic').value = Math.round(audio.mScale * 100); $('sFx').value = Math.round(audio.fScale * 100);
+  $('sVib').checked = store.get('vib', true);
+  const cam = store.get('cam', 'mid'); for (const b of $('sCam').children) b.classList.toggle('on', b.dataset.v === cam);
+  $('settings').hidden = false;
+}
+const setVol = () => audio.setVol($('sMusic').value / 100, $('sFx').value / 100);
+$('sMusic').oninput = setVol;
+$('sFx').oninput = setVol; $('sFx').onchange = () => audio.play('click', 0.8);
+$('sVib').onchange = () => { store.set('vib', $('sVib').checked); if ($('sVib').checked) vib(60); };
+for (const b of $('sCam').children) b.onclick = () => { store.set('cam', b.dataset.v); camSet = b.dataset.v; for (const x of $('sCam').children) x.classList.toggle('on', x === b); };
+$('bSetClose').onclick = () => { $('settings').hidden = true; audio.play('click', 0.6); };
+$('bSetP').onclick = () => openSettings();
+$('bSet').onclick = (e) => { e.stopPropagation(); openSettings(); };
 function togglePause() {
   if (!race || race.ended) return;
   paused = !paused;
@@ -1005,6 +1024,7 @@ function hud(now, dt) {
   }
   const me = race.me, k = me.k;
   const ranked = rankList(), rk = ranked.indexOf(me) + 1;
+  if (race.startRank == null) race.startRank = rk;
   if (rk !== race.lastRank) { $('rankNum').textContent = rk; const e = $('rankNum'); e.classList.remove('bump'); void e.offsetWidth; e.classList.add('bump'); race.lastRank = rk; }
   const lap = Math.max(1, Math.min(race.laps, Math.floor(k.prog / N) + 1));
   $('lapNum').textContent = lap;
@@ -1048,7 +1068,8 @@ function updateCamera(now, dt) {
   const fin = k.finished;
   const tall = camera.aspect < 1; // 폰 세로: 좌우가 좁으니 조금 더 뒤·위에서
   const sp_ = !race.me;
-  const back = (fin && !sp_ ? 7.5 : sp_ ? 10.5 : 6.6) + (tall ? 2.2 : 0), up = (fin && !sp_ ? 2.4 : sp_ ? 4.6 : 2.7) + (tall ? 0.9 : 0);
+  const ck = sp_ ? 1 : CAM_K[camSet || (camSet = store.get('cam', 'mid'))] || 1;
+  const back = ((fin && !sp_ ? 7.5 : sp_ ? 10.5 : 6.6) + (tall ? 2.2 : 0)) * ck, up = ((fin && !sp_ ? 2.4 : sp_ ? 4.6 : 2.7) + (tall ? 0.9 : 0)) * (0.5 + ck * 0.5);
   let yawT = k.h + k.yawVis * 0.5 + (fin && !sp_ ? Math.sin(now / 2400) * 1.6 + Math.PI * 0.85 : 0);
   if (k.spd < -1) yawT += Math.PI;
   if (lookBack && !fin) yawT += Math.PI;
@@ -1156,6 +1177,7 @@ function frame() {
       else if (r.me) {
         const lap = Math.floor(k.prog / N) + 1;
         if (lap > race.lapShown && lap >= 2) {
+          (race.lapTimes || (race.lapTimes = [])).push(now - (race.lapAt || race.t0)); race.lapAt = now;
           if (lap === race.laps) { center('마지막 바퀴!', 'small go'); audio.play('finallap', 1); audio.bgm('bgm-final', 0.9); }
           else { center(`LAP ${lap}`, 'small'); audio.play('lap', 0.9); }
         }
@@ -1292,6 +1314,11 @@ function showResults(order) {
     const li = document.createElement('li'); li.className = (x.id === meId ? 'me' : '') + (x.r.team != null ? ' t' + x.r.team : '');
     li.innerHTML = `<span class="rk">${x.i + 1}</span><span class="av" style="background-color:${x.r.char.color};background-image:url(${portrait(x.r.char)})"></span><span class="nm"><b></b><small>${x.r.char.role}${x.r.bot ? ' · AI' : ''}</small></span><span class="tm">${x.time != null ? fmt(x.time) : x.r.bot ? '—' : '완주 못 함'}</span>`;
     li.querySelector('b').textContent = x.r.name;
+    if (x.id === meId && race.lapTimes && race.lapTimes.length) {
+      const d = (race.startRank || x.i + 1) - (x.i + 1), sm = document.createElement('small');
+      sm.innerHTML = `최고 랩 ${fmt(Math.min(...race.lapTimes))}${d ? ` · <span class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</span>` : ''}`;
+      li.querySelector('.tm').appendChild(sm);
+    }
     ul.appendChild(li);
   }
   // 컵 모드 누적 순위
@@ -1356,6 +1383,7 @@ function startPodium(rows) {
     const wx = C.x - rx * t.off, wz = C.z - rz * t.off; // 무리의 로컬 +x = 오른쪽의 반대
     Object.assign(k, { x: wx, z: wz, y: C.y + t.y, h: h, spd: 0, hop: 0, hopV: 0, spinT: 0, dizzyT: 0, starT: 0, boostT: 0, drift: 0, driftLv: 0, yawVis: 0, steerVis: 0, squash: 0, off: false });
     x.r.view.root.visible = true;
+    x.r.view.face = 'win'; // 시상대에선 만세 표정
     podK.push({ r: x.r, baseY: C.y + t.y, rank: i });
   });
   race.podium = { C, fx, fz, rx, rz, t: 0, podK, fireT: 0 };
@@ -1433,4 +1461,4 @@ requestAnimationFrame(frame);
 // 두 번째 방문부터 그림·소리를 기기에 저장해 두고 바로 쓴다
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/kart/sw.js', { scope: '/kart/' }).catch(() => { });
 // 디버그용(검사 스크립트가 상태를 읽는다)
-window.__kart = { get race() { return race; }, S, startSolo, keys, touch };
+window.__kart = { get race() { return race; }, get scene() { return scene; }, get renderer() { return renderer; }, S, startSolo, keys, touch };

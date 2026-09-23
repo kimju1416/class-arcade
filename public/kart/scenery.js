@@ -112,12 +112,21 @@ export function makeWater(scene, y, theme, sunDir, quality, W) {
   const size = 6000;
   if (quality >= 2) {
     const water = new Water(new T.PlaneGeometry(size, size), {
-      textureWidth: 512, textureHeight: 512, waterNormals: normals, sunDirection: sunDir.clone(),
+      textureWidth: 256, textureHeight: 256, waterNormals: normals, sunDirection: sunDir.clone(),
       sunColor: theme === 'beach' ? 0xffd2a0 : 0xffffff, waterColor: theme === 'beach' ? 0x0a4f6a : 0x1d5f7a,
       distortionScale: theme === 'beach' ? 3.2 : 2.2, fog: true,
     });
     water.rotation.x = -Math.PI / 2; water.position.y = y;
     water.material.uniforms.size.value = 3.5;
+    // 반사 그림은 코스를 한 번 더 그린다 → 풀·잎 카드(투명 오려내기)는 빼고, 그림자도 다시 굽지 않는다
+    const orig = water.onBeforeRender; let cards = null;
+    water.onBeforeRender = function (renderer, sc, camera, ...rest) {
+      if (!cards) { cards = []; sc.traverse(o => { const m = o.material; if (o.isMesh && m && !Array.isArray(m) && m.alphaTest > 0 && o !== water) cards.push(o); }); }
+      const vis = cards.map(o => o.visible); for (const o of cards) o.visible = false;
+      const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+      orig.call(this, renderer, sc, camera, ...rest);
+      renderer.shadowMap.autoUpdate = au; cards.forEach((o, i) => { o.visible = vis[i]; });
+    };
     scene.add(water);
     W.update.push((dt) => { water.material.uniforms.time.value += dt * 0.55; });
     return water;
@@ -133,6 +142,14 @@ export function makeWater(scene, y, theme, sunDir, quality, W) {
 
 // ---------------- 지형 재질: 네 가지 바닥을 섞어 칠한다 ----------------
 // splat 속성(vec4) = 네 텍스처의 비율. 두 크기로 겹쳐 찍어 타일 반복이 안 보이게 한다.
+// 질감 명암을 요철처럼: 화면 미분으로 법선을 흔든다(가까운 곳만)
+export const BUMP_GLSL = (h, s) => `#include <normal_fragment_maps>
+  { float bh = ${h}; float bf = ${s} * clamp(1.0 - length(vViewPosition) / 70.0, 0.0, 1.0);
+    vec2 dh = vec2(dFdx(bh), dFdy(bh)) * bf;
+    vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition), bn = normal;
+    vec3 r1 = cross(sy, bn), r2 = cross(bn, sx); float det = dot(sx, r1);
+    normal = normalize(abs(det) * bn - sign(det) * (dh.x * r1 + dh.y * r2)); }`;
+
 export function splatMaterial(names, opts = {}) {
   const ts = names.map(n => tex(n));
   const m = new T.MeshStandardMaterial({ roughness: opts.rough ?? 0.92, metalness: opts.metal ?? 0, vertexColors: true });
@@ -155,7 +172,8 @@ export function splatMaterial(names, opts = {}) {
         if (w.w > 0.01) col += two(tS3, sc.w) * w.w;
         float mac = sin(vWP.x * 0.021 + sin(vWP.z * 0.017) * 2.0) * sin(vWP.z * 0.019 + 1.3) * 0.5 + 0.5;
         col *= 0.86 + mac * 0.24;
-        diffuseColor.rgb *= col;`);
+        diffuseColor.rgb *= col;`)
+      .replace('#include <normal_fragment_maps>', (opts.bump ?? 1.4) > 0 ? BUMP_GLSL('dot(col, vec3(0.3, 0.59, 0.11))', (opts.bump ?? 1.4).toFixed(2)) : '#include <normal_fragment_maps>');
   };
   return m;
 }
@@ -268,12 +286,12 @@ export function plantCherries(scene, list, quality, W) {
   const blobs = [];
   const centers = [[0, 6.6, 0, 2.3], [-1.9, 5.9, 0.4, 1.7], [1.9, 6.1, -0.5, 1.8], [0.3, 8.0, 0.6, 1.6], [-0.7, 6.9, -1.8, 1.6], [1.0, 6.8, 1.8, 1.5], [-2.6, 6.4, -0.9, 1.2], [2.5, 7.0, 1.0, 1.2], [0.0, 5.4, -1.6, 1.3], [-1.2, 7.8, 1.3, 1.2]];
   for (const [x, y, z, r] of centers) {
-    const g = new T.IcosahedronGeometry(r, 2);
+    const g = new T.IcosahedronGeometry(r, 1); // 겉은 사진 카드가 덮으니 속 덩어리는 거칠게(삼각형 1/4)
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const v = new T.Vector3().fromBufferAttribute(p, i).normalize();
       const n = fbm(v.x * 2.4 + x * 3, v.z * 2.4 + v.y * 1.7 + z * 3, 3);
-      const rr = r * (0.82 + n * 0.42);
+      const rr = r * (0.7 + n * 0.36); // 속 덩어리는 작게 — 겉은 꽃송이 사진 카드가 덮는다
       p.setXYZ(i, x + v.x * rr, y + v.y * rr * 0.86, z + v.z * rr);
     }
     g.computeVertexNormals();
@@ -301,18 +319,18 @@ uniform sampler2D tB; varying vec3 vOP; varying vec3 vON;`)
   };
   // 가장자리 꽃송이 카드 — 실루엣을 보송하게
   const leaf = cardMaterial('leaf-cherry', 0.03);
-  leaf.m.color.set(0xf2b3cc);
+  leaf.m.color.set(0xfff4f8);
   const cards = [];
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 44; i++) { // 겉을 꽃송이 사진 카드로 촘촘히 덮어 실제 나무처럼
     const [x, y, z, r] = centers[i % centers.length];
     const a = Rn() * Math.PI * 2, e = (Rn() - 0.2) * 1.3;
     const px = x + Math.cos(a) * Math.cos(e) * r * 0.95, py = y + Math.sin(e) * r * 0.85, pz = z + Math.sin(a) * Math.cos(e) * r * 0.95;
-    const sz = 1.2 + Rn() * 0.8;
+    const sz = 1.6 + Rn() * 1.2;
     cards.push(card(sz, sz, px, py, pz, -a + Math.PI / 2, (Rn() - 0.5) * 0.8));
   }
   const fringe = puffNormals(mergeGeometries(cards), 0, 6.6, 0);
   placeInstanced(scene, trunk, trunkM, list, quality >= 2);
-  placeInstanced(scene, crown, crownM, list, quality >= 2);
+  placeInstanced(scene, crown, crownM, list, false); // 수관 그림자는 끔(가장 무거운 부분)
   placeInstanced(scene, fringe, leaf.m, list, false);
   W.update.push((dt, t) => { leaf.u.time.value = t; });
 }
@@ -510,4 +528,24 @@ export function crowdTexture(night) {
   }
   const t = new T.CanvasTexture(cv); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 8;
   return t;
+}
+
+// ---------------- 먼 배경 파노라마(코덱스 실사 원경) ----------------
+// 트랙을 둘러싼 원통 안쪽에 가로로 이어지는 그림을 붙인다. 하늘 부분은 투명, 먼 것은 안개색으로 살짝 흐리게.
+export function backdrop(scene, name, cx, cz, baseY, opt = {}) {
+  const t = tex(name); t.wrapT = T.ClampToEdgeWrapping; t.anisotropy = 4;
+  const rep = opt.rep || 4, R = opt.r || 2600, circ = 2 * Math.PI * R, H = circ / rep * 1152 / 2048 * (opt.hs || 1);
+  t.repeat.set(rep, 1);
+  const g = new T.CylinderGeometry(R, R, H, 128, 1, true).translate(0, H / 2, 0);
+  const m = new T.MeshBasicMaterial({ map: t, side: T.BackSide, transparent: true, alphaTest: 0.5, fog: false, depthWrite: false });
+  const haze = new T.Color(opt.haze ?? 0xffffff), hz = opt.hazeAmt ?? 0.25;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.hazeC = { value: haze };
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 hazeC;')
+      .replace('#include <map_fragment>', `#include <map_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb * ${(opt.gain ?? 1).toFixed(2)}, hazeC, ${hz.toFixed(2)});`);
+  };
+  const mesh = new T.Mesh(g, m); mesh.position.set(cx, baseY - (opt.sink ?? 6), cz); mesh.renderOrder = -1;
+  mesh.rotation.y = opt.rot || 0;
+  scene.add(mesh);
+  return mesh;
 }

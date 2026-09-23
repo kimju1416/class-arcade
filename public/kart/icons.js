@@ -1,5 +1,12 @@
 // 아이템 아이콘을 캔버스로 그린다 — HUD와 3D 발사체가 같은 그림을 쓴다
+import { ITEM_ART } from './extra.js';
 const cache = {};
+// 코덱스로 그린 아이템 그림(있으면): 시작할 때 미리 받아 두고 캔버스 그림 대신 쓴다(최대 3초 기다림)
+const ART = {};
+await Promise.race([
+  Promise.all(ITEM_ART.map(n => new Promise(res => { const im = new Image(); im.onload = () => { ART[n] = im; res(); }; im.onerror = res; im.src = `/kart/items/${n}.webp`; }))),
+  new Promise(res => setTimeout(res, 3000)),
+]);
 
 function star(g, cx, cy, R, r, n = 5) {
   g.beginPath();
@@ -110,7 +117,10 @@ export function icon(name, size = 128) {
   if (cache[key]) return cache[key];
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const g = cv.getContext('2d');
-  (DRAW[name] || DRAW.boost)(g, size);
+  const art = ART[name] || (name === 'boost3' && ART.boost);
+  if (art && name === 'boost3') { for (const [x, y] of [[-0.2, 0.08], [0.48, 0.08], [0.14, 0.26]]) g.drawImage(art, size * x, size * y, size * 0.72, size * 0.72); }
+  else if (art) g.drawImage(art, size * 0.04, size * 0.04, size * 0.92, size * 0.92);
+  else (DRAW[name] || DRAW.boost)(g, size);
   cache[key] = cv;
   return cv;
 }

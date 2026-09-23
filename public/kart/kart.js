@@ -2,6 +2,7 @@
 import * as T from 'three';
 import { Dizzy, starTex } from './fx.js';
 import { buildCar, cleanCar } from './carbody.js';
+import { CHAR_EXTRA } from './extra.js';
 let _star;
 
 const DRV_W = 1.5, DRV_H = DRV_W * 640 / 480;
@@ -12,8 +13,10 @@ const loader = new T.TextureLoader();
 const driverTex = {};
 export function driverTextures(id) {
   if (driverTex[id]) return driverTex[id];
-  const mk = (v) => { const t = loader.load(`/kart/chars/${id}-${v}.webp`); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 4; return t; };
-  driverTex[id] = { front: mk('front'), back: mk('back') };
+  // ok: 실제로 받아진 그림만 쓴다(없는 파일은 앞/뒤 두 장으로 돌아감)
+  const has = CHAR_EXTRA[id] || [];
+  const mk = (v) => { if (v !== 'front' && v !== 'back' && !has.includes(v)) return { ok: false }; const t = loader.load(`/kart/chars/${id}-${v}.webp`, () => { t.ok = true; }); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 4; return t; };
+  driverTex[id] = { front: mk('front'), back: mk('back'), side: mk('side'), q3f: mk('q3f'), q3b: mk('q3b'), hit: mk('hit'), win: mk('win') };
   return driverTex[id];
 }
 
@@ -101,11 +104,20 @@ export class KartView {
     this.wheel.rotation.z = k.steerVis * 0.9;
     this.shadow.material.opacity = 0.35 / (1 + k.hop * 0.8);
 
-    // 운전자: 카메라가 앞쪽에 있으면 앞모습
+    // 운전자: 카메라가 보는 방향에 따라 8방향(앞·대각앞·옆·대각뒤·뒤, 오른쪽은 좌우 뒤집기)
     if (cam) {
       const dx = cam.position.x - k.x, dz = cam.position.z - k.z;
       const fwd = Math.sin(k.h + this.body.rotation.y) * dx + Math.cos(k.h + this.body.rotation.y) * dz;
-      const want = fwd > 0 ? this.tex.front : this.tex.back;
+      let rel = Math.atan2(dx, dz) - (k.h + this.body.rotation.y);
+      rel = Math.atan2(Math.sin(rel), Math.cos(rel)); // +: 카트 왼쪽에서 봄
+      const tx = this.tex, oct = Math.round(Math.abs(rel) / (Math.PI / 4)); // 0 앞 … 4 뒤
+      let want = [tx.front, tx.q3f, tx.side, tx.q3b, tx.back][oct];
+      if (!want.ok) want = fwd > 0 ? tx.front : tx.back;
+      if (this.face === 'hit' && tx.hit.ok && fwd > 0) want = tx.hit;
+      else if (this.face === 'win' && tx.win.ok && fwd > 0) want = tx.win;
+      else if ((k.spinT > 0 || (k.dizzyT || 0) > 0) && tx.hit.ok && fwd > 0) want = tx.hit;
+      const flip = want !== tx.front && want !== tx.back && want !== tx.hit && want !== tx.win && rel < 0;
+      this.driver.scale.x = flip ? -1 : 1;
       if (this.driverMat.map !== want) { this.driverMat.map = want; this.driverMat.needsUpdate = true; }
       // 원통형 빌보드: 카메라 쪽으로 y축만 돌린다
       const ang = Math.atan2(dx, dz) - (k.h + this.body.rotation.y);

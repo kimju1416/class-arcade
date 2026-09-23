@@ -39,7 +39,7 @@ export const TRACKS = [
   },
   {
     id: 'kpop', name: 'K-POP 콘서트 아레나', sub: '레이저·응원봉 사이 공연장 한 바퀴', laps: 3,
-    theme: 'kpop', sky: 'keyart', ground: 'tex-neon', bgm: 'bgm-menu', width: 16, band: 6, scale: 1.25,
+    theme: 'kpop', sky: 'sky-kpop', ground: 'tex-neon', bgm: 'bgm-menu', width: 16, band: 6, scale: 1.25,
     pts: [[0, 0, 0], [80, 0, 0], [140, 12, 0], [178, 55, 0], [182, 110, 0], [150, 150, 1], [100, 158, 5], [60, 135, 5.5], [20, 150, 5], [-25, 185, 1], [-85, 190, 0], [-135, 160, 0], [-160, 105, 0], [-150, 45, 0], [-90, 6, 0]],
     pads: [[0.16, 0], [0.45, -0.35], [0.45, 0.35], [0.78, 0]], boxes: [0.05, 0.29, 0.56, 0.84],
     ramps: [0.22, 0.63],

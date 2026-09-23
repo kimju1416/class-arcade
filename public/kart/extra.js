@@ -1,0 +1,3 @@
+// tools/kart-assets.py가 만든 목록 — 손으로 고치지 말 것
+export const CHAR_EXTRA = {"c01": ["side", "q3f", "q3b", "hit", "win"], "c02": ["side", "q3f", "q3b", "hit", "win"], "c03": ["side", "q3f", "q3b", "hit", "win"], "c04": ["side", "q3f", "q3b", "hit", "win"], "c05": ["side", "q3f", "q3b", "hit", "win"], "c06": ["side", "q3f", "q3b", "hit", "win"], "c07": ["side", "q3f", "q3b", "hit", "win"], "c08": ["side", "q3f", "q3b", "hit", "win"], "c09": ["side", "q3f", "q3b", "hit", "win"], "c10": ["side", "q3f", "q3b", "hit", "win"]};
+export const ITEM_ART = ["boost", "ball", "hball", "banana", "mic", "soccer"];
