@@ -1056,8 +1056,8 @@ function updateCamera(now, dt) {
   const k = (race.focus || race.me || race.racers[0]).k;
   if (toGo > 3000) {
     // 출발 전: 코스의 볼거리(다리·터널·해변)를 거쳐 날아온 뒤, 마리오카트처럼 내 캐릭터를 한 바퀴 돌며 보여 주고 뒤에 붙는다
-    const ORB = (e) => { // 내 카트 둘레: 대각 앞에서 시작해 한 바퀴 넘게 돌아 뒤로(반지름·높이는 경기 카메라 쪽으로)
-      const ang = k.h + Math.PI + (1 - e) * Math.PI * 2, R = 4.6 + (6.6 - 4.6) * e * e, h = 1.5 + (2.7 - 1.5) * e * e;
+    const ORB = (e) => { // 내 카트 둘레 한 바퀴(캐릭터는 늘 정면 그림)
+      const ang = k.h + (1 - e) * Math.PI * 2, R = 4.8, h = 1.6; // 정면에서 시작해 한 바퀴 돌아 다시 정면 → 카운트다운에서 뒤로 넘어감
       return new T.Vector3(k.x + Math.sin(ang) * R, k.y + h, k.z + Math.cos(ang) * R);
     };
     if (!race.introPath) {
@@ -1084,19 +1084,20 @@ function updateCamera(now, dt) {
       const [la, lg] = race.introLook, lx = la.x + (lg.x - la.x) * e, lz = la.z + (lg.z - la.z) * e, ly = la.y + (lg.y - la.y) * e;
       camera.lookAt(lx, ly + 1, lz);
       camPos.copy(camera.position); camLook.set(lx, ly + 1, lz);
-      $('courseCard').hidden = false; $('myCard').hidden = true;
+      $('courseCard').hidden = false; $('myCard').hidden = true; race.me && (race.me.view.forceFront = false);
     } else {
       const u = Math.min(1, (camIntro - flyDur) / race.orbDur), e = u * u * (3 - 2 * u); // 천천히 출발·천천히 도착
       camera.position.copy(ORB(e));
       const ly = k.y + 1.1 + e * 0.3;
       camera.lookAt(k.x, ly, k.z);
       camPos.copy(camera.position); camLook.set(k.x, ly, k.z);
-      $('courseCard').hidden = true; $('myCard').hidden = false;
+      $('courseCard').hidden = true; $('myCard').hidden = false; race.me.view.forceFront = true;
     }
     camera.fov = 60; camera.updateProjectionMatrix();
     return;
   }
   $('myCard').hidden = true;
+  if (race.me && race.me.view.forceFront) race.me.view.forceFront = false;
   $('courseCard').hidden = true;
   const fin = k.finished;
   const tall = camera.aspect < 1; // 폰 세로: 좌우가 좁으니 조금 더 뒤·위에서

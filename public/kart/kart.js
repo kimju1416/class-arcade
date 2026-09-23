@@ -127,7 +127,8 @@ uniform float fm;`)
       let rel = Math.atan2(dx, dz) - (k.h + this.body.rotation.y);
       rel = Math.atan2(Math.sin(rel), Math.cos(rel)); // +: 카트 왼쪽에서 봄
       const tx = this.tex, oct = Math.round(Math.abs(rel) / (Math.PI / 4)); // 0 앞 … 4 뒤
-      let want = [tx.front, tx.q3f, tx.side, tx.q3b, tx.back][oct];
+      // forceFront: 출발 전 한 바퀴 소개 때는 그림을 바꾸지 않고 늘 정면(카메라 쪽)을 본다 — 45도마다 그림이 바뀌며 끊겨 보이던 것
+      let want = this.forceFront ? tx.front : [tx.front, tx.q3f, tx.side, tx.q3b, tx.back][oct];
       if (!want.ok) want = fwd > 0 ? tx.front : tx.back;
       if (this.face === 'hit' && tx.hit.ok && fwd > 0) want = tx.hit;
       else if (this.face === 'win' && tx.win.ok && fwd > 0) want = tx.win;
