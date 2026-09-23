@@ -1056,15 +1056,15 @@ function updateCamera(now, dt) {
   const k = (race.focus || race.me || race.racers[0]).k;
   if (toGo > 3000) {
     // 출발 전: 코스의 볼거리(다리·터널·해변)를 거쳐 날아온 뒤, 마리오카트처럼 내 캐릭터를 한 바퀴 돌며 보여 주고 뒤에 붙는다
-    const ORB = (e) => { // 내 카트 둘레 한 바퀴(캐릭터는 늘 정면 그림)
-      const ang = k.h + (1 - e) * Math.PI * 2, R = 4.8, h = 1.6; // 정면에서 시작해 한 바퀴 돌아 다시 정면 → 카운트다운에서 뒤로 넘어감
+    const ORB = (e) => { // 캐릭터 정면 소개: 빙빙 돌지 않고 앞에서 천천히 다가간다(2D 그림이 자연스러운 범위 ±15도 안)
+      const ang = k.h - 0.26 + 0.5 * e, R = 6.2 - 2.6 * e, h = 1.9 - 0.45 * e;
       return new T.Vector3(k.x + Math.sin(ang) * R, k.y + h, k.z + Math.cos(ang) * R);
     };
     if (!race.introPath) {
       const d = race.def, su = (d.bridges && d.bridges[0][0] + 0.04) || (d.tunnels && d.tunnels[0][0]) || (d.open && d.open[0][0]) || 0.5;
       const a = tr.point(su * tr.N, 0), m = tr.point(tr.N * 0.93, 0), g = tr.point(-10 / tr.seg, 0);
       race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000);
-      race.orbDur = race.me ? Math.min(3.8, race.introDur * 0.55) : 0;
+      race.orbDur = race.me ? Math.min(2.8, race.introDur * 0.45) : 0;
       const end = race.me ? ORB(0).add(new T.Vector3(0, 3, 0)) : new T.Vector3(g.x - Math.sin(g.h) * 26, g.y + 12, g.z - Math.cos(g.h) * 26);
       race.introPath = new T.CatmullRomCurve3([new T.Vector3(a.x, a.y + 28, a.z), new T.Vector3((a.x + m.x) / 2, Math.max(a.y, m.y) + 45, (a.z + m.z) / 2), new T.Vector3(m.x, m.y + 22, m.z), end]);
       race.introStartT = now;
@@ -1074,7 +1074,7 @@ function updateCamera(now, dt) {
     // 로딩 중엔 t0가 임시값이다 → t0가 정해지거나 바뀌면(건너뛰기 제외) 길이를 다시 잡는다
     if (race.introT0 !== race.t0 && race.t0 - now < 60000 && !race.introSkip) {
       race.introT0 = race.t0; race.introStartT = now;
-      race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000); race.orbDur = race.me ? Math.min(3.8, race.introDur * 0.55) : 0;
+      race.introDur = Math.max(1.5, (race.t0 - now - 3000) / 1000); race.orbDur = race.me ? Math.min(2.8, race.introDur * 0.45) : 0;
     }
     camIntro = (now - race.introStartT) / 1000; // 실제 시계 기준(느린 기기에서 프레임 시간을 더하면 한 바퀴가 잘림)
     const flyDur = race.introDur - race.orbDur;
@@ -1088,7 +1088,7 @@ function updateCamera(now, dt) {
     } else {
       const u = Math.min(1, (camIntro - flyDur) / race.orbDur), e = u * u * (3 - 2 * u); // 천천히 출발·천천히 도착
       camera.position.copy(ORB(e));
-      const ly = k.y + 1.1 + e * 0.3;
+      const ly = k.y + 1.25;
       camera.lookAt(k.x, ly, k.z);
       camPos.copy(camera.position); camLook.set(k.x, ly, k.z);
       $('courseCard').hidden = true; $('myCard').hidden = false; race.me.view.forceFront = true;
