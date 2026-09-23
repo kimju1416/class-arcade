@@ -90,7 +90,8 @@ uniform float fm;`)
     }
     this.dizzy = new Dizzy(this.root, _star || (_star = starTex()));
     // 3D 캐릭터가 있으면 받아서 2D 그림과 바꾼다(받는 동안은 2D 그림)
-    if (has3D(char.id)) load3D(char.id).then((d) => {
+    if (opts.noDriver) { this.driver.visible = false; this.fist.visible = false; this.noDriver = true; if (car.steer) car.steer.visible = false; if (car.steerCol) car.steerCol.visible = false; } // 차량 선택 화면: 차만
+    else if (has3D(char.id)) load3D(char.id).then((d) => {
       const H = DRV_H * 0.95, s = H / d.size.y, m = new T.Mesh(d.geo, d.mat);
       m.scale.setScalar(s);
       m.position.set(-(d.min.x + d.size.x / 2) * s, car.driverY - 0.04 - d.min.y * s, car.driverZ - (d.min.z + d.size.z / 2) * s);
@@ -138,7 +139,7 @@ uniform float fm;`)
     this.shadow.material.opacity = 0.35 / (1 + k.hop * 0.8);
 
     // 운전자: 카메라가 보는 방향에 따라 8방향(앞·대각앞·옆·대각뒤·뒤, 오른쪽은 좌우 뒤집기)
-    if (cam && !this.m3d) {
+    if (cam && !this.m3d && !this.noDriver) {
       const dx = cam.position.x - k.x, dz = cam.position.z - k.z;
       const fwd = Math.sin(k.h + this.body.rotation.y) * dx + Math.cos(k.h + this.body.rotation.y) * dz;
       let rel = Math.atan2(dx, dz) - (k.h + this.body.rotation.y);

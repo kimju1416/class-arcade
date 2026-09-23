@@ -38,7 +38,7 @@ export class Garage {
   show(char, car) {
     if (this.view) this.scene.remove(this.view.root);
     // 돌림판은 카트의 방향(h)으로 돌린다 — 부모를 돌리면 운전자 그림이 카메라를 못 본다
-    this.view = new KartView(char, this.scene, { car });
+    this.view = new KartView(char, this.scene, { car, noDriver: true }); // 차만 보여 준다
     this.view.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     const tr = { point: () => ({ x: 0, y: 0, z: 0, h: 0 }) };
     this.k = makeKart('g', char, tr, 0, 0); this.k.x = this.k.z = 0; this.k.y = 0; this.k.h = 0;
@@ -60,7 +60,7 @@ export class Garage {
     this.cam.setViewOffset(w, h, wide ? w * 0.2 : 0, wide ? 0 : h * 0.22, w, h);
     this.cam.fov = wide ? 30 : 34;
     const dist = wide ? 8.6 : 8.6 / Math.max(0.42, w / h) * 0.5 + 4;
-    this.cam.position.set(0, 2.3 * dist / 8.6, dist); this.cam.lookAt(0, 0.9, 0);
+    this.cam.position.set(0, 2.0 * dist / 8.6, dist); this.cam.lookAt(0, 0.6, 0);
     this.cam.updateProjectionMatrix();
     this.renderer.render(this.scene, this.cam);
   }
