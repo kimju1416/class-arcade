@@ -2,7 +2,8 @@
 const WebSocket = require('ws');
 const URL = process.env.KART_WS || 'ws://localhost:3000/kart/ws';
 const open = () => new Promise((res, rej) => { const w = new WebSocket(URL); w.msgs = []; w.on('message', d => w.msgs.push(JSON.parse(d))); w.on('open', () => res(w)); w.on('error', rej); });
-const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const SLOW = process.env.KART_WS ? 4 : 1; // 라이브는 왕복 120ms라 기다림을 늘린다
+const wait = (ms) => new Promise(r => setTimeout(r, ms * SLOW));
 const last = (w, t) => [...w.msgs].reverse().find(m => m.type === t);
 let fail = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fail++; };
 (async () => {

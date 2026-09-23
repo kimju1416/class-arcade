@@ -260,7 +260,7 @@ async function startRace(opt) {
   if (q >= 2) {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    bloom = new UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), def.theme === 'neon' ? 0.55 : 0.3, 0.45, def.theme === 'neon' ? 0.78 : 0.92);
+    bloom = new UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), def.theme === 'neon' ? 0.55 : 0.18, 0.45, def.theme === 'neon' ? 0.78 : 0.97);
     composer.addPass(bloom); composer.addPass(new OutputPass());
     composer.setSize(innerWidth, innerHeight);
   } else { composer = null; bloom = null; }
@@ -678,7 +678,7 @@ function updateCamera(now, dt) {
   }
   const fin = k.finished;
   const tall = camera.aspect < 1; // 폰 세로: 좌우가 좁으니 조금 더 뒤·위에서
-  const back = (fin ? 7.5 : 5.6) + (tall ? 2.2 : 0), up = (fin ? 2.4 : 2.35) + (tall ? 0.9 : 0);
+  const back = (fin ? 7.5 : 6.6) + (tall ? 2.2 : 0), up = (fin ? 2.4 : 2.7) + (tall ? 0.9 : 0);
   let yawT = k.h + k.yawVis * 0.5 + (fin ? Math.sin(now / 2400) * 1.6 + Math.PI * 0.85 : 0);
   if (k.spd < -1) yawT += Math.PI;
   if (camYaw == null || toGo > 2900) camYaw = yawT;
@@ -690,7 +690,7 @@ function updateCamera(now, dt) {
   const ty = Math.max(k.y - k.hop * 0.6 + up, gy + 1.2);
   const f = toGo > 0 ? 1 - Math.exp(-dt * 3) : 1;
   camPos.x += (tx - camPos.x) * f; camPos.z += (tz - camPos.z) * f; camPos.y += (ty - camPos.y) * (1 - Math.exp(-dt * 8));
-  const lx = k.x + Math.sin(camYaw) * 4, lz = k.z + Math.cos(camYaw) * 4, ly = k.y + 1.25;
+  const lx = k.x + Math.sin(camYaw) * 6, lz = k.z + Math.cos(camYaw) * 6, ly = k.y + 1.4;
   camLook.set(lx, ly, lz);
   camera.position.copy(camPos);
   if (shake > 0) { shake -= dt; camera.position.x += (Math.random() - 0.5) * shake * 0.8; camera.position.y += (Math.random() - 0.5) * shake * 0.6; }
@@ -826,8 +826,6 @@ function frame() {
   for (const r of race.racers) if (!r.gone) r.view.update(r.k, dt, camera);
   const sun = race.world.sun, sd = sun.userData.dir;
   sun.position.set(mk.x + sd.x * 120, mk.y + sd.y * 120, mk.z + sd.z * 120); sun.target.position.set(mk.x, mk.y, mk.z);
-  race.world.sky.position.x = race.world.skyCap.position.x = camera.position.x;
-  race.world.sky.position.z = race.world.skyCap.position.z = camera.position.z;
   hud(now, dt);
   render();
 }

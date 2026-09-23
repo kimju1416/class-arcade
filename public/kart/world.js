@@ -2,6 +2,7 @@
 import * as T from 'three';
 import { mergeGeometries } from '/fps/addons/utils/BufferGeometryUtils.js';
 import { icon } from './icons.js';
+import { makeSky, makeWater, splatMaterial, plantPalms, plantCherries, plantPines, plantGrass, placeRocks, islands, mountains, skyline } from './scenery.js';
 
 const loader = new T.TextureLoader();
 function tex(name, rep = 1, srgb = true) {
@@ -31,16 +32,16 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
 
 export const THEMES = {
   beach: {
-    fog: 0xf2b58c, fogNear: 180, fogFar: 1300, hemi: [0xffd9b8, 0x6b4f3c, 1.25], sun: [0xffcf9a, 2.9], sunDir: [-0.6, 0.45, -0.65],
-    wall: 'stripe', curb: ['#e23b3b', '#ffffff'], sea: -1.1, exposure: 1.0, envInt: 0.9,
+    fog: 0xeaa27c, fogNear: 260, fogFar: 2600, hemi: [0xffd9b8, 0x6b4f3c, 1.25], sun: [0xffc88a, 3.0],
+    wall: 'stripe', curb: ['#e23b3b', '#ffffff'], sea: -1.1, exposure: 0.95, envInt: 0.9,
   },
   neon: {
-    fog: 0x1b1840, fogNear: 120, fogFar: 900, hemi: [0x6a6cff, 0x151228, 0.95], sun: [0x9fb2ff, 0.85], sunDir: [0.4, 0.8, 0.3],
+    fog: 0x1d1745, fogNear: 160, fogFar: 1700, hemi: [0x6a6cff, 0x151228, 0.95], sun: [0x9fb2ff, 0.85],
     wall: 'neon', curb: ['#ff2fa0', '#1ee6ff'], sea: null, exposure: 1.15, envInt: 0.7, night: true,
   },
   blossom: {
-    fog: 0xd6e6f4, fogNear: 200, fogFar: 1400, hemi: [0xdcefff, 0x5d7a45, 1.3], sun: [0xfff3e0, 3.1], sunDir: [0.5, 0.75, -0.4],
-    wall: 'wood', curb: ['#d93a3a', '#ffffff'], sea: -2.2, exposure: 1.0, envInt: 0.9,
+    fog: 0xc6daee, fogNear: 320, fogFar: 3000, hemi: [0xdcefff, 0x5d7a45, 1.2], sun: [0xfff3e0, 3.0],
+    wall: 'wood', curb: ['#d93a3a', '#ffffff'], sea: -2.2, exposure: 0.92, envInt: 0.9,
   },
 };
 
@@ -55,38 +56,19 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   // ---------- 조명 ----------
   const hemi = new T.HemisphereLight(th.hemi[0], th.hemi[1], th.hemi[2]); scene.add(hemi);
   const sun = new T.DirectionalLight(th.sun[0], th.sun[1]);
-  const sd = new T.Vector3(...th.sunDir).normalize();
+  // ---------- 하늘 (실시간 대기·구름 / 밤하늘) ----------
+  const sd = makeSky(scene, def.theme, renderer, W).clone();
+  if (def.theme === 'neon') sd.set(0.4, 0.8, 0.3).normalize();
+  sd.y = Math.max(sd.y, 0.32); sd.normalize(); // 해가 낮아도 그림자가 너무 길지 않게
   sun.userData.dir = sd;
+  scene.environmentIntensity = th.envInt;
   if (quality >= 2) {
     sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-    const c = sun.shadow.camera; c.left = -45; c.right = 45; c.top = 45; c.bottom = -45; c.near = 1; c.far = 260;
-    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
+    const c = sun.shadow.camera; c.left = -55; c.right = 55; c.top = 55; c.bottom = -55; c.near = 1; c.far = 300;
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05;
   }
   scene.add(sun); scene.add(sun.target);
   W.sun = sun;
-
-  // ---------- 하늘 ----------
-  const skyT = tex(def.sky, 1); skyT.wrapS = T.RepeatWrapping; skyT.repeat.set(2, 1); skyT.anisotropy = 4;
-  const SR = 1700, SH = (2 * Math.PI * SR / 2) * 1152 / 2048;
-  const skyGeo = new T.CylinderGeometry(SR, SR, SH, 64, 1, true);
-  const sky = new T.Mesh(skyGeo, new T.MeshBasicMaterial({ map: skyT, side: T.BackSide, fog: false, depthWrite: false, toneMapped: false }));
-  sky.position.y = SH / 2 - SH * 0.45 - 40; sky.renderOrder = -2;
-  scene.add(sky);
-  // 원통 위 뚜껑: 하늘 맨 위 색
-  const capCol = { beach: 0x6d8fd0, neon: 0x0a0d2a, blossom: 0x7fb5ee }[def.theme];
-  const cap = new T.Mesh(new T.CircleGeometry(SR, 48).rotateX(Math.PI / 2), new T.MeshBasicMaterial({ color: capCol, fog: false, depthWrite: false, toneMapped: false }));
-  cap.position.y = sky.position.y + SH / 2 - 1; cap.renderOrder = -2; scene.add(cap);
-  W.sky = sky; W.skyCap = cap;
-  // 반사용 환경맵
-  skyT.mapping = T.EquirectangularReflectionMapping;
-  const pm = new T.PMREMGenerator(renderer);
-  const envReady = () => {
-    const eq = skyT.clone(); eq.mapping = T.EquirectangularReflectionMapping; eq.repeat.set(1, 1); eq.needsUpdate = true;
-    scene.environment = pm.fromEquirectangular(eq).texture;
-    scene.environmentIntensity = th.envInt;
-  };
-  if (skyT.image) envReady(); else loader.manager.onLoad = () => { try { envReady(); } catch (e) { } };
-  W.envReady = envReady;
 
   // ---------- 지형 높이 ----------
   const b = tr.bounds, M = 300;
@@ -123,51 +105,53 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   };
   W.groundAt = groundAt;
 
-  // 지형 메시 (정점색으로 높이별 음영)
+  // 지형 메시: 모래·풀·바위·흙을 경사·높이·노이즈로 섞어 칠한다
   {
     const g = new T.PlaneGeometry(GW, GD, NX, NZ); g.rotateX(-Math.PI / 2);
-    const pos = g.attributes.position, col = new Float32Array(pos.count * 3);
+    const pos = g.attributes.position, col = new Float32Array(pos.count * 3), spl = new Float32Array(pos.count * 4);
+    const Hs = (i, j) => H[Math.max(0, Math.min(NZ, j)) * (NX + 1) + Math.max(0, Math.min(NX, i))];
     for (let k = 0; k < pos.count; k++) {
       const i = k % (NX + 1), j = Math.floor(k / (NX + 1));
       const h = H[j * (NX + 1) + i];
-      pos.setX(k, gx0 + i * RES); pos.setZ(k, gz0 + j * RES); pos.setY(k, h);
-      let r = 1, gg = 1, bl = 1;
-      if (def.theme === 'beach') { const wet = smooth(0.2, -1.4, h); r = 1 - wet * 0.35; gg = 1 - wet * 0.3; bl = 1 - wet * 0.2; }
-      if (def.theme === 'blossom') { const hi = smooth(12, 45, h); r = 1 - hi * 0.25; gg = 1 - hi * 0.15; bl = 1 - hi * 0.3; }
-      if (def.theme === 'neon') { r = gg = bl = 0.9; }
-      col[k * 3] = r; col[k * 3 + 1] = gg; col[k * 3 + 2] = bl;
+      const x = gx0 + i * RES, z = gz0 + j * RES;
+      pos.setX(k, x); pos.setZ(k, z); pos.setY(k, h);
+      const slope = Math.hypot(Hs(i + 1, j) - Hs(i - 1, j), Hs(i, j + 1) - Hs(i, j - 1)) / (2 * RES);
+      const nd = tr.nearest(x, z, 60).d;
+      const n1 = fbm(x * 0.02, z * 0.02), n2 = fbm(x * 0.07 + 40, z * 0.07);
+      let w0 = 0, w1 = 0, w2 = 0, w3 = 0, tint = 1;
+      if (def.theme === 'beach') {       // 0 모래, 1 풀, 2 바위, 3 흙
+        w0 = 1;
+        w1 = smooth(0.52, 0.66, n1) * smooth(1.0, 2.5, h) * smooth(edge + 3, edge + 12, nd);
+        w2 = smooth(0.28, 0.6, slope);
+        w3 = smooth(half + 0.5, half + 1.2, nd) * (1 - smooth(edge - 2, edge + 3, nd)) * 0.35 * n2;
+        tint = 1 - smooth(0.6, -1.3, h) * 0.38; // 젖은 모래
+      } else if (def.theme === 'blossom') { // 0 풀, 1 흙, 2 바위, 3 모래
+        w0 = 1;
+        w1 = (1 - smooth(half + 1, edge + 2.5, nd)) * 0.9 + smooth(0.62, 0.75, n2) * 0.5;
+        w2 = Math.max(smooth(0.35, 0.7, slope), smooth(25, 45, h - tr.y[tr.nearest(x, z, 200).i || 0]) * 0.8);
+        w3 = smooth(-0.6, -1.8, h - th.sea) ;
+        tint = 0.92 + n1 * 0.16;
+      } else {                            // 0 네온 타일, 1 아스팔트, 2 바위, 3 흙
+        w0 = 1 - smooth(edge + 14, edge + 40, nd);
+        w1 = 1 - w0; tint = 0.9;
+      }
+      spl[k * 4] = w0; spl[k * 4 + 1] = w1; spl[k * 4 + 2] = w2; spl[k * 4 + 3] = w3;
+      col[k * 3] = col[k * 3 + 1] = col[k * 3 + 2] = tint;
     }
     g.setAttribute('color', new T.BufferAttribute(col, 3));
+    g.setAttribute('splat', new T.BufferAttribute(spl, 4));
     g.computeVertexNormals();
-    const gt = tex(def.ground, 1);
-    gt.repeat.set(GW / (def.theme === 'neon' ? 14 : 18), GD / (def.theme === 'neon' ? 14 : 18));
-    const m = new T.MeshStandardMaterial({ map: gt, vertexColors: true, roughness: def.theme === 'neon' ? 0.35 : 0.95, metalness: def.theme === 'neon' ? 0.3 : 0 });
-    if (def.theme === 'neon') { m.emissiveMap = gt; m.emissive = new T.Color(0x9a9aff); m.emissiveIntensity = 0.35; }
+    const names = def.theme === 'beach' ? ['tex-sand', 'tex-grass', 'tex-rock', 'tex-dirt']
+      : def.theme === 'blossom' ? ['tex-grass', 'tex-dirt', 'tex-rock', 'tex-sand'] : ['tex-neon', 'tex-asphalt', 'tex-rock', 'tex-dirt'];
+    const m = splatMaterial(names, def.theme === 'neon' ? { rough: 0.35, metal: 0.3, scales: [12, 10, 14, 8] } : { scales: def.theme === 'beach' ? [11, 9, 16, 8] : [8, 7, 16, 11] });
+    if (def.theme === 'neon') { m.emissive = new T.Color(0x3a3a70); m.emissiveIntensity = 0.5; }
     const mesh = new T.Mesh(g, m); mesh.receiveShadow = true; scene.add(mesh);
-    // 지형 바깥 먼 바닥
-    const far = new T.Mesh(new T.CircleGeometry(3000, 32).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: def.theme === 'neon' ? 0x0c0b1c : def.theme === 'beach' ? 0x2a8fb0 : 0x6f9a62 }));
-    far.position.y = def.theme === 'beach' ? -6 : def.theme === 'neon' ? -0.3 : -2; scene.add(far);
+    const far = new T.Mesh(new T.CircleGeometry(3200, 32).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ color: def.theme === 'neon' ? 0x0c0b1c : def.theme === 'beach' ? 0x2a8fb0 : 0x6f9a62, roughness: 1 }));
+    far.position.y = def.theme === 'beach' ? -6 : def.theme === 'neon' ? -0.3 : -6; scene.add(far);
   }
 
-  // ---------- 바다·호수 ----------
-  if (th.sea != null) {
-    const nt = canvasTex(256, 256, (g, w, h) => {
-      const img = g.createImageData(w, h);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const nx = fbm(x / 32, y / 32), nz = fbm(x / 32 + 9, y / 32 + 4);
-        const k = (y * w + x) * 4;
-        img.data[k] = 128 + (nx - 0.5) * 120; img.data[k + 1] = 128 + (nz - 0.5) * 120; img.data[k + 2] = 255; img.data[k + 3] = 255;
-      }
-      g.putImageData(img, 0, 0);
-    }, false);
-    nt.repeat.set(90, 90);
-    const water = new T.Mesh(new T.CircleGeometry(2400, 64).rotateX(-Math.PI / 2), new T.MeshPhysicalMaterial({
-      color: def.theme === 'beach' ? 0x1592b8 : 0x3a8fc2, roughness: 0.08, metalness: 0.1, transmission: 0, transparent: true, opacity: 0.92,
-      normalMap: nt, normalScale: new T.Vector2(0.35, 0.35), clearcoat: 1, clearcoatRoughness: 0.1,
-    }));
-    water.position.y = th.sea; scene.add(water);
-    W.update.push((dt, t) => { nt.offset.set(t * 0.004, t * 0.0065); });
-  }
+  // ---------- 바다·호수 (반사하는 물) ----------
+  if (th.sea != null) makeWater(scene, th.sea, def.theme, W.sunDir || sd, quality, W);
 
   // ---------- 도로 ----------
   const roadT = canvasTex(512, 512, (g, w, h) => {
@@ -212,7 +196,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   {
     const curbT = canvasTex(64, 128, (g, w, h) => {
       g.fillStyle = def.theme === 'neon' ? th.curb[0] : th.curb[0]; g.fillRect(0, 0, w, h / 2);
-      g.fillStyle = th.curb[1]; g.fillRect(0, h / 2, w, h / 2);
+      g.fillStyle = def.theme === 'neon' ? th.curb[1] : '#dedad2'; g.fillRect(0, h / 2, w, h / 2);
     });
     const curbM = new T.MeshStandardMaterial({ map: curbT, roughness: 0.6 });
     if (def.theme === 'neon') { curbM.emissiveMap = curbT; curbM.emissive = new T.Color(0xffffff); curbM.emissiveIntensity = 0.45; }
@@ -258,7 +242,7 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     let wallT, wm;
     if (th.wall === 'stripe') {
       wallT = canvasTex(512, 64, (g, w, h) => {
-        for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#ffffff' : '#e23b3b'; g.fillRect(i * w / 8, 0, w / 8, h); }
+        for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#dcdcd6' : '#c92f2f'; g.fillRect(i * w / 8, 0, w / 8, h); }
         g.fillStyle = 'rgba(0,0,0,.15)'; g.fillRect(0, h - 8, w, 8);
       });
       wm = new T.MeshStandardMaterial({ map: wallT, roughness: 0.5 });
@@ -338,21 +322,11 @@ export function buildWorld(scene, tr, def, quality, renderer) {
   // ---------- 테마별 소품 ----------
   const dense = quality >= 2 ? 1 : 0.6;
   if (def.theme === 'beach') {
-    // 야자수
-    const parts = [];
-    for (let k = 0; k < 5; k++) {
-      const c = new T.CylinderGeometry(0.28 - k * 0.03, 0.34 - k * 0.03, 1.9, 7); c.translate(k * 0.22, 0.95 + k * 1.85, 0);
-      parts.push(colored(c, k % 2 ? 0x8a6038 : 0x9d6f42));
-    }
-    for (let k = 0; k < 8; k++) {
-      const leaf = new T.SphereGeometry(1, 6, 4); leaf.scale(2.6, 0.12, 0.62); leaf.translate(2.3, 0, 0);
-      leaf.rotateZ(-0.45); leaf.rotateY(k * Math.PI / 4 + 0.2); leaf.translate(1.1, 9.4, 0);
-      parts.push(colored(leaf, k % 2 ? 0x2f9a3e : 0x3fb34b));
-    }
-    const coco = new T.SphereGeometry(0.3, 6, 5); coco.translate(1.1, 9.05, 0.3); parts.push(colored(coco, 0x5a3a1c));
-    const palm = mergeGeometries(parts.map(p => p.index ? p.toNonIndexed() : p));
-    const palms = scatter(Math.round(170 * dense), 3, 55, (x, y) => y > th.sea + 0.4);
-    instanced(palm, vcMat, palms);
+    // 야자수 — 휜 줄기 + 사진 잎 카드
+    const palms = scatter(Math.round(210 * dense), 2.5, 70, (x, y) => y > th.sea + 0.5).map(o => ({ ...o, s: 0.85 + R() * 0.45 }));
+    plantPalms(scene, palms, quality, W);
+    // 모래언덕 풀
+    plantGrass(scene, scatter(Math.round(1400 * dense), 0.5, 40, (x, y) => y > 0.8).map(o => ({ ...o, s: 0.7 + R() * 0.6 })), W, 0xd8e0a0);
     // 파라솔
     const upar = [];
     const top = new T.ConeGeometry(2.1, 0.8, 10); top.translate(0, 2.6, 0); upar.push(colored(top, 0xffffff));
@@ -362,8 +336,9 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     const cols = [0xff5a5a, 0x2fb0ff, 0xffd23a, 0x3ad28f, 0xff8ad0];
     instanced(umb, new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }), umbs, true, (o, k) => new T.Color(cols[k % cols.length]));
     // 바위
-    const rock = colored(new T.IcosahedronGeometry(1.4, 0), 0x9a8a78);
-    instanced(rock, vcMat, scatter(Math.round(70 * dense), 6, 70).map(o => ({ ...o, s: o.s * 1.6, sy: o.s, rx: R(), rz: R() })));
+    placeRocks(scene, scatter(Math.round(90 * dense), 5, 70).map(o => ({ ...o, s: o.s * 1.5, sy: o.s * 1.1, rx: R() * 0.4, rz: R() * 0.4 })));
+    // 먼 바다의 섬과 등대
+    islands(scene, (b.minx + b.maxx) / 2, (b.minz + b.maxz) / 2, th.sea, R);
     // 요트
     const boat = [];
     const hull = new T.BoxGeometry(2.2, 1, 7); hull.translate(0, 0.5, 0); boat.push(colored(hull, 0xffffff));
@@ -428,27 +403,21 @@ export function buildWorld(scene, tr, def, quality, renderer) {
     const poolT = canvasTex(64, 64, (g) => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,230,180,.55)'); gr.addColorStop(1, 'rgba(255,230,180,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
     const pools = heads.map(o => ({ ...o, y: o.y - 7.75, s: 1, sx: 11, sy: 11, sz: 11, rx: 0 }));
     instanced(new T.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: poolT, transparent: true, depthWrite: false, blending: T.AdditiveBlending }), pools, false);
+    skyline(scene, (b.minx + b.maxx) / 2, (b.minz + b.maxz) / 2, bm, R);
     fireworks(scene, W, tr, R);
   }
 
   if (def.theme === 'blossom') {
-    const parts = [];
-    const trunk = new T.CylinderGeometry(0.35, 0.55, 4.5, 7); trunk.translate(0, 2.25, 0); parts.push(colored(trunk, 0x5a3d2b));
-    const br = new T.CylinderGeometry(0.15, 0.25, 3, 5); br.rotateZ(0.8); br.translate(-1, 4.6, 0); parts.push(colored(br, 0x5a3d2b));
-    const pinks = [0xffb7d0, 0xffc8dc, 0xff9fc2, 0xffd6e5, 0xf7a8c8];
-    const blobs = [[0, 6.2, 0, 2.6], [-2.2, 5.6, 0.6, 1.9], [2, 5.8, -0.5, 2], [0.4, 7.6, 0.7, 1.8], [-0.8, 6.4, -1.8, 1.7], [1.2, 6.6, 1.8, 1.6]];
-    blobs.forEach(([x, y, z, r], k) => { const s = new T.IcosahedronGeometry(r, 1); s.translate(x, y, z); parts.push(colored(s, pinks[k % pinks.length])); });
-    const cherry = mergeGeometries(parts.map(p => p.index ? p.toNonIndexed() : p));
-    const cherries = scatter(Math.round(230 * dense), 2.5, 60);
-    instanced(cherry, vcMat, cherries);
+    // 벚나무 — 꽃송이 사진 카드로 부풀린 수관
+    plantCherries(scene, scatter(Math.round(260 * dense), 2.5, 70).map(o => ({ ...o, s: 0.85 + R() * 0.4 })), quality, W);
     // 소나무
-    const pine = [];
-    const pt = new T.CylinderGeometry(0.25, 0.35, 3, 6); pt.translate(0, 1.5, 0); pine.push(colored(pt, 0x4a3322));
-    [[0, 4, 3.2, 4], [0, 6.4, 2.5, 3.6], [0, 8.5, 1.7, 3]].forEach(([x, y, r, h], k) => { const c = new T.ConeGeometry(r, h, 7); c.translate(x, y, 0); pine.push(colored(c, k % 2 ? 0x2f6e3a : 0x357d42)); });
-    const pineG = mergeGeometries(pine.map(p => p.index ? p.toNonIndexed() : p));
-    instanced(pineG, vcMat, scatter(Math.round(180 * dense), 25, 140).map(o => ({ ...o, s: o.s * 1.4 })));
+    plantPines(scene, scatter(Math.round(200 * dense), 22, 150).map(o => ({ ...o, s: 1 + R() * 0.6 })), quality, W);
     // 바위
-    instanced(colored(new T.DodecahedronGeometry(1.3, 0), 0x8e8b86), vcMat, scatter(Math.round(80 * dense), 3, 50).map(o => ({ ...o, sy: o.s * 0.7, rx: R(), rz: R() })));
+    placeRocks(scene, scatter(Math.round(90 * dense), 3, 60).map(o => ({ ...o, s: o.s * 1.3, sy: o.s * 0.9, rx: R() * 0.4, rz: R() * 0.4 })));
+    // 들풀과 꽃
+    plantGrass(scene, scatter(Math.round(3200 * dense), 0.3, 45).map(o => ({ ...o, s: 0.7 + R() * 0.7 })), W);
+    // 먼 산맥
+    mountains(scene, (b.minx + b.maxx) / 2, (b.minz + b.maxz) / 2, 0, R);
     // 청사초롱
     const lanternG = new T.CylinderGeometry(0.35, 0.35, 0.7, 10);
     const lanterns = [];
