@@ -2,7 +2,7 @@
 // 게임 코드(html/js/css)는 늘 서버에서 먼저 받는다(network-first, 끊기면 저장본).
 // 그림·소리를 바꾸면 VERSION을 올린다.
 const VERSION = 'kart-media-3';
-const MEDIA = /\/(kart\/(tex|chars|audio|items)\/|fps\/three\.(core|module)\.js|fps\/addons\/)/;
+const MEDIA = /\/(kart\/(tex|chars|chars3d|audio|items)\/|fps\/three\.(core|module)\.js|fps\/addons\/)/;
 self.addEventListener('install', (e) => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k !== VERSION && k.startsWith('kart-')) await caches.delete(k);
