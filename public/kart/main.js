@@ -487,8 +487,8 @@ async function startRace(opt) {
   if (showControlsHint) store.set('controls_seen', true);
   $('controlsHint').hidden = !race.controlsHintUntil;
   $('controlsHint').innerHTML = IS_TOUCH
-    ? '<b>처음 조작 안내</b><span>왼쪽 화면을 밀어 핸들 · 아래로 당겨 브레이크</span><span>오른쪽 <strong>그림</strong>은 아이템 · 큰 버튼은 드리프트</span>'
-    : '<b>처음 조작 안내</b><span>← → 핸들 · Space 드리프트 · X 아이템 · ↓ 브레이크</span><span>가속은 자동이에요</span>';
+    ? '<b>처음 조작 안내</b><span>왼쪽 화면을 밀어 핸들 · 아래로 당겨 브레이크 · 가속은 자동</span><span><img class="hint-item" src="/kart/ui-controls/item-control.webp" alt="아이템"> 아이템 버튼 · <img class="hint-drift" src="/kart/ui-controls/drift-control.webp" alt="드리프트"> 드리프트 버튼</span>'
+    : '<b>처음 조작 안내</b><span>← → 핸들 · <img class="hint-space" src="/kart/ui-controls/spacebar-control.webp" alt="Space"> <img class="hint-drift" src="/kart/ui-controls/drift-control.webp" alt="드리프트"> · X <img class="hint-item" src="/kart/ui-controls/item-control.webp" alt="아이템"> · ↓ 브레이크</span><span>가속은 자동이에요</span>';
   audio.init(); audio.bgm(null); audio.musicVol(0.42); audio.musicRate(1);
   race.crowd = null;
   camIntro = 0; camYaw = null; lookBack = false;
@@ -932,7 +932,6 @@ function hold(id, key) {
   el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
 }
 hold('tDrift', 'drift');
-for (const [ev, v] of [['pointerdown', true], ['pointerup', false], ['pointercancel', false], ['pointerleave', false]]) $('tBack').addEventListener(ev, (e) => { e.preventDefault(); lookBack = v; });
 $('courseCard').addEventListener('pointerdown', () => { if (race && !race.online && race.t0 - race.clock() > 3200) { race.t0 = race.clock() + 3100; race.introSkip = true; } });
 // 원 조이스틱 — 왼쪽 영역 아무 데나 누르면 그 자리가 중심. 좌우 = 핸들(아날로그), 아래로 깊이 = 브레이크
 const joy = { id: null, cx: 0, cy: 0, x: 0, y: 0 };
