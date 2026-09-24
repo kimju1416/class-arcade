@@ -49,7 +49,7 @@ const camera = new T.PerspectiveCamera(70, 1, 0.3, 4200);
 let scene = new T.Scene();
 let composer = null, bloom = null;
 let mirrorEnabled = store.get('mirror', true), rearTarget = null;
-const rearCamera = new T.PerspectiveCamera(58, 320 / 88, 0.2, 900);
+const rearCamera = new T.PerspectiveCamera(58, 320 / 88, 0.2, 4200);
 const mirrorScene = new T.Scene();
 const mirrorCamera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
 mirrorCamera.position.z = 1;
@@ -457,6 +457,7 @@ async function startRace(opt) {
     }
   }
   $('rankOf').textContent = '/ ' + race.racers.length;
+  $('rankSideOf').textContent = '/ ' + race.racers.length;
   $('teamBar').hidden = !race.teams;
   drawMiniBase();
   // 셰이더를 미리 굽는다 — 안 하면 첫 화면에서 몇 초 멈춘다
@@ -593,7 +594,7 @@ function setItem(k) {
   g.clearRect(0, 0, 160, 160);
   if (k) g.drawImage(icon(k, 160), 8, 8, 144, 144);
   $('itemN').textContent = '';
-  const tb = $('tItem'); if (tb.dataset.k !== (k || '')) { tb.dataset.k = k || ''; tb.style.backgroundImage = k ? `url(${iconURL[k] || (iconURL[k] = icon(k, 128).toDataURL())})` : ''; tb.classList.toggle('has', !!k); }
+  const tb = $('tItem'); if (tb.dataset.k !== (k || '')) { tb.dataset.k = k || ''; $('tItemIcon').src = k ? (iconURL[k] || (iconURL[k] = icon(k, 128).toDataURL())) : '/kart/ui-controls/item-control.webp'; tb.classList.toggle('has', !!k); }
 }
 function giveItem(r) {
   const k = r.k;
@@ -1063,7 +1064,7 @@ function hud(now, dt) {
   const me = race.me, k = me.k;
   const ranked = rankList(), rk = ranked.indexOf(me) + 1;
   if (race.startRank == null) race.startRank = rk;
-  if (rk !== race.lastRank) { $('rankNum').textContent = rk; const e = $('rankNum'); e.classList.remove('bump'); void e.offsetWidth; e.classList.add('bump'); race.lastRank = rk; }
+  if (rk !== race.lastRank) { $('rankNum').textContent = rk; $('rankSideNum').textContent = rk; const e = $('rankNum'); e.classList.remove('bump'); void e.offsetWidth; e.classList.add('bump'); race.lastRank = rk; }
   const lap = Math.max(1, Math.min(race.laps, Math.floor(k.prog / N) + 1));
   $('lapNum').textContent = lap;
   $('timeTxt').textContent = fmt(k.finished ? (k.finTime != null ? k.finTime : race.myFinT - race.t0) : Math.max(0, now - race.t0));
@@ -1379,7 +1380,7 @@ function render() {
 // 메인 레이스와 같은 프레임마다 백미러를 갱신해 움직임이 끊기지 않게 한다.
 function renderRearMirror() {
   const frame = $('rearMirror'), view = $('rearMirrorView');
-  if (!race || race.ended || race.podium || race.phase !== 'race' || !mirrorEnabled || $('hud').hidden) { frame.hidden = true; return; }
+  if (!race || race.ended || race.podium || !mirrorEnabled || $('hud').hidden) { frame.hidden = true; return; }
   frame.hidden = false;
   const rect = view.getBoundingClientRect();
   if (rect.width < 1 || rect.height < 1) return;
@@ -1399,7 +1400,9 @@ function renderRearMirror() {
     mirrorMaterial.map = rearTarget.texture;
     mirrorMaterial.needsUpdate = true;
   }
-  const k = focus.k, fx = Math.sin(k.h), fz = Math.cos(k.h);
+  rearCamera.aspect = targetW / targetH;
+  rearCamera.updateProjectionMatrix();
+  const k = focus.k, h = k.h + k.yawVis * 0.5, fx = Math.sin(h), fz = Math.cos(h);
   rearCamera.position.set(k.x + fx * 0.45, k.y + 1.35, k.z + fz * 0.45);
   rearCamera.lookAt(k.x - fx * 26, k.y + 0.5, k.z - fz * 26);
   rearCamera.updateMatrixWorld();

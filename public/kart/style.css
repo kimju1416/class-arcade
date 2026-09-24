@@ -144,10 +144,16 @@ input:focus { border-color: var(--yel); }
 #itemSlot canvas { width: 100%; height: 100%; }
 #itemN { position: absolute; right: -6px; bottom: -6px; background: var(--red); color: #fff; font-size: 18px; padding: 0 7px; border-radius: 10px; }
 #itemN:empty { display: none; }
-#rankBox { position: absolute; z-index: 5; right: calc(14px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top)); display: flex; align-items: baseline; padding: 3px 11px 6px; border: 1px solid rgba(255,255,255,.44); border-radius: 12px; color: #fff; transform: skewX(-7deg); background: linear-gradient(135deg, rgba(17,24,39,.88), rgba(6,9,17,.65)); box-shadow: 0 4px 16px rgba(0,0,0,.28); }
-#rankNum { font-weight: 400; font-size: 50px; line-height: .95; color: var(--yel); -webkit-text-stroke: 1.5px #3a2000; paint-order: stroke fill; text-shadow: 0 3px 0 #c2410c; }
-#rankBox span { font-size: 21px; margin-left: 2px; -webkit-text-stroke: 1px #1a1405; paint-order: stroke fill; }
-#rankBox small { font-size: 13px; margin-left: 5px; color: #dfe4ef; }
+#rankBox { position: absolute; right: 22px; bottom: calc(18px + env(safe-area-inset-bottom)); display: flex; align-items: baseline; color: #fff; transform: skewX(-8deg); }
+#rankNum { font-weight: 400; font-size: 104px; line-height: .9; color: var(--yel); -webkit-text-stroke: 3px #3a2000; paint-order: stroke fill; text-shadow: 0 6px 0 #c2410c; }
+#rankBox span { font-size: 40px; margin-left: 2px; -webkit-text-stroke: 2px #1a1405; paint-order: stroke fill; }
+#rankBox small { font-size: 20px; margin-left: 6px; color: #dfe4ef; }
+#rankSide { position: absolute; z-index: 5; right: calc(14px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top)); display: grid; justify-items: center; width: 96px; padding: 5px 9px 6px; border: 1px solid rgba(255,255,255,.48); border-radius: 12px; color: #fff; background: linear-gradient(135deg, rgba(17,24,39,.9), rgba(6,9,17,.72)); box-shadow: 0 4px 16px rgba(0,0,0,.28); }
+.rankSideLabel { color: #dfe4ef; font: 800 10px/1.2 Pretendard, sans-serif; }
+#rankSide > div { display: flex; align-items: baseline; gap: 2px; }
+#rankSideNum { color: var(--yel); font: 400 30px/.95 var(--disp); -webkit-text-stroke: 1px #3a2000; paint-order: stroke fill; text-shadow: 0 2px 0 #c2410c; }
+#rankSide > div > span { font-size: 14px; }
+#rankSide small { margin-left: 3px; color: #dfe4ef; font-size: 11px; }
 #rankNum.bump { animation: rbump .35s; }
 @keyframes rbump { 40% { transform: scale(1.25); } }
 #lapBox { position: absolute; z-index: 4; top: calc(78px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); text-align: right; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
@@ -194,7 +200,7 @@ input:focus { border-color: var(--yel); }
 #touch { display: none; }
 body.touch #touch { display: block; }
 #touch button { pointer-events: auto; position: absolute; border: 2px solid rgba(255,255,255,.55); background: rgba(10,14,24,.42); color: #fff; font-family: Pretendard, sans-serif; font-weight: 800; border-radius: 50%; touch-action: none; user-select: none; -webkit-user-select: none; backdrop-filter: blur(3px); }
-#touch button.on { background: rgba(255,210,58,.55); border-color: var(--yel); }
+#touch button.on { background-color: rgba(255,210,58,.55); border-color: var(--yel); }
 /* 떠오르는 원 조이스틱: 왼쪽 아무 데나 누르면 그 자리에 생긴다 */
 #joyZone { position: absolute; left: 0; bottom: 0; width: 52%; height: 62%; pointer-events: auto; touch-action: none; }
 #joy { position: absolute; left: 34px; bottom: calc(26px + env(safe-area-inset-bottom)); width: 132px; height: 132px; pointer-events: none; }
@@ -204,9 +210,12 @@ body.touch #touch { display: block; }
 #joy.on .knob { transition: none; }
 #joy .hint { position: absolute; left: 0; right: 0; top: -22px; text-align: center; font: 700 12px Pretendard, sans-serif; color: rgba(255,255,255,.75); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
 #joy.on .hint, #joy.used .hint { display: none; }
-#tDrift { width: 96px; height: 96px; right: 18px; bottom: calc(22px + env(safe-area-inset-bottom)); font-size: 0; background-image: url('/kart/ui-controls/drift-control.webp'); background-size: 104%; background-position: center; background-repeat: no-repeat; }
-#tItem { width: 76px; height: 76px; right: 126px; bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 0; background-image: url('/kart/ui-controls/item-control.webp'); background-size: 84%; background-position: center; background-repeat: no-repeat; }
-#tItem.has { background-size: 84%; background-position: center; background-repeat: no-repeat; color: transparent; border-color: var(--yel); }
+#tDrift { width: 96px; height: 96px; right: 18px; bottom: calc(22px + env(safe-area-inset-bottom)); font-size: 0; }
+#tItem { width: 76px; height: 76px; right: 126px; bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 0; }
+.touch-icon { display: block; width: 88%; height: 88%; object-fit: contain; pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0,0,0,.45)); }
+#tItemIcon { width: 84%; height: 84%; }
+#tDrift .drift-icon { width: 100%; height: 100%; }
+#tItem.has { color: transparent; border-color: var(--yel); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 #controlsHint { position: absolute; top: calc(64px + env(safe-area-inset-top)); left: 50%; z-index: 6; width: max-content; max-width: min(480px, calc(100vw - 32px)); padding: 12px 18px; transform: translateX(-50%); display: grid; gap: 4px; border: 1px solid rgba(255,255,255,.22); border-radius: 14px; background: rgba(8,12,22,.82); box-shadow: 0 8px 26px rgba(0,0,0,.3); color: #eef3ff; text-align: center; font: 600 13px/1.45 Pretendard, system-ui, sans-serif; pointer-events: none; backdrop-filter: blur(8px); animation: hint-in .25s ease-out; }
 #controlsHint[hidden] { display: none; }
@@ -216,14 +225,18 @@ body.touch #touch { display: block; }
 #controlsHint img.hint-space { width: 62px; height: 25px; }
 @keyframes hint-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-body.touch #speedo { display: block; left: 14px; top: calc(101px + env(safe-area-inset-top)); bottom: auto; padding: 4px 9px 6px; border: 1px solid rgba(255,255,255,.42); border-radius: 11px; background: rgba(8,12,22,.72); }
+body.touch #speedo { display: block; left: 14px; top: auto; bottom: calc(174px + env(safe-area-inset-bottom)); padding: 4px 9px 6px; border: 1px solid rgba(255,255,255,.42); border-radius: 11px; background: rgba(8,12,22,.72); }
 body.touch #speedo b { font-size: 31px; line-height: 1; }
 body.touch #speedo small { font-size: 11px; }
 body.touch #driftLv { width: 76px; height: 4px; margin-top: 3px; }
-body.touch #rankBox { right: calc(10px + env(safe-area-inset-right)); left: auto; top: calc(11px + env(safe-area-inset-top)); bottom: auto; padding: 2px 8px 4px; }
-body.touch #rankNum { font-size: 39px; }
-body.touch #rankBox span { font-size: 17px; }
-body.touch #rankBox small { font-size: 11px; }
+body.touch #rankBox { right: auto; left: 16px; top: calc(116px + env(safe-area-inset-top)); bottom: auto; }
+body.touch #rankNum { font-size: 64px; }
+body.touch #rankBox span { font-size: 26px; }
+body.touch #rankBox small { font-size: 14px; }
+body.touch #rankSide { right: calc(10px + env(safe-area-inset-right)); top: calc(11px + env(safe-area-inset-top)); width: 82px; }
+body.touch #rankSideNum { font-size: 26px; }
+body.touch #rankSide > div > span { font-size: 12px; }
+body.touch #rankSide small { font-size: 10px; }
 body.touch .how-touch { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 body.touch .how > div:first-child { display: none; }
 
@@ -314,6 +327,10 @@ body.touch .how > div:first-child { display: none; }
 }
 @media (max-height: 480px) and (orientation: landscape) {
   #tItem { right: 126px; bottom: calc(40px + env(safe-area-inset-bottom)); }
+  body.touch #speedo { left: 14px; top: calc(97px + env(safe-area-inset-top)); bottom: auto; }
+  body.touch #rankBox { left: 14px; top: calc(151px + env(safe-area-inset-top)); bottom: auto; }
+  body.touch #rankNum { font-size: 48px; }
+  body.touch #rankBox span { font-size: 22px; }
   .lead, .how { display: none; }
   .logo b { font-size: 70px; }
   .sel-wrap { grid-template-columns: 34% 1fr; grid-template-rows: none; }
@@ -322,7 +339,7 @@ body.touch .how > div:first-child { display: none; }
   #controlsHint { top: calc(54px + env(safe-area-inset-top)); }
   #mini { top: calc(101px + env(safe-area-inset-top)); width: 82px; height: 82px; }
   #lapBox { top: calc(57px + env(safe-area-inset-top)); }
-  #speedo { top: calc(97px + env(safe-area-inset-top)); }
+  #speedo { top: calc(97px + env(safe-area-inset-top)); bottom: auto; }
   .load-picks { gap: 7px; }
 }
 
@@ -411,7 +428,7 @@ body.spec #teamBar { top: calc(52px + env(safe-area-inset-top)); }
 .specnav button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: #fff; }
 body.spec #board, body.spec #specBar { display: flex; }
 body.spec #board { display: block; }
-body.spec #itemSlot, body.spec #rankBox, body.spec #speedo, body.spec #touch, body.spec #bPause { display: none !important; }
+body.spec #itemSlot, body.spec #rankBox, body.spec #rankSide, body.spec #speedo, body.spec #touch, body.spec #bPause { display: none !important; }
 #podTitle { position: fixed; left: 0; right: 0; top: 12%; z-index: 7; text-align: center; pointer-events: none; animation: cpop .6s cubic-bezier(.2, 1.4, .4, 1); }
 #podTitle small { display: block; font-weight: 800; color: #fff; font-size: 16px; letter-spacing: .1em; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
 #podTitle b { display: block; font-family: var(--disp); font-weight: 400; font-size: clamp(40px, 8vw, 84px); color: var(--yel); -webkit-text-stroke: 3px #3a2000; paint-order: stroke fill; text-shadow: 0 6px 0 #c2410c; }

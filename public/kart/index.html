@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/kart/style.css?v=16">
+<link rel="stylesheet" href="/kart/style.css?v=17">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -146,6 +146,7 @@
 <div id="hud" hidden>
   <div id="itemSlot"><canvas id="itemCv" width="160" height="160"></canvas><span id="itemN"></span></div>
   <div id="rankBox"><b id="rankNum">1</b><span>위</span><small id="rankOf">/ 8</small></div>
+  <div id="rankSide"><span class="rankSideLabel">현재 순위</span><div><b id="rankSideNum">1</b><span>위</span><small id="rankSideOf">/ 8</small></div></div>
   <div id="lapBox"><div class="lap">LAP <b id="lapNum">1</b><span>/3</span></div><div class="time" id="timeTxt">0:00.00</div></div>
   <div id="rearMirror" hidden aria-label="실시간 백미러"><div id="rearMirrorView"></div><span>REAR VIEW</span><i></i></div>
   <canvas id="mini" width="300" height="300"></canvas>
@@ -165,8 +166,8 @@
   <div id="touch">
     <div id="joyZone" aria-label="조이스틱: 좌우로 밀어 핸들, 아래로 당기면 브레이크"></div>
     <div id="joy"><div class="base"></div><div class="knob"></div><span class="hint">밀어서 핸들</span></div>
-    <button id="tItem" aria-label="아이템 사용"><span class="sr-only">아이템 사용</span></button>
-    <button id="tDrift" aria-label="드리프트"><span class="sr-only">드리프트</span></button>
+    <button id="tItem" aria-label="아이템 사용"><img id="tItemIcon" class="touch-icon" src="/kart/ui-controls/item-control.webp" alt=""><span class="sr-only">아이템 사용</span></button>
+    <button id="tDrift" aria-label="드리프트"><img class="touch-icon drift-icon" src="/kart/ui-controls/drift-control.webp" alt=""><span class="sr-only">드리프트</span></button>
   </div>
 </div>
 <div id="podTitle" hidden></div>
@@ -201,6 +202,6 @@
 <div id="toast"></div>
 
 <script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
-<script type="module" src="/kart/main.js?v=28"></script>
+<script type="module" src="/kart/main.js?v=29"></script>
 </body>
 </html>
