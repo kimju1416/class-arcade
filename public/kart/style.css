@@ -139,13 +139,13 @@ input:focus { border-color: var(--yel); }
 #itemSlot canvas { width: 100%; height: 100%; }
 #itemN { position: absolute; right: -6px; bottom: -6px; background: var(--red); color: #fff; font-size: 18px; padding: 0 7px; border-radius: 10px; }
 #itemN:empty { display: none; }
-#rankBox { position: absolute; right: 16px; top: calc(12px + env(safe-area-inset-top)); display: flex; align-items: baseline; padding: 3px 11px 6px; border: 1px solid rgba(255,255,255,.44); border-radius: 12px; color: #fff; transform: skewX(-7deg); background: linear-gradient(135deg, rgba(17,24,39,.88), rgba(6,9,17,.65)); box-shadow: 0 4px 16px rgba(0,0,0,.28); }
+#rankBox { position: absolute; z-index: 5; right: calc(14px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top)); display: flex; align-items: baseline; padding: 3px 11px 6px; border: 1px solid rgba(255,255,255,.44); border-radius: 12px; color: #fff; transform: skewX(-7deg); background: linear-gradient(135deg, rgba(17,24,39,.88), rgba(6,9,17,.65)); box-shadow: 0 4px 16px rgba(0,0,0,.28); }
 #rankNum { font-weight: 400; font-size: 50px; line-height: .95; color: var(--yel); -webkit-text-stroke: 1.5px #3a2000; paint-order: stroke fill; text-shadow: 0 3px 0 #c2410c; }
 #rankBox span { font-size: 21px; margin-left: 2px; -webkit-text-stroke: 1px #1a1405; paint-order: stroke fill; }
 #rankBox small { font-size: 13px; margin-left: 5px; color: #dfe4ef; }
 #rankNum.bump { animation: rbump .35s; }
 @keyframes rbump { 40% { transform: scale(1.25); } }
-#lapBox { position: absolute; top: calc(78px + env(safe-area-inset-top)); right: 17px; text-align: right; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
+#lapBox { position: absolute; z-index: 4; top: calc(78px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); text-align: right; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
 #lapBox .lap { font-size: 22px; }
 #lapBox .lap b { font-weight: 400; font-size: 34px; color: var(--yel); }
 #lapBox .time { font-family: Pretendard, sans-serif; font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
@@ -157,7 +157,7 @@ input:focus { border-color: var(--yel); }
 #rearMirror span { position: absolute; left: 0; right: 0; bottom: 1px; color: #dce7f6; font: 800 8px/12px Pretendard, sans-serif; letter-spacing: .2em; text-align: center; text-shadow: 0 1px 2px #000; }
 #rearMirror i { position: absolute; left: 50%; bottom: -7px; width: 23px; height: 5px; transform: translateX(-50%); border-radius: 0 0 5px 5px; background: linear-gradient(#a9b7ca,#4c596c); box-shadow: 0 2px 3px rgba(0,0,0,.4); }
 #rearMirror i::after { content: ""; position: absolute; left: 50%; top: 4px; width: 38px; height: 3px; transform: translateX(-50%); border-radius: 50%; background: #435064; }
-#mini { position: absolute; right: 12px; top: calc(124px + env(safe-area-inset-top)); width: 150px; height: 150px; opacity: .95; }
+#mini { position: absolute; z-index: 3; right: 12px; top: calc(124px + env(safe-area-inset-top)); width: 150px; height: 150px; opacity: .95; }
 #speedo { position: absolute; left: 20px; bottom: calc(18px + env(safe-area-inset-bottom)); text-shadow: 0 2px 0 rgba(0,0,0,.6); }
 #speedo b { font-weight: 400; font-size: 48px; font-variant-numeric: tabular-nums; }
 #speedo small { font-family: Pretendard, sans-serif; font-weight: 700; margin-left: 4px; }
@@ -214,7 +214,7 @@ body.touch #speedo { display: block; left: 14px; top: calc(101px + env(safe-area
 body.touch #speedo b { font-size: 31px; line-height: 1; }
 body.touch #speedo small { font-size: 11px; }
 body.touch #driftLv { width: 76px; height: 4px; margin-top: 3px; }
-body.touch #rankBox { right: 12px; left: auto; top: calc(11px + env(safe-area-inset-top)); bottom: auto; padding: 2px 8px 4px; }
+body.touch #rankBox { right: calc(10px + env(safe-area-inset-right)); left: auto; top: calc(11px + env(safe-area-inset-top)); bottom: auto; padding: 2px 8px 4px; }
 body.touch #rankNum { font-size: 39px; }
 body.touch #rankBox span { font-size: 17px; }
 body.touch #rankBox small { font-size: 11px; }
