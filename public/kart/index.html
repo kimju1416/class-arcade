@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/kart/style.css?v=15">
+<link rel="stylesheet" href="/kart/style.css?v=16">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -36,8 +36,8 @@
     </div>
     <button id="bTV" class="tvlink">선생님용 · 교실 대회 열기 <small>TV에 QR을 띄우고 학생은 폰으로 참가</small></button>
     <div class="how">
-      <div><kbd>←</kbd><kbd>→</kbd> 핸들 <kbd>Space</kbd> 드리프트 <kbd>X</kbd> 아이템 <kbd>↓</kbd> 브레이크</div>
-      <div class="how-touch">왼쪽 화면을 밀어 핸들 · 아래로 당겨 브레이크 · 오른쪽 그림은 아이템 · 가속은 자동</div>
+      <div class="how-keyboard"><span><kbd>←</kbd><kbd>→</kbd> 핸들</span><span class="how-action"><img class="how-space" src="/kart/ui-controls/spacebar-control.webp" alt="Space 키"><img class="how-drift" src="/kart/ui-controls/drift-control.webp" alt="드리프트"></span><span class="how-action"><kbd>X</kbd><img class="how-item" src="/kart/ui-controls/item-control.webp" alt="아이템"></span><span><kbd>↓</kbd> 브레이크</span></div>
+      <div class="how-touch"><span>왼쪽 화면을 밀어 핸들 · 아래로 당겨 브레이크 · 가속은 자동</span><span class="how-action"><img class="how-item" src="/kart/ui-controls/item-control.webp" alt="아이템"><img class="how-drift" src="/kart/ui-controls/drift-control.webp" alt="드리프트"></span></div>
     </div>
   </div>
   <div class="corner">
@@ -166,8 +166,7 @@
     <div id="joyZone" aria-label="조이스틱: 좌우로 밀어 핸들, 아래로 당기면 브레이크"></div>
     <div id="joy"><div class="base"></div><div class="knob"></div><span class="hint">밀어서 핸들</span></div>
     <button id="tItem" aria-label="아이템 사용"><span class="sr-only">아이템 사용</span></button>
-    <button id="tDrift" aria-label="드리프트">드리프트</button>
-    <button id="tBack" aria-label="뒤 보기">뒤</button>
+    <button id="tDrift" aria-label="드리프트"><span class="sr-only">드리프트</span></button>
   </div>
 </div>
 <div id="podTitle" hidden></div>
@@ -202,6 +201,6 @@
 <div id="toast"></div>
 
 <script type="importmap">{"imports":{"three":"/fps/three.module.js"}}</script>
-<script type="module" src="/kart/main.js?v=27"></script>
+<script type="module" src="/kart/main.js?v=28"></script>
 </body>
 </html>
