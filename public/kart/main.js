@@ -48,7 +48,7 @@ renderer.shadowMap.type = T.PCFShadowMap;
 const camera = new T.PerspectiveCamera(70, 1, 0.3, 4200);
 let scene = new T.Scene();
 let composer = null, bloom = null;
-let mirrorEnabled = store.get('mirror', true), rearTarget = null, rearLastRender = 0;
+let mirrorEnabled = store.get('mirror', true), rearTarget = null;
 const rearCamera = new T.PerspectiveCamera(58, 320 / 88, 0.2, 900);
 const mirrorScene = new T.Scene();
 const mirrorCamera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
@@ -1377,18 +1377,21 @@ function render() {
   renderRearMirror();
 }
 
-// 백미러는 같은 WebGL 렌더러에서 저해상도로 초당 약 12회만 갱신한다.
+// 메인 레이스와 같은 프레임마다 백미러를 갱신해 움직임이 끊기지 않게 한다.
 function renderRearMirror() {
   const frame = $('rearMirror'), view = $('rearMirrorView');
   if (!race || race.ended || race.podium || race.phase !== 'race' || !mirrorEnabled || $('hud').hidden) { frame.hidden = true; return; }
   frame.hidden = false;
-  const now = performance.now();
-  if (now - rearLastRender < 80) return;
-  rearLastRender = now;
+  const rect = view.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return;
   const focus = race.focus || race.me || race.racers[Math.min(race.specIdx, race.racers.length - 1)] || race.racers[0];
   if (!focus || !focus.k || !focus.view) return;
-  if (!rearTarget) {
-    rearTarget = new T.WebGLRenderTarget(320, 88, { depthBuffer: true, stencilBuffer: false });
+  const renderScale = Math.min(2, Math.max(1.25, devicePixelRatio || 1));
+  const targetW = Math.max(240, Math.min(480, Math.round(rect.width * renderScale)));
+  const targetH = Math.max(72, Math.min(160, Math.round(rect.height * renderScale)));
+  if (!rearTarget || Math.abs(rearTarget.width - targetW) > 32 || Math.abs(rearTarget.height - targetH) > 16) {
+    if (rearTarget) rearTarget.dispose();
+    rearTarget = new T.WebGLRenderTarget(targetW, targetH, { depthBuffer: true, stencilBuffer: false });
     rearTarget.texture.minFilter = T.LinearFilter;
     rearTarget.texture.magFilter = T.LinearFilter;
     rearTarget.texture.generateMipmaps = false;
@@ -1426,8 +1429,6 @@ function renderRearMirror() {
     renderer.autoClear = oldAutoClear;
     renderer.shadowMap.autoUpdate = oldShadowUpdate;
   }
-  const rect = view.getBoundingClientRect();
-  if (rect.width < 1 || rect.height < 1) return;
   const x = Math.round(rect.left), y = Math.round(innerHeight - rect.bottom), w = Math.round(rect.width), h = Math.round(rect.height);
   const overlayViewport = renderer.getViewport(new T.Vector4());
   const overlayScissor = renderer.getScissor(new T.Vector4());
