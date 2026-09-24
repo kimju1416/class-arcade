@@ -1402,7 +1402,7 @@ function renderRearMirror() {
   }
   rearCamera.aspect = targetW / targetH;
   rearCamera.updateProjectionMatrix();
-  const k = focus.k, h = k.h + k.yawVis * 0.5, fx = Math.sin(h), fz = Math.cos(h);
+  const k = focus.k, yaw = k.h + k.yawVis * 0.5, fx = Math.sin(yaw), fz = Math.cos(yaw); // 아래 거울 칸 높이 h와 이름이 겹치지 않게
   rearCamera.position.set(k.x + fx * 0.45, k.y + 1.35, k.z + fz * 0.45);
   rearCamera.lookAt(k.x - fx * 26, k.y + 0.5, k.z - fz * 26);
   rearCamera.updateMatrixWorld();
