@@ -167,8 +167,7 @@ function buildTrackCards(el, onPick, cur) {
   el.innerHTML = '';
   TRACKS.forEach((t, i) => {
     const b = document.createElement('button'); b.className = 'tc' + (i === cur ? ' on' : '');
-    const art = t.theme === 'kpop' ? 'bg-neon' : `bg-${t.theme}`;
-    b.style.backgroundImage = `url(/kart/tex/${art}.webp)`;
+    b.style.backgroundImage = `url(/kart/tex/${t.sky}.webp)`;
     const best = bestOf(t.id);
     b.innerHTML = `<div class="tt"><b>${t.name}</b><small>${t.sub}</small>${best ? `<em class="best">내 최고 ${fmt(best.t)}</em>` : ''}</div>`;
     b.appendChild(trackThumb(t));

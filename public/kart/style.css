@@ -74,7 +74,7 @@ input:focus { border-color: var(--yel); }
 
 /* 코스 */
 .track-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 6px 20px; align-content: start; }
-.tc { position: relative; border-radius: var(--r2); overflow: hidden; border: 2px solid transparent; background: #222 center 68% / cover no-repeat; aspect-ratio: 16/10; text-align: left; padding: 0; }
+.tc { position: relative; border-radius: var(--r2); overflow: hidden; border: 2px solid transparent; background: #222 center / cover no-repeat; aspect-ratio: 16/10; text-align: left; padding: 0; }
 .tc::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 35%, rgba(6,9,16,.85)); }
 .tc .tt { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 1; }
 .tc b { display: block; font-family: var(--disp); font-weight: 400; font-size: 24px; }
