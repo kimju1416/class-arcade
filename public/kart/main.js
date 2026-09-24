@@ -339,7 +339,7 @@ function onNet(m) {
 
 // ---------------- 로딩·화면 유지·자동 화질 ----------------
 const LOAD_TIPS = ['드리프트를 오래 하면 파랑 → 주황 → 분홍 불꽃! 떼는 순간 부스터', 'GO 직전에 드리프트 버튼을 누르면 로켓 스타트', '아이템 상자는 코스마다 네 줄 있어요', '뒤처지면 좋은 아이템이 더 잘 나와요', '같은 팀끼리는 아이템에 안 맞아요'];
-function loadBar(p) { $('loadBar').style.width = p + '%'; }
+function loadBar(p) { $('loadBar').style.width = p + '%'; $('loadPercent').textContent = Math.round(p) + '%'; }
 let wakeLock = null;
 async function keepAwake(on) {
   try {
@@ -382,6 +382,15 @@ const touch = { l: false, r: false, drift: false, brake: false };
 
 async function startRace(opt) {
   $('loading').hidden = false; $('loadTxt').textContent = '코스를 만드는 중…';
+  const loadDriver = opt.grid.find(g => g.id === opt.myId) || opt.grid[0] || {};
+  const loadChar = CHARS[loadDriver.char] || CHARS[S.char] || CHARS[0];
+  $('loadBackdrop').style.backgroundImage = `url("/kart/tex/${opt.def.sky}.webp")`;
+  $('loadPortrait').src = portrait(loadChar);
+  $('loadName').textContent = loadChar.name;
+  $('loadRole').textContent = loadChar.role;
+  $('loadPlayer').textContent = loadDriver.name ? `DRIVER · ${loadDriver.name}` : '';
+  $('loadTrack').textContent = opt.def.name;
+  $('loadTrackSub').textContent = opt.def.sub;
   const firstTime = !store.get('seen', false); store.set('seen', true);
   const showControlsHint = !store.get('controls_seen', false);
   $('loadTip').textContent = firstTime ? '처음 한 번은 그래픽 준비로 조금 더 걸려요' : LOAD_TIPS[Math.floor(Math.random() * LOAD_TIPS.length)];
@@ -394,7 +403,7 @@ async function startRace(opt) {
   const q = qualityLevel();
   if (def.open) { tr.open = new Uint8Array(N); for (const [u0, u1] of def.open) for (let i = Math.floor(u0 * N); i <= Math.ceil(u1 * N); i++) tr.open[((i % N) + N) % N] = 1; }
   const world = buildWorld(scene, tr, def, q, renderer);
-  loadBar(55); await new Promise(r => setTimeout(r, 0));
+  $('loadTxt').textContent = '서킷과 주변 풍경을 세우는 중…'; loadBar(55); await new Promise(r => setTimeout(r, 0));
   renderer.toneMappingExposure = world.theme.exposure;
   // 블룸은 성능 여유가 있을 때만
   if (q >= 2) {
@@ -451,7 +460,7 @@ async function startRace(opt) {
   $('teamBar').hidden = !race.teams;
   drawMiniBase();
   // 셰이더를 미리 굽는다 — 안 하면 첫 화면에서 몇 초 멈춘다
-  $('loadTxt').textContent = '그래픽을 준비하는 중…'; loadBar(75);
+  $('loadTxt').textContent = '레이서와 그래픽을 준비하는 중…'; loadBar(75);
   { const c = tr.point(-10 / tr.seg, 0); camera.position.set(c.x, c.y + 12, c.z + 30); camera.lookAt(c.x, c.y, c.z); }
   const myRace = race;
   KartView.renderer = renderer;
