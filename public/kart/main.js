@@ -376,6 +376,7 @@ const touch = { l: false, r: false, drift: false, brake: false };
 async function startRace(opt) {
   $('loading').hidden = false; $('loadTxt').textContent = '코스를 만드는 중…';
   const firstTime = !store.get('seen', false); store.set('seen', true);
+  const showControlsHint = !store.get('controls_seen', false);
   $('loadTip').textContent = firstTime ? '처음 한 번은 그래픽 준비로 조금 더 걸려요' : LOAD_TIPS[Math.floor(Math.random() * LOAD_TIPS.length)];
   loadBar(8);
   await new Promise(r => setTimeout(r, 30));
@@ -466,7 +467,8 @@ async function startRace(opt) {
   show('race');
   $('hud').hidden = false; $('lapNum').textContent = '1';
   setItem(race.ta ? 'boost3' : null); if (race.ta) $('itemN').textContent = 3;
-  race.controlsHintUntil = firstTime ? race.t0 + 5200 : 0;
+  race.controlsHintUntil = showControlsHint ? race.t0 + 5200 : 0;
+  if (showControlsHint) store.set('controls_seen', true);
   $('controlsHint').hidden = !race.controlsHintUntil;
   $('controlsHint').innerHTML = IS_TOUCH
     ? '<b>처음 조작 안내</b><span>왼쪽 화면을 밀어 핸들 · 아래로 당겨 브레이크</span><span>오른쪽 <strong>그림</strong>은 아이템 · 큰 버튼은 드리프트</span>'
