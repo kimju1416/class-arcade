@@ -37,7 +37,7 @@
     <button id="bTV" class="tvlink">선생님용 · 교실 대회 열기 <small>TV에 QR을 띄우고 학생은 폰으로 참가</small></button>
     <div class="how">
       <div><kbd>←</kbd><kbd>→</kbd> 핸들 <kbd>Space</kbd> 드리프트 <kbd>X</kbd> 아이템 <kbd>↓</kbd> 브레이크</div>
-      <div class="how-touch">왼쪽 원을 좌우로 밀어 핸들, 아래로 당기면 브레이크. 가속은 자동이에요.</div>
+      <div class="how-touch">왼쪽 화면을 밀어 핸들 · 아래로 당겨 브레이크 · 오른쪽 그림은 아이템 · 가속은 자동</div>
     </div>
   </div>
   <div class="corner">
@@ -153,6 +153,7 @@
   <div id="center"></div>
   <div id="speedLines"></div>
   <div id="hitFlash"></div>
+  <div id="controlsHint" hidden></div>
   <div id="myCard" hidden><img id="mcImg" alt=""><div><small>READY</small><b id="mcName"></b><span id="mcRole"></span></div></div>
   <div id="courseCard" hidden><small>COURSE</small><b id="ccName"></b><span id="ccSub"></span><em>화면을 누르면 건너뛰어요</em></div>
   <div id="board"></div>
@@ -163,7 +164,7 @@
   <div id="touch">
     <div id="joyZone" aria-label="조이스틱: 좌우로 밀어 핸들, 아래로 당기면 브레이크"></div>
     <div id="joy"><div class="base"></div><div class="knob"></div><span class="hint">밀어서 핸들</span></div>
-    <button id="tItem" aria-label="아이템">아이템</button>
+    <button id="tItem" aria-label="아이템 사용"><span class="sr-only">아이템 사용</span></button>
     <button id="tDrift" aria-label="드리프트">드리프트</button>
     <button id="tBack" aria-label="뒤 보기">뒤</button>
   </div>
