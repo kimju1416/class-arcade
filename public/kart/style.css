@@ -233,10 +233,11 @@ body.touch #rankBox { right: auto; left: 16px; top: calc(116px + env(safe-area-i
 body.touch #rankNum { font-size: 64px; }
 body.touch #rankBox span { font-size: 26px; }
 body.touch #rankBox small { font-size: 14px; }
-body.touch #rankSide { right: calc(10px + env(safe-area-inset-right)); top: calc(11px + env(safe-area-inset-top)); width: 82px; }
-body.touch #rankSideNum { font-size: 26px; }
-body.touch #rankSide > div > span { font-size: 12px; }
-body.touch #rankSide small { font-size: 10px; }
+body.touch #rankSide { right: calc(10px + env(safe-area-inset-right)); top: calc(11px + env(safe-area-inset-top)); width: 70px; padding: 3px 5px 4px; }
+body.touch .rankSideLabel { font-size: 9px; }
+body.touch #rankSideNum { font-size: 22px; }
+body.touch #rankSide > div > span { font-size: 11px; }
+body.touch #rankSide small { font-size: 9px; }
 body.touch .how-touch { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 body.touch .how > div:first-child { display: none; }
 

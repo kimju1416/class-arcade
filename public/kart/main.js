@@ -1386,9 +1386,9 @@ function renderRearMirror() {
   if (rect.width < 1 || rect.height < 1) return;
   const focus = race.focus || race.me || race.racers[Math.min(race.specIdx, race.racers.length - 1)] || race.racers[0];
   if (!focus || !focus.k || !focus.view) return;
-  const renderScale = Math.min(2, Math.max(1.25, devicePixelRatio || 1));
-  const targetW = Math.max(240, Math.min(480, Math.round(rect.width * renderScale)));
-  const targetH = Math.max(72, Math.min(160, Math.round(rect.height * renderScale)));
+  const renderScale = Math.min(1.4, Math.max(1, devicePixelRatio || 1));
+  const targetW = Math.max(192, Math.min(360, Math.round(rect.width * renderScale)));
+  const targetH = Math.max(64, Math.min(112, Math.round(rect.height * renderScale)));
   if (!rearTarget || Math.abs(rearTarget.width - targetW) > 32 || Math.abs(rearTarget.height - targetH) > 16) {
     if (rearTarget) rearTarget.dispose();
     rearTarget = new T.WebGLRenderTarget(targetW, targetH, { depthBuffer: true, stencilBuffer: false });
