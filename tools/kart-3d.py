@@ -79,6 +79,31 @@ def same_char(a, b):
         hsv = cv2.cvtColor(np.ascontiguousarray(x[..., :3]), cv2.COLOR_RGB2HSV); hh = cv2.calcHist([hsv], [0, 1], m, [24, 16], [0, 180, 0, 256]); cv2.normalize(hh, hh); return hh
     return float(cv2.compareHist(h(a), h(b), cv2.HISTCMP_CORREL))
 
+def align_to_front(cid, img):
+    # 표정 그림을 앞모습 그림(3D에 입힌 {cid}-f.jpg)에 겹치게 맞춘다: 옷·몸통 특징점으로 닮음 변환(이동·회전·크기)
+    # → 같은 자리 표(rect)를 그대로 써서 3D 얼굴 자리에 정확히 올라간다. 못 맞추면 None
+    fr = cv2.cvtColor(np.asarray(Image.open(os.path.join(OUT, f'{cid}-f.jpg')).convert('RGB')), cv2.COLOR_RGB2BGR)  # 한글 경로라 cv2.imread 못 씀
+    S = fr.shape[0]
+    c = cutout(img); c = c.crop(bbox(c))
+    sz = max(c.size) + 80; can = Image.new('RGBA', (sz, sz), (255, 255, 255, 0)); can.paste(c, ((sz - c.width) // 2, (sz - c.height) // 2), c)
+    src = pad_colors(can).resize((S, S), Image.LANCZOS)
+    mv = cv2.cvtColor(np.asarray(src), cv2.COLOR_RGB2BGR)
+    orb = cv2.ORB_create(4000)
+    g1 = cv2.cvtColor(mv, cv2.COLOR_BGR2GRAY); g2 = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
+    # 얼굴(위쪽 절반)은 바뀌었으니 몸통(아래 55%)에서만 특징점
+    m1 = np.zeros_like(g1); m1[int(S * 0.45):] = 255; m2 = np.zeros_like(g2); m2[int(S * 0.45):] = 255
+    k1, d1 = orb.detectAndCompute(g1, m1); k2, d2 = orb.detectAndCompute(g2, m2)
+    if d1 is None or d2 is None: return None
+    ms = sorted(cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True).match(d1, d2), key=lambda m: m.distance)[:400]
+    if len(ms) < 20: return None
+    A = np.float32([k1[m.queryIdx].pt for m in ms]); B = np.float32([k2[m.trainIdx].pt for m in ms])
+    M, inl = cv2.estimateAffinePartial2D(A, B, method=cv2.RANSAC, ransacReprojThreshold=4)
+    if M is None or inl.sum() < 15: return None
+    sc = float(np.hypot(M[0, 0], M[1, 0]))
+    if not 0.7 < sc < 1.4: return None
+    out = cv2.warpAffine(mv, M, (S, S), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REPLICATE)
+    return Image.fromarray(cv2.cvtColor(out, cv2.COLOR_BGR2RGB)), int(inl.sum()), round(sc, 3)
+
 def extras(cid, xdir):
     # 옆모습(s)·어지러운 얼굴(h)·우승 얼굴(w): 코덱스가 앞모습을 참고해 그린 것. 다른 그림이 섞였으면 건너뛴다
     res = {}; front = Image.open(os.path.join(WORK, f'{cid}-front.png'))
@@ -88,6 +113,11 @@ def extras(cid, xdir):
         c = cutout(Image.open(p)); c = c.crop(bbox(c))
         sim = same_char(front, c)
         if sim < 0.45: print(cid, nm, '다른 그림 같아서 건너뜀', round(sim, 2)); continue
+        if key in ('h', 'w'):
+            r = align_to_front(cid, Image.open(p))
+            if not r: print(cid, nm, '앞모습에 못 맞춤 — 건너뜀'); continue
+            r[0].save(os.path.join(OUT, f'{cid}-{key}.jpg'), quality=88)
+            res[key] = man[cid]['front']; print(cid, nm, 'OK 맞춤', r[1], r[2]); continue
         s = max(c.size) + 80; can = Image.new('RGBA', (s, s), (255, 255, 255, 0)); can.paste(c, ((s - c.width) // 2, (s - c.height) // 2), c)
         res[key] = rect(can); pad_colors(can).resize((768, 768), Image.LANCZOS).save(os.path.join(OUT, f'{cid}-{key}.jpg'), quality=88)
         print(cid, nm, 'OK', round(sim, 2))

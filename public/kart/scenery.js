@@ -488,11 +488,11 @@ varying vec3 vWP2; varying vec3 vWN2; varying float vSeed;`)
 uniform sampler2D tFac; varying vec3 vWP2; varying vec3 vWN2; varying float vSeed;`)
         .replace('#include <map_fragment>', `
           vec3 n2 = normalize(vWN2); float roof = step(0.6, abs(n2.y));
-          vec2 uv = vec2((abs(n2.x) > abs(n2.z) ? vWP2.z : vWP2.x) / 26.0 + vSeed * 3.7, vWP2.y / 26.0);
+          vec2 uv = vec2((abs(n2.x) > abs(n2.z) ? vWP2.z : vWP2.x) / 52.0 + vSeed * 3.7, vWP2.y / 52.0); // 사진 한 장 = 52m(창 하나 약 3.5m)
           vec3 fc = texture2D(tFac, uv).rgb;
           float lum = dot(fc, vec3(0.3, 0.59, 0.11));
-          diffuseColor.rgb = mix(fc * 0.55 * diffuseColor.rgb * 1.6, vec3(0.05, 0.06, 0.09), roof);
-          vec3 winGlow = fc * smoothstep(0.3, 0.75, lum) * (1.0 - roof) * 1.6;`)
+          diffuseColor.rgb = mix(fc * diffuseColor.rgb * 1.5 + diffuseColor.rgb * 0.06, vec3(0.05, 0.06, 0.09), roof);
+          vec3 winGlow = fc * smoothstep(0.22, 0.6, lum) * (1.0 - roof) * 2.4;`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
  totalEmissiveRadiance += winGlow;`);
       return;
