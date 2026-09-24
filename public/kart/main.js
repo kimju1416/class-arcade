@@ -152,20 +152,23 @@ function randomCar() { return onlyBody(Math.floor(Math.random() * BODIES.length)
 
 // ---------------- 코스 고르기 ----------------
 function trackThumb(def) {
-  const tr = buildTrack(def), cv = document.createElement('canvas'); cv.width = cv.height = 128;
-  const g = cv.getContext('2d'), b = tr.bounds, sc = 108 / Math.max(b.maxx - b.minx, b.maxz - b.minz);
+  const tr = buildTrack(def), cv = document.createElement('canvas'); cv.width = cv.height = 160;
+  const g = cv.getContext('2d'), b = tr.bounds, sc = 132 / Math.max(b.maxx - b.minx, b.maxz - b.minz);
   g.lineJoin = 'round'; g.lineCap = 'round';
-  const path = () => { g.beginPath(); for (let i = 0; i <= N; i += 8) { const k = i % N; const x = 10 + (tr.x[k] - b.minx) * sc, y = 10 + (tr.z[k] - b.minz) * sc; i ? g.lineTo(x, y) : g.moveTo(x, y); } };
-  path(); g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 12; g.stroke();
-  path(); g.strokeStyle = '#fff'; g.lineWidth = 6; g.stroke();
-  g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(10 + (tr.x[0] - b.minx) * sc, 10 + (tr.z[0] - b.minz) * sc, 6, 0, 7); g.fill();
+  const path = () => { g.beginPath(); for (let i = 0; i <= N; i += 8) { const k = i % N; const x = 14 + (tr.x[k] - b.minx) * sc, y = 14 + (tr.z[k] - b.minz) * sc; i ? g.lineTo(x, y) : g.moveTo(x, y); } };
+  path(); g.strokeStyle = 'rgba(0,0,0,.72)'; g.lineWidth = 18; g.stroke();
+  path(); g.strokeStyle = 'rgba(255,255,255,.96)'; g.lineWidth = 10; g.stroke();
+  const sx = 14 + (tr.x[0] - b.minx) * sc, sy = 14 + (tr.z[0] - b.minz) * sc;
+  g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(sx, sy, 9, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#101522'; g.lineWidth = 3; g.stroke();
   return cv;
 }
 function buildTrackCards(el, onPick, cur) {
   el.innerHTML = '';
   TRACKS.forEach((t, i) => {
     const b = document.createElement('button'); b.className = 'tc' + (i === cur ? ' on' : '');
-    b.style.backgroundImage = `url(/kart/tex/${t.sky}.webp)`;
+    const art = t.theme === 'kpop' ? 'bg-neon' : `bg-${t.theme}`;
+    b.style.backgroundImage = `url(/kart/tex/${art}.webp)`;
     const best = bestOf(t.id);
     b.innerHTML = `<div class="tt"><b>${t.name}</b><small>${t.sub}</small>${best ? `<em class="best">내 최고 ${fmt(best.t)}</em>` : ''}</div>`;
     b.appendChild(trackThumb(t));
@@ -463,6 +466,11 @@ async function startRace(opt) {
   show('race');
   $('hud').hidden = false; $('lapNum').textContent = '1';
   setItem(race.ta ? 'boost3' : null); if (race.ta) $('itemN').textContent = 3;
+  race.controlsHintUntil = firstTime ? race.t0 + 5200 : 0;
+  $('controlsHint').hidden = !race.controlsHintUntil;
+  $('controlsHint').innerHTML = IS_TOUCH
+    ? '<b>처음 조작 안내</b><span>왼쪽 화면을 밀어 핸들 · 아래로 당겨 브레이크</span><span>오른쪽 <strong>그림</strong>은 아이템 · 큰 버튼은 드리프트</span>'
+    : '<b>처음 조작 안내</b><span>← → 핸들 · Space 드리프트 · X 아이템 · ↓ 브레이크</span><span>가속은 자동이에요</span>';
   audio.init(); audio.bgm(null); audio.musicVol(0.42); audio.musicRate(1);
   race.crowd = null;
   camIntro = 0; camYaw = null; lookBack = false;
@@ -1157,6 +1165,7 @@ function frame() {
   const now = race.clock();
   race.time += dt;
   const toGo = race.t0 - now;
+  if (race.controlsHintUntil && now > race.controlsHintUntil) { race.controlsHintUntil = 0; $('controlsHint').hidden = true; }
 
   // 카운트다운
   if (toGo > 0) {
