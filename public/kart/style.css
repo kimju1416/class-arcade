@@ -149,6 +149,14 @@ input:focus { border-color: var(--yel); }
 #lapBox .lap { font-size: 30px; }
 #lapBox .lap b { font-weight: 400; font-size: 44px; color: var(--yel); }
 #lapBox .time { font-family: Pretendard, sans-serif; font-weight: 800; font-size: 20px; font-variant-numeric: tabular-nums; }
+#rearMirror { position: absolute; top: calc(58px + env(safe-area-inset-top)); left: 50%; z-index: 2; width: clamp(126px, 21vw, 220px); height: clamp(60px, 8vw, 82px); transform: translateX(-50%); overflow: visible; border: 3px solid rgba(211,225,245,.9); border-radius: 13px 13px 17px 17px; background: transparent; box-shadow: 0 4px 0 rgba(0,0,0,.45), 0 8px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.5); }
+#rearMirror[hidden] { display: none; }
+#rearMirrorView { position: absolute; inset: 3px 3px 17px; overflow: hidden; border-radius: 8px 8px 10px 10px; }
+#rearMirror::before { content: ""; position: absolute; z-index: 1; inset: 3px 3px 17px; border-radius: 8px; background: linear-gradient(115deg, rgba(255,255,255,.18), transparent 27% 74%, rgba(142,213,255,.12)); pointer-events: none; }
+#rearMirror::after { content: ""; position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; height: 14px; border-radius: 0 0 12px 12px; background: linear-gradient(180deg, rgba(27,38,56,.86), rgba(6,9,15,.98)); pointer-events: none; }
+#rearMirror span { position: absolute; left: 0; right: 0; bottom: 1px; color: #dce7f6; font: 800 8px/12px Pretendard, sans-serif; letter-spacing: .2em; text-align: center; text-shadow: 0 1px 2px #000; }
+#rearMirror i { position: absolute; left: 50%; bottom: -7px; width: 23px; height: 5px; transform: translateX(-50%); border-radius: 0 0 5px 5px; background: linear-gradient(#a9b7ca,#4c596c); box-shadow: 0 2px 3px rgba(0,0,0,.4); }
+#rearMirror i::after { content: ""; position: absolute; left: 50%; top: 4px; width: 38px; height: 3px; transform: translateX(-50%); border-radius: 50%; background: #435064; }
 #mini { position: absolute; right: 12px; top: calc(112px + env(safe-area-inset-top)); width: 150px; height: 150px; opacity: .95; }
 #speedo { position: absolute; left: 20px; bottom: calc(18px + env(safe-area-inset-bottom)); text-shadow: 0 2px 0 rgba(0,0,0,.6); }
 #speedo b { font-weight: 400; font-size: 48px; font-variant-numeric: tabular-nums; }
