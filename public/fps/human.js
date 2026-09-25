@@ -1,6 +1,6 @@
-import {characterShadow} from './visual-polish.js?v=ik-3';
-import {locomotion} from './movement.js?v=ik-3';
-import {tacticalRig} from './tactical-rig.js?v=ik-3';
+import {characterShadow} from './visual-polish.js?v=ik-4';
+import {locomotion} from './movement.js?v=ik-4';
+import {tacticalRig} from './tactical-rig.js?v=ik-4';
 import * as T from './three.module.js';
 import {GLTFLoader} from './addons/loaders/GLTFLoader.js';
 import {clone} from './addons/utils/SkeletonUtils.js';

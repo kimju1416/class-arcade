@@ -40,6 +40,7 @@ export class Arena {
  add(id,name,bot=false){let p={id,name:String(name||'ROOKIE').slice(0,16),bot,team:Object.values(this.players).filter(p=>p.team===0).length<=Object.values(this.players).filter(p=>p.team===1).length?0:1,x:0,z:0,y:1.65,vy:0,yaw:0,pitch:0,hp:100,weapon:'rifle',ammo:30,magazines:{rifle:30,sniper:5},kills:0,deaths:0,cool:0,reload:0,respawn:0,shield:2,input:{},triggerSeen:0,reloadSeen:0,pendingReload:false,pendingShot:false,wasFire:false};this.players[id]=p;this.spawn(p);return p}
  spawn(p){let spots=this.mode==='tdm'?SPAWNS.filter((_,i)=>i%2===p.team):SPAWNS,s=spots[Math.floor(Math.random()*spots.length)];Object.assign(p,{x:s[0],z:s[1],yaw:Math.atan2(s[0],s[1]),y:1.65,vy:0,hp:100,ammo:WEAPONS[p.weapon].mag,magazines:{rifle:30,sniper:5},respawn:0,reload:0,cool:0,shield:2,pendingReload:false,pendingShot:false,wasFire:false})}
  input(id,i){let p=this.players[id];if(!p||!i||typeof i!=='object')return;
+  /* 입력 번호: 스냅샷에 실려 가서 클라가 «서버가 어디까지 반영했나»를 알고 내 이동 예측을 맞춘다 */if(Number.isSafeInteger(i.seq)&&i.seq>=0)p.seq=i.seq;
   const reloadTrigger=Number.isSafeInteger(i.reloadTrigger)&&i.reloadTrigger>=0?i.reloadTrigger:0;if(reloadTrigger>p.reloadSeen){p.pendingReload=!i.cancelFire;p.reloadSeen=reloadTrigger}if(i.cancelFire)p.pendingReload=false;
   const trigger=Number.isSafeInteger(i.trigger)&&i.trigger>=0?i.trigger:0;if(trigger>p.triggerSeen){p.pendingShot=true;p.triggerSeen=trigger}
   if(i.fire&&!p.wasFire)p.pendingShot=true;p.wasFire=!!i.fire;if(i.cancelFire)p.pendingShot=false;

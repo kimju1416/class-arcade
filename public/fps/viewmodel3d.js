@@ -1,13 +1,13 @@
-import {realWeapon} from './weapon-model.js?v=ik-3';
+import {realWeapon} from './weapon-model.js?v=ik-4';
 import * as T from './three.module.js';
-import {weaponPose,RIGS} from './weapon-pose.js?v=ik-3';
+import {weaponPose,RIGS} from './weapon-pose.js?v=ik-4';
 
 // 진짜 3D 뷰모델. 전용 씬·전용 카메라로 본편 위에 덧그리기 때문에 벽에 총이 파묻히지 않는다.
 
 // 전술장갑 원단 사진. 같은 그림을 요철로도 써서 짜임이 빛을 받는다.
 let fabricTex=null;
 if(typeof document!=='undefined'){
- fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=ik-3');
+ fabricTex=new T.TextureLoader().load('glove-fabric.webp?v=ik-4');
  fabricTex.colorSpace=T.SRGBColorSpace;
  fabricTex.wrapS=fabricTex.wrapT=T.MirroredRepeatWrapping;
  fabricTex.repeat.set(3.2,3.2);fabricTex.anisotropy=4;
@@ -104,8 +104,8 @@ const armTex={};
 function photoArm(parent,file,w,h,anchor,pos,rot,ext){
  if(typeof document==='undefined')return null;
  let tex=armTex[file];
- if(!tex){tex=armTex[file]=new T.TextureLoader().load(file+'?v=ik-3');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4}
- const mat=new T.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.02,side:T.DoubleSide,toneMapped:false,color:'#cfcfc8'});
+ if(!tex){tex=armTex[file]=new T.TextureLoader().load(file+'?v=ik-4');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4}
+ const mat=new T.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.02,side:T.DoubleSide,forceSinglePass:true,toneMapped:false,color:'#cfcfc8'}); // forceSinglePass: 양면+투명은 three가 매 프레임 앞·뒤 두 번 재질을 바꿔 그려 셰이더 설정을 다시 계산한다
  // ext=[왼,아래,오른]: 사진 밖으로 판을 늘릴 비율. 늘어난 자리는 가장자리 픽셀이 번져 채워진다(ClampToEdge) —
  // 소매가 사진 끝에서 뚝 끊기거나 흐려지지 않고 화면 밖까지 이어진다. 원래 사진 영역의 UV는 그대로 0~1.
  const e=ext||[0,0,0],W=w*(1+e[0]+e[2]),H=h*(1+e[1]);
@@ -124,7 +124,7 @@ function buildRifle(mats){
  bx(g,mats,'dark',.035,.05,.055,0,sy-.05,0);
  const tube=new T.Mesh(new T.CylinderGeometry(.026,.026,.066,40,1,true),new T.MeshStandardMaterial({color:'#30373a',roughness:.48,metalness:.8,side:T.DoubleSide}));tube.rotation.x=Math.PI/2;tube.position.set(0,sy,0);g.add(tube);
  for(const z of [-.034,.034]){const ring=new T.Mesh(new T.TorusGeometry(.026,.003,10,40),mats.blued);ring.position.set(0,sy,z);g.add(ring)}
- const glass=new T.Mesh(new T.CircleGeometry(.024,40),new T.MeshBasicMaterial({color:'#8dcbd5',transparent:true,opacity:.09,depthWrite:false,side:T.DoubleSide}));glass.position.set(0,sy,-.03);g.add(glass);
+ const glass=new T.Mesh(new T.CircleGeometry(.024,40),new T.MeshBasicMaterial({color:'#8dcbd5',transparent:true,opacity:.09,depthWrite:false,side:T.DoubleSide,forceSinglePass:true}));glass.position.set(0,sy,-.03);g.add(glass);
  const dot=new T.Mesh(new T.CircleGeometry(.0014,16),new T.MeshBasicMaterial({color:'#ff3928',depthTest:false,depthWrite:false}));dot.position.set(0,sy,-.031);dot.renderOrder=3;g.add(dot);
  // 오른팔: 사진 속 손이 권총손잡이(0,-.085,+.036)에 오고 팔뚝이 오른쪽 아래로 빠진다.
  photoArm(g,'arm-right.webp',.30,.277,[.08,.12],[.020,-.056,.034],[0,0,0]);   // 주먹을 권총손잡이 오른쪽에
@@ -156,7 +156,7 @@ export function createViewmodel3D(renderer){
  // 총구 화염과 섬광. 화염은 두 장을 교차시켜 어느 각도에서도 두께가 보인다.
  const flash=new T.Group();flash.visible=false;flash.renderOrder=5;scene.add(flash);
  // depthTest를 끈다 — 화염 중심이 소염기 안쪽이라 깊이검사를 켜면 총열에 가려 안 보인다.
- const flashMat=new T.MeshBasicMaterial({color:'#ffdf9c',transparent:true,opacity:.9,depthTest:false,depthWrite:false,side:T.DoubleSide,blending:T.AdditiveBlending});
+ const flashMat=new T.MeshBasicMaterial({color:'#ffdf9c',transparent:true,opacity:.9,depthTest:false,depthWrite:false,side:T.DoubleSide,forceSinglePass:true,blending:T.AdditiveBlending});
  const core=new T.Mesh(new T.ConeGeometry(.026,.10,7),flashMat);core.rotation.x=Math.PI/2;core.position.z=-.045;flash.add(core);
  // 판때기를 그냥 겹치면 «흰 네모»가 된다. 가장자리가 사라지는 방사형 무늬를 그려 넣는다.
  const burst=document.createElement('canvas');burst.width=burst.height=128;
@@ -183,6 +183,16 @@ export function createViewmodel3D(renderer){
 
  return {
   // 멈칫 방지: 숨어 있는 총·화염·탄피까지 잠깐 켜고 «실제로 한 번 그린다». compile()만으로는 링크 확인이 첫 사격으로 미뤄진다(프로파일 실측).
+  /* 본 장면과 조명 «구성»(종류별 개수·그림자 수)을 맞춘다. 다르면 두 장면을 번갈아 그릴 때마다 three.js가
+     모든 재질의 셰이더 설정을 다시 계산했다(폰 CPU의 약 10%). 모자란 쪽에 세기 0짜리 빈 조명을 채운다 — 보이는 건 그대로.
+     본 장면에는 그림자 조명을 절대 더하지 않는다(그림자 패스가 장면 전체를 한 번 더 그린다). */
+  syncLights(main){const count=sc=>{const c={d:0,ds:0,p:0,ps:0,h:0,s:0,ss:0};sc.traverse(o=>{if(!o.isLight)return;if(o.isDirectionalLight){o.castShadow?c.ds++:c.d++}else if(o.isPointLight){o.castShadow?c.ps++:c.p++}else if(o.isSpotLight){o.castShadow?c.ss++:c.s++}else if(o.isHemisphereLight)c.h++});return c};
+   const a=count(main),b=count(scene),fill=(sc,k,n,make)=>{for(let i=0;i<n;i++){const l=make();l.intensity=0;l.userData.dummy=k;sc.add(l)}};
+   const mk={d:()=>new T.DirectionalLight(0,0),p:()=>new T.PointLight(0,0,1,2),s:()=>new T.SpotLight(0,0),h:()=>new T.HemisphereLight(0,0,0)};
+   for(const k of ['d','p','s','h']){fill(scene,k,a[k]-b[k],mk[k]);fill(main,k,b[k]-a[k],mk[k])}
+   for(const k of ['ds','ps','ss']){const n=a[k]-b[k];for(let i=0;i<n;i++){const l=mk[k[0]]();l.intensity=0;l.castShadow=true;l.shadow.mapSize.set(16,16);scene.add(l)}}
+   /* 적 병사 총과 재질을 같이 쓰므로 안개 설정도 같아야 한다(총은 코앞이라 안개가 보이지 않는다) */scene.fog=main.fog;
+   return {main:count(main),view:count(scene)}},
   prewarm(){const hidden=[],culled=[];scene.traverse(o=>{if(!o.visible){hidden.push(o);o.visible=true}if(o.isMesh&&o.frustumCulled){culled.push(o);o.frustumCulled=false}});const auto=renderer.autoClear;try{renderer.compile(scene,camera);renderer.autoClear=false;renderer.render(scene,camera)}catch{}renderer.autoClear=auto;for(const o of culled)o.frustumCulled=true;for(const o of hidden)o.visible=false},
   ready:true,
   // 사격 순간: 반동을 밀어 넣고 화염·탄피를 낸다.
