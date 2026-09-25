@@ -1395,6 +1395,8 @@ function broadcast(room, obj) {
 // Render 무료(0.1 CPU)에서 25명 방은 소켓 쓰기가 CPU를 다 먹어 0.5~1초씩 통째로 멈췄다(09-18 실측).
 // 폰은 내 움직임을 스스로 예측하고(PRED_GAMES) 남은 보간으로 채우므로 10번이면 충분하다.
 let phoneTurn = true;
+// 관성·넉백·트랙 게임은 폰에서 내 캐릭터를 예측하지 못한다(클라 PRED_GAMES 밖) → 폰도 초당 20번
+const PHONE_FULL_RATE = new Set(['sumo', 'chair', 'cray', 'race', 'kart', 'run', 'comet', 'pull']);
 function broadcastState(room, obj) {
   if (phoneTurn) return broadcast(room, obj);
   if (room.hostWs && room.hostWs.readyState === 1) room.hostWs.send(JSON.stringify(obj));
@@ -3984,7 +3986,8 @@ function sendState(room, now) {
   const g = room.game;
   const type = room.gameType;
   room.stN = ((room.stN || 0) + 1) & 1;
-  phoneTurn = room.stN === 0 || room.state !== 'playing';   // 카운트다운·결과 직전 같은 짧은 순간은 늘 보낸다
+  phoneTurn = room.stN === 0 || room.state !== 'playing'   // 카운트다운·결과 직전 같은 짧은 순간은 늘 보낸다
+    || PHONE_FULL_RATE.has(type);                           // 폰이 내 움직임을 예측 못 하는 게임은 반응이 늦어지므로 20번 그대로
   if (party.has(type)) { broadcastState(room, party.state(room, now)); return; }
   // 아레나 크기를 한 번 보냈다고 표시. 재접속자는 sendCurrentPhase가 따로 챙긴다.
   const arenaKey = g.arenaW * 100000 + g.arenaH;
