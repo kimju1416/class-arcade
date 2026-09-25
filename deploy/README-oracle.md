@@ -74,8 +74,8 @@ sudo arcade-update                 # GitHub 최신 코드로 갱신 + 재시작
   설치 스크립트가 iptables 앞쪽에 ACCEPT를 넣고 저장하지만, 안 되면 이걸 먼저 의심할 것.
 - **포트는 두 겹이다** — Oracle 콘솔 Security List(위 3번)와 VM 안의 방화벽. 둘 다 열려야 한다.
 - **ARM 인스턴스 재고 부족**이 흔하다. 안 만들어지면 며칠 뒤 재시도.
-- Render처럼 push하면 자동 배포되지는 않는다. 코드 고친 뒤 `sudo arcade-update`를 실행해야 한다.
-  (자동화하려면 GitHub Actions에서 SSH로 이 명령을 때리게 만들면 된다.)
+- push 자동 배포: `.github/workflows/deploy-oracle.yml`이 main에 올라올 때마다 SSH로 `sudo arcade-update`를 실행한다.
+  GitHub 저장소 Settings → Secrets and variables → Actions에 `ORACLE_HOST`(공용 IP)와 `ORACLE_SSH_KEY`(받은 개인키 파일 내용 전체)를 넣으면 켜진다. 넣기 전에는 아무 일도 안 한다.
 - **Render는 건드리지 않았다.** 두 서버가 동시에 떠 있어도 서로 무관하다(방 데이터는 각자 메모리).
 
 ## 잘 되는지 확인하는 법

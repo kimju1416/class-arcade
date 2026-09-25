@@ -1,0 +1,28 @@
+# main에 올리면 오라클(오사카) 서버도 최신 코드로 갱신한다 — Render 자동 배포와 같은 효과.
+# 저장소 Settings → Secrets에 ORACLE_HOST(공용 IP)·ORACLE_SSH_KEY(개인키 전체)를 넣기 전에는 아무 일도 안 한다.
+name: deploy-oracle
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency: deploy-oracle
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 비밀값 확인
+        id: chk
+        env:
+          HOST: ${{ secrets.ORACLE_HOST }}
+        run: echo "ok=$([ -n "$HOST" ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+      - name: 서버에서 arcade-update 실행
+        if: steps.chk.outputs.ok == '1'
+        env:
+          HOST: ${{ secrets.ORACLE_HOST }}
+          KEY: ${{ secrets.ORACLE_SSH_KEY }}
+        run: |
+          install -m 600 /dev/null key && printf '%s\n' "$KEY" > key
+          ssh -i key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 ubuntu@"$HOST" 'sudo arcade-update'
+          # 살아 났는지 확인(재시작에 몇 초 걸린다)
+          for i in $(seq 1 20); do curl -fsS -m 5 "http://$HOST:3000/health" >/dev/null 2>&1 && exit 0; ssh -i key ubuntu@"$HOST" 'curl -fsS -m 5 http://127.0.0.1:3000/health' >/dev/null 2>&1 && exit 0; sleep 3; done
+          echo "서버가 다시 뜨지 않았다"; exit 1
