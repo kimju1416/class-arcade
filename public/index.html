@@ -4501,7 +4501,12 @@ function drawSpr(img, x, y, size) {
 // 1920x1080 캔버스를 매 프레임 화면에 합성하는 비용(200ms+)이었다(실측). 픽셀 수를 절반으로 줄이는 게 가장 크게 듣는다.
 // GFX(const)는 아래에서 선언된다 — 로드 시 resize()가 먼저 도는데 const는 선언 전 접근이 예외이고
 // typeof로도 못 막는다(TDZ). 그래서 플래그는 호이스팅되는 var에 둔다.
-function canvasDpr() { const d = Math.min(2, devicePixelRatio || 1); return GFX_LITE ? d * 0.7 : d; }
+// 4K TV·배율 150% 노트북은 캔버스가 800만 픽셀까지 커져 매 프레임 채우기만으로 버벅인다 → 약 220만 픽셀(FHD 남짓)에서 멈춘다
+function canvasDpr() {
+  let d = Math.min(2, devicePixelRatio || 1);
+  d = Math.min(d, Math.max(1, Math.sqrt(2.2e6 / Math.max(1, innerWidth * innerHeight))));
+  return GFX_LITE ? d * 0.7 : d;
+}
 function toArena(clientX, clientY) {
   const dpr = canvasDpr();
   return { x: (clientX * dpr - view.ox) / view.scale, y: (clientY * dpr - view.oy) / view.scale };

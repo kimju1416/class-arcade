@@ -1384,11 +1384,20 @@ function finite(v, fallback = 0) {
 }
 
 function roomSend(ws, obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+// 한 번만 바이트로 바꿔 모두에게 — 문자열로 넘기면 ws가 받는 사람마다 UTF-8 변환을 다시 한다
 function broadcast(room, obj) {
-  const msg = JSON.stringify(obj);
-  if (room.hostWs && room.hostWs.readyState === 1) room.hostWs.send(msg);
+  const msg = Buffer.from(JSON.stringify(obj));
+  if (room.hostWs && room.hostWs.readyState === 1) room.hostWs.send(msg, { binary: false });
   for (const p of room.players.values())
-    if (p.ws && p.ws.readyState === 1) p.ws.send(msg);
+    if (p.ws && p.ws.readyState === 1) p.ws.send(msg, { binary: false });
+}
+// 게임 상태(매 틱): 교사 TV는 초당 20번, 학생 폰은 초당 10번(짝수 틱만).
+// Render 무료(0.1 CPU)에서 25명 방은 소켓 쓰기가 CPU를 다 먹어 0.5~1초씩 통째로 멈췄다(09-18 실측).
+// 폰은 내 움직임을 스스로 예측하고(PRED_GAMES) 남은 보간으로 채우므로 10번이면 충분하다.
+let phoneTurn = true;
+function broadcastState(room, obj) {
+  if (phoneTurn) return broadcast(room, obj);
+  if (room.hostWs && room.hostWs.readyState === 1) room.hostWs.send(JSON.stringify(obj));
 }
 
 function sendRoster(room) {
@@ -3974,18 +3983,23 @@ function finishGame(room, sorted, labelOf, keyOf) {
 function sendState(room, now) {
   const g = room.game;
   const type = room.gameType;
-  if (party.has(type)) { broadcast(room, party.state(room, now)); return; }
+  room.stN = ((room.stN || 0) + 1) & 1;
+  phoneTurn = room.stN === 0 || room.state !== 'playing';   // 카운트다운·결과 직전 같은 짧은 순간은 늘 보낸다
+  if (party.has(type)) { broadcastState(room, party.state(room, now)); return; }
   // 아레나 크기를 한 번 보냈다고 표시. 재접속자는 sendCurrentPhase가 따로 챙긴다.
   const arenaKey = g.arenaW * 100000 + g.arenaH;
   const arenaWasSent = g.arenaSent === arenaKey;
   g.arenaSent = arenaKey;
+  // 한 번만 실려 가는 정보(아레나 크기·꼬리별 먹이 델타·물풍선 맵 변경)가 있는 틱은 폰에도 꼭 보낸다
+  if (!arenaWasSent || type === 'comet' || (type === 'cray' && (g.gridDirty || now - g.gridSentAt > 1500))) phoneTurn = true;
   if (type === 'quiz') {
     const Q = g.questions[g.qIdx];
     const parts = [...room.players.values()].filter(p => !p.waiting);
     const qScores = JSON.stringify(parts.map(p => [p.id, p.score, p.qAnswer >= 0 ? 1 : 0,
       g.qPhase === 'reveal' ? (p.qGain || 0) : 0,
       g.qPhase === 'reveal' ? (p.qAnswer != null ? p.qAnswer : -1) : -1]));
-    broadcast(room, {
+    if (qScores !== g.qScoresSent) phoneTurn = true;   // 바뀔 때만 실리는 점수판은 폰도 받아야 한다
+    broadcastState(room, {
       type: 'state', mode: 'quiz', st: now,
       qPhase: g.qPhase || 'idle', qIdx: g.qIdx, qTotal: g.questions.length, cat: g.quizCat,
       // 카운트다운(idle) 중에는 문제를 미리 보내지 않는다
@@ -4008,7 +4022,7 @@ function sendState(room, now) {
   }
   if (type === 'simon') {
     const g2 = room.game;
-    broadcast(room, {
+    broadcastState(room, {
       type: 'state', mode: 'simon', st: now,
       siPhase: g2.siPhase || 'idle', round: g2.siRound || 0, seqLen: (g2.seq || []).length,
       showAt: g2.showAt || 0, gap: SIMON_GAP, flashMs: SIMON_FLASH,
@@ -4022,7 +4036,7 @@ function sendState(room, now) {
     return;
   }
   if (type === 'chimp') {
-    broadcast(room, {
+    broadcastState(room, {
       type: 'state', mode: 'chimp', st: now,
       chPhase: g.chPhase || 'idle', round: g.chRound || 0, totalRounds: CHIMP_ROUNDS, n: g.chN || 0,
       // 아레나 크기는 판 내내 안 바뀐다 → 바뀔 때만 보낸다 (매 틱 보내면 순수 낭비)
@@ -4040,7 +4054,7 @@ function sendState(room, now) {
     const Q = g.questions[g.fIdx];
     const parts = [...room.players.values()].filter(p => !p.waiting);
     const open = g.fPhase === 'show' || g.fPhase === 'reveal';
-    broadcast(room, {
+    broadcastState(room, {
       type: 'state', mode: 'flash', st: now,
       fPhase: g.fPhase || 'idle', qIdx: g.fIdx, qTotal: g.questions.length,
       q: open && Q ? Q.q : '',
@@ -4064,7 +4078,7 @@ function sendState(room, now) {
     if (g.dStateAt && now - g.dStateAt < 150) return;
     g.dStateAt = now;
     const parts = [...room.players.values()].filter(p => !p.waiting);
-    broadcast(room, {
+    broadcastState(room, {
       type: 'state', mode: 'draw', st: now,
       dPhase: g.dPhase || 'pick', round: g.round || 0, drawer: g.drawer,
       timeLeft: g.dPhase === 'write' ? Math.max(0, g.writeEndAt - now)
@@ -4129,7 +4143,7 @@ function sendState(room, now) {
        p.pAttempts || 0, p.pPairs || 0, p.pFinAt ? 1 : 0]);
     if (room.hostWs) roomSend(room.hostWs, { ...base, players: pubRows });
     for (const p of room.players.values()) {
-      if (!p.ws) continue;
+      if (!p.ws || !phoneTurn) continue;
       const mine = [p.id, p.alive ? 1 : 0, p.waiting ? 1 : 0, p.score || 0,
         p.pMask || 0, p.pFlipA != null ? p.pFlipA : -1, p.pFlipB != null ? p.pFlipB : -1,
         p.pAttempts || 0, p.pPairs || 0, p.pFinAt ? 1 : 0];
@@ -4138,7 +4152,7 @@ function sendState(room, now) {
     return;
   }
   if (type === 'word' || type === 'cho') {
-    broadcast(room, {
+    broadcastState(room, {
       type: 'state', mode: type, st: now,
       round: g.round, totalRounds: WORD_ROUNDS,
       word: g.wordPhase === 'show' ? (type === 'cho' ? g.pattern : g.word) : null,
@@ -4402,7 +4416,7 @@ function sendState(room, now) {
       msg.picks = [...room.players.values()].filter(p => !p.waiting && p.picks.length).map(p => [p.id, p.picks]);
     }
   }
-  broadcast(room, msg);
+  broadcastState(room, msg);
 }
 
 function backToLobby(room) {

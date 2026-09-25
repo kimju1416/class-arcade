@@ -48,14 +48,6 @@ renderer.shadowMap.type = T.PCFShadowMap;
 const camera = new T.PerspectiveCamera(70, 1, 0.3, 4200);
 let scene = new T.Scene();
 let composer = null, bloom = null;
-let mirrorEnabled = store.get('mirror', true), rearTarget = null;
-const rearCamera = new T.PerspectiveCamera(58, 320 / 88, 0.2, 4200);
-const mirrorScene = new T.Scene();
-const mirrorCamera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-mirrorCamera.position.z = 1;
-const mirrorMaterial = new T.MeshBasicMaterial({ toneMapped: false, side: T.DoubleSide });
-const mirrorQuad = new T.Mesh(new T.PlaneGeometry(2, 2), mirrorMaterial);
-mirrorScene.add(mirrorQuad);
 function setupRenderer() {
   const q = qualityLevel();
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q >= 2 ? 2 : 1.3));
@@ -499,7 +491,7 @@ async function startRace(opt) {
 
 function disposeRace() {
   keepAwake(false);
-  $('scr-results').classList.remove('over'); $('podTitle').hidden = true; $('rearMirror').hidden = true; document.body.classList.remove('spec');
+  $('scr-results').classList.remove('over'); $('podTitle').hidden = true; document.body.classList.remove('spec');
   if (!race) return;
   if (race.driftLoop) race.driftLoop.stop();
   if (race.crowd) race.crowd.stop();
@@ -979,7 +971,6 @@ function openSettings() {
   audio.init();
   $('sMusic').value = Math.round(audio.mScale * 100); $('sFx').value = Math.round(audio.fScale * 100);
   $('sVib').checked = store.get('vib', true);
-  $('sMirror').checked = mirrorEnabled;
   const cam = store.get('cam', 'mid'); for (const b of $('sCam').children) b.classList.toggle('on', b.dataset.v === cam);
   $('settings').hidden = false;
 }
@@ -987,7 +978,6 @@ const setVol = () => audio.setVol($('sMusic').value / 100, $('sFx').value / 100)
 $('sMusic').oninput = setVol;
 $('sFx').oninput = setVol; $('sFx').onchange = () => audio.play('click', 0.8);
 $('sVib').onchange = () => { store.set('vib', $('sVib').checked); if ($('sVib').checked) vib(60); };
-$('sMirror').onchange = () => { mirrorEnabled = $('sMirror').checked; store.set('mirror', mirrorEnabled); if (!mirrorEnabled) $('rearMirror').hidden = true; };
 for (const b of $('sCam').children) b.onclick = () => { store.set('cam', b.dataset.v); camSet = b.dataset.v; for (const x of $('sCam').children) x.classList.toggle('on', x === b); };
 $('bSetClose').onclick = () => { $('settings').hidden = true; audio.play('click', 0.6); };
 $('bSetP').onclick = () => openSettings();
@@ -1374,81 +1364,6 @@ function frame() {
 }
 function render() {
   if (composer) composer.render(); else renderer.render(scene, camera);
-  renderRearMirror();
-}
-
-// 메인 레이스와 같은 프레임마다 백미러를 갱신해 움직임이 끊기지 않게 한다.
-function renderRearMirror() {
-  const frame = $('rearMirror'), view = $('rearMirrorView');
-  if (!race || race.ended || race.podium || !mirrorEnabled || $('hud').hidden) { frame.hidden = true; return; }
-  frame.hidden = false;
-  const rect = view.getBoundingClientRect();
-  if (rect.width < 1 || rect.height < 1) return;
-  const focus = race.focus || race.me || race.racers[Math.min(race.specIdx, race.racers.length - 1)] || race.racers[0];
-  if (!focus || !focus.k || !focus.view) return;
-  const renderScale = Math.min(1.4, Math.max(1, devicePixelRatio || 1));
-  const targetW = Math.max(192, Math.min(360, Math.round(rect.width * renderScale)));
-  const targetH = Math.max(64, Math.min(112, Math.round(rect.height * renderScale)));
-  if (!rearTarget || Math.abs(rearTarget.width - targetW) > 32 || Math.abs(rearTarget.height - targetH) > 16) {
-    if (rearTarget) rearTarget.dispose();
-    rearTarget = new T.WebGLRenderTarget(targetW, targetH, { depthBuffer: true, stencilBuffer: false });
-    rearTarget.texture.minFilter = T.LinearFilter;
-    rearTarget.texture.magFilter = T.LinearFilter;
-    rearTarget.texture.generateMipmaps = false;
-    rearTarget.texture.matrixAutoUpdate = false;
-    rearTarget.texture.matrix.set(-1, 0, 1, 0, 1, 0, 0, 0, 1); // 거울처럼 좌우 반전
-    mirrorMaterial.map = rearTarget.texture;
-    mirrorMaterial.needsUpdate = true;
-  }
-  rearCamera.aspect = targetW / targetH;
-  rearCamera.updateProjectionMatrix();
-  const k = focus.k, yaw = k.h + k.yawVis * 0.5, fx = Math.sin(yaw), fz = Math.cos(yaw); // 아래 거울 칸 높이 h와 이름이 겹치지 않게
-  rearCamera.position.set(k.x + fx * 0.45, k.y + 1.35, k.z + fz * 0.45);
-  rearCamera.lookAt(k.x - fx * 26, k.y + 0.5, k.z - fz * 26);
-  rearCamera.updateMatrixWorld();
-  const wasVisible = focus.view.root.visible;
-  focus.view.root.visible = false;
-  const oldTarget = renderer.getRenderTarget();
-  const oldViewport = renderer.getViewport(new T.Vector4());
-  const oldScissor = renderer.getScissor(new T.Vector4());
-  const oldScissorTest = renderer.getScissorTest();
-  const oldAutoClear = renderer.autoClear;
-  const oldShadowUpdate = renderer.shadowMap.autoUpdate;
-  try {
-    renderer.shadowMap.autoUpdate = false;
-    renderer.autoClear = true;
-    renderer.setRenderTarget(rearTarget);
-    renderer.setViewport(0, 0, rearTarget.width, rearTarget.height);
-    renderer.setScissorTest(false);
-    renderer.clear(true, true, true);
-    renderer.render(scene, rearCamera);
-  } finally {
-    focus.view.root.visible = wasVisible;
-    renderer.setRenderTarget(oldTarget);
-    renderer.setViewport(oldViewport);
-    renderer.setScissor(oldScissor);
-    renderer.setScissorTest(oldScissorTest);
-    renderer.autoClear = oldAutoClear;
-    renderer.shadowMap.autoUpdate = oldShadowUpdate;
-  }
-  const x = Math.round(rect.left), y = Math.round(innerHeight - rect.bottom), w = Math.round(rect.width), h = Math.round(rect.height);
-  const overlayViewport = renderer.getViewport(new T.Vector4());
-  const overlayScissor = renderer.getScissor(new T.Vector4());
-  const overlayScissorTest = renderer.getScissorTest();
-  const overlayAutoClear = renderer.autoClear;
-  try {
-    renderer.setRenderTarget(null);
-    renderer.setViewport(x, y, w, h);
-    renderer.setScissor(x, y, w, h);
-    renderer.setScissorTest(true);
-    renderer.autoClear = true;
-    renderer.render(mirrorScene, mirrorCamera);
-  } finally {
-    renderer.setViewport(overlayViewport);
-    renderer.setScissor(overlayScissor);
-    renderer.setScissorTest(overlayScissorTest);
-    renderer.autoClear = overlayAutoClear;
-  }
 }
 
 // 메뉴 뒤 배경(레이스가 없을 때): 아무것도 그리지 않는다

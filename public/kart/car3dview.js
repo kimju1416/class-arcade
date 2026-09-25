@@ -45,37 +45,39 @@ export function loadCar3D(id) {
     }
     const make = (paint) => {
       const m = new T.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 });
-      m.userData.u = { wa: { value: 0 }, ws: { value: 0 } };
+      m.userData.u = { wa: { value: 0 }, ws: { value: 0 }, wb: { value: 0 } };
       m.onBeforeCompile = (sh) => {
         Object.assign(sh.uniforms, m.userData.u, { whl: { value: W4.length ? W4 : [new T.Vector4(0, -99, 0, 0), new T.Vector4(0, -99, 0, 0), new T.Vector4(0, -99, 0, 0), new T.Vector4(0, -99, 0, 0)] }, whw: { value: HW.length ? HW : [0, 0, 0, 0] } });
         Object.assign(sh.uniforms, { tS: { value: ts }, tF: { value: tf }, tB: { value: tb }, tT: { value: tt }, bmin: { value: bb.min.clone() }, bmax: { value: bb.max.clone() },
           rS: { value: new T.Vector4(...R.s) }, rF: { value: new T.Vector4(...R.f) }, rB: { value: new T.Vector4(...R.b) }, rT: { value: new T.Vector4(...R.t) }, paint: { value: new T.Color(paint) } });
+        // 바퀴는 모양(꼭짓점)을 돌리지 않는다 — 한 덩어리로 붙은 모델이라 둘레 차체까지 찢어졌다.
+        // 대신 옆면 그림(휠 무늬)만 바퀴 중심으로 돌려 찍고, 빠를 땐 세 번 겹쳐 찍어 흐리게(모션 블러) 한다.
         sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
-          varying vec3 vOP; varying vec3 vON; uniform vec4 whl[4]; uniform float whw[4]; uniform float wa, ws;
-          // 점 p(또는 방향 v, isDir)가 바퀴 원통 안이면 바퀴 축(x)으로 돌리고, 앞바퀴는 세로축으로 꺾는다
-          vec3 spinW(vec3 p, vec3 v, bool isDir) {
-            for (int i = 0; i < 4; i++) {
-              vec4 W = whl[i];
-              vec2 d = p.yz - W.yz;
-              if (abs(p.x - W.x) < whw[i] && dot(d, d) < W.w * W.w) {
-                vec3 q = isDir ? v : v - W.xyz;
-                float c = cos(wa), s = sin(wa);
-                q = vec3(q.x, c * q.y - s * q.z, s * q.y + c * q.z);
-                if (i < 2) { float c2 = cos(ws), s2 = sin(ws); q = vec3(c2 * q.x + s2 * q.z, q.y, -s2 * q.x + c2 * q.z); }
-                return isDir ? q : q + W.xyz;
-              }
-            }
-            return v;
-          }`)
-          .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = spinW(position, objectNormal, true);')
-          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position; vON = normal; transformed = spinW(position, transformed, false);');
+          varying vec3 vOP; varying vec3 vON;`)
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position; vON = normal;');
         sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
           uniform sampler2D tS, tF, tB, tT; uniform vec3 bmin, bmax, paint; uniform vec4 rS, rF, rB, rT; varying vec3 vOP; varying vec3 vON;
-          vec3 pick(sampler2D t, vec4 r, float u, float v, float bias) { return texture(t, vec2(mix(r.x, r.z, u), 1.0 - mix(r.y, r.w, v)), bias).rgb; }`)
+          uniform vec4 whl[4]; uniform float whw[4]; uniform float wa, wb;
+          vec3 pick(sampler2D t, vec4 r, float u, float v, float bias) { return texture(t, vec2(mix(r.x, r.z, u), 1.0 - mix(r.y, r.w, v)), bias).rgb; }
+          // 바퀴 옆면: 점 p를 바퀴 중심 c 둘레로 -a만큼 돌린 자리의 옆 그림(= 그림이 +a 굴러간 모습)
+          vec3 pickSpin(vec3 p, vec2 c, float a, float bias) {
+            vec2 d = p.yz - c; float co = cos(-a), si = sin(-a);
+            vec3 r = vec3(p.x, c + vec2(co * d.x - si * d.y, si * d.x + co * d.y));
+            vec3 q = (r - bmin) / (bmax - bmin);
+            return pick(tS, rS, 1.0 - q.z, 1.0 - q.y, bias);
+          }`)
           .replace('#include <map_fragment>', `
           vec3 q = (vOP - bmin) / (bmax - bmin); vec3 N = normalize(vON);
           // 비스듬한 면일수록 흐린 단계로(늘어난 줄무늬 방지)
           vec3 cS = pick(tS, rS, 1.0 - q.z, 1.0 - q.y, (1.0 - abs(N.x)) * 3.0);   // 옆: 앞(+z)이 그림 왼쪽
+          for (int i = 0; i < 4; i++) {
+            vec4 W = whl[i]; vec2 d = vOP.yz - W.yz; float rr = W.w * 0.92;
+            if (abs(vOP.x - W.x) < whw[i] && dot(d, d) < rr * rr && abs(N.x) > 0.45) {
+              float b = (1.0 - abs(N.x)) * 3.0 + wb * 2.5;
+              cS = (pickSpin(vOP, W.yz, wa - wb, b) + pickSpin(vOP, W.yz, wa, b) + pickSpin(vOP, W.yz, wa + wb, b)) / 3.0;
+              break;
+            }
+          }
           vec3 cF = pick(tF, rF, q.x, 1.0 - q.y, (1.0 - abs(N.z)) * 3.0);          // 앞: +x가 그림 오른쪽
           vec3 cB = pick(tB, rB, 1.0 - q.x, 1.0 - q.y, (1.0 - abs(N.z)) * 3.0);    // 뒤: 좌우 반대
           vec3 cT = pick(tT, rT, 1.0 - q.x, 1.0 - q.z, (1.0 - abs(N.y)) * 3.0);    // 위: 앞이 그림 위쪽

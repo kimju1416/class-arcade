@@ -163,13 +163,13 @@ uniform float fm;`)
     this.body.rotation.x = -(k.pitch || 0);
     const sq = k.squash || 0;
     this.body.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.3);
-    this.wheelA += k.spd * dt / 0.36;
+    this.wheelA = (this.wheelA + k.spd * dt / 0.36) % (Math.PI * 2); // 오래 달려도 각도가 커져 셰이더 정밀도가 깨지지 않게
     for (const w of this.wheels) w.rotation.x = this.wheelA;
     for (const f of this.fronts) f.rotation.y = -k.steerVis * 0.45;
     this.wheel.rotation.z = k.steerVis * 0.9;
     // 3D 캐릭터 얼굴: 맞으면 어지러운 얼굴, 시상대에선 우승 얼굴
     if (this.m3d) this.m3d.material.userData.u.face.value = this.face === 'win' ? 2 : (k.spinT > 0 || (k.dizzyT || 0) > 0 || this.face === 'hit') ? 1 : 0;
-    if (this.carMat && this.carMat.userData.u) { this.carMat.userData.u.wa.value = this.wheelA; this.carMat.userData.u.ws.value = -k.steerVis * 0.45; }
+    if (this.carMat && this.carMat.userData.u) { const u = this.carMat.userData.u; u.wa.value = this.wheelA; u.ws.value = -k.steerVis * 0.45; u.wb.value = Math.min(0.55, Math.abs(k.spd * dt / 0.36) * 0.5); } // wb: 한 프레임에 도는 각의 절반 = 흐림 폭
     this.shadow.material.opacity = 0.35 / (1 + k.hop * 0.8);
 
     // 운전자: 카메라가 보는 방향에 따라 8방향(앞·대각앞·옆·대각뒤·뒤, 오른쪽은 좌우 뒤집기)

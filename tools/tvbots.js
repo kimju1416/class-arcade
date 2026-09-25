@@ -11,7 +11,7 @@ const WS = require('ws');
 
 const CODE = process.argv[2];
 const N = +(process.argv[3] || 6);
-const URL = 'ws://127.0.0.1:3000';
+const URL = process.env.ARCADE_WS || 'ws://127.0.0.1:3000';
 const NAMES = ['서준','하윤','도윤','지우','시우','수아','예준','지호','유나','민서','건우','서연','현우','채원','우진','다은','준호','예린','정우','소율','태윤','하린','승우','나윤','재원','시윤','유진','민준','아윤','성민'];
 
 if (!CODE) { console.error('방 코드를 주세요'); process.exit(1); }
