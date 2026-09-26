@@ -5,17 +5,30 @@
 const crypto = require("crypto");
 
 const MAX_ROOMS = 60, GRACE_MS = 15000, MSG_LIMIT = 50;
+const IP_CONN_MAX = 8;              // 한 IP에서 동시에 붙을 수 있는 연결 수(학교는 NAT라 넉넉히)
+const PW_FAIL_MAX = 8, PW_FAIL_WIN = 60000; // 비밀번호 틀림: IP당 1분 8번
+const ATK_MSG_MAX = 720, ATK_ROUND_MAX = 6000; // 방해뿌요 한 번·한 라운드 상한(말이 안 되는 값 차단)
 
 module.exports = function createPuyoServer(WebSocketServer) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 2048 });
   const rooms = new Map();
   const lobby = new Set();
+  const ipConn = new Map(), pwFail = new Map();
 
-  const send = (ws, o) => { if (ws && ws.readyState === 1 && ws.bufferedAmount < 131072) ws.send(JSON.stringify(o)); };
+  // 판 모습(s)만 버퍼가 밀리면 버린다. 상태 전이 메시지는 항상 보낸다
+  const send = (ws, o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+  const sendSnap = (ws, o) => { if (ws && ws.readyState === 1 && ws.bufferedAmount < 131072) ws.send(JSON.stringify(o)); };
   const okCh = (c) => c >= 32 && c !== 127 && !(c >= 0x200b && c <= 0x200f) && !(c >= 0x2028 && c <= 0x202e) && !"<>&\"'".includes(String.fromCharCode(c));
-  const clean = (v, n, d) => typeof v === "string" ? ([...v].filter(ch => okCh(ch.charCodeAt(0))).join("").trim().slice(0, n) || d) : d;
+  // 글자 단위(이모지 포함)로 걸러서 자른다
+  const clean = (v, n, d) => {
+    if (typeof v !== "string") return d;
+    const s = [...v].filter(ch => okCh(ch.codePointAt(0))).join("").trim();
+    return [...s].slice(0, n).join("").trim() || d;
+  };
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi ? v : null;
   const newCode = () => { let c; do { c = String(crypto.randomInt(1000, 10000)); } while (rooms.has(c)); return c; };
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const ipOf = (req) => String((req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?");
 
   const listRooms = () => [...rooms.values()].map(r => ({
     code: r.code, name: r.name, ft: r.ft, n: r.players.length, state: r.state, lock: !!r.pw,
@@ -36,6 +49,7 @@ module.exports = function createPuyoServer(WebSocketServer) {
   }
   const bcast = (r, o) => { for (const p of r.players) send(p.ws, o); };
   const other = (r, p) => r.players.find(q => q !== p);
+  const allOn = (r) => r.players.length === 2 && r.players.every(q => q.ws);
 
   function leave(r, p, why) {
     clearTimeout(p.graceT);
@@ -48,17 +62,22 @@ module.exports = function createPuyoServer(WebSocketServer) {
       clearTimeout(r.nextT);
       send(o.ws, { t: "forfeit", why: why || "left" });
     }
-    r.state = "wait"; r.round = 0;
+    r.state = "wait"; r.round = 0; r.waitStart = false; r.lastEnd = null;
     for (const q of r.players) { q.ready = false; q.wins = 0; }
     bcast(r, roomState(r));
     pushLobby();
   }
 
+  // 둘 다 접속해 있어야 라운드를 연다. 한쪽이 끊겨 있으면 돌아올 때(resume) 연다
+  function tryStart(r) {
+    if (!allOn(r)) { r.waitStart = true; return; }
+    r.waitStart = false; startRound(r);
+  }
   function startRound(r) {
-    r.state = "play"; r.round++;
+    r.state = "play"; r.round++; r.lastEnd = null;
     r.seed = crypto.randomInt(1, 2147483647);
-    r.colors = [0, 1, 2, 3, 4].sort(() => crypto.randomInt(3) - 1).slice(0, 4);
-    for (const p of r.players) { p.dead = false; p.snap = null; }
+    r.colors = shuffle([0, 1, 2, 3, 4]).slice(0, 4);
+    for (const p of r.players) { p.dead = false; p.snap = null; p.atkSum = 0; p.missAtk = 0; p.missDone = false; }
     bcast(r, roomState(r));
     bcast(r, { t: "start", seed: r.seed, colors: r.colors, round: r.round, at: 3000 });
     pushLobby();
@@ -72,15 +91,20 @@ module.exports = function createPuyoServer(WebSocketServer) {
     w.wins++;
     const match = w.wins >= r.ft;
     r.state = match ? "over" : "between";
-    bcast(r, { t: "roundEnd", winner: w.id, loser: p.id, wins: r.players.map(q => [q.id, q.wins]), match });
+    r.lastEnd = { t: "roundEnd", round: r.round, winner: w.id, loser: p.id, wins: r.players.map(q => [q.id, q.wins]), match };
+    bcast(r, r.lastEnd);
     bcast(r, roomState(r));
-    if (!match) r.nextT = setTimeout(() => { if (r.players.length === 2 && r.state === "between") startRound(r); }, 3500);
+    if (!match) r.nextT = setTimeout(() => { if (r.players.length === 2 && r.state === "between") tryStart(r); }, 3500);
     else { for (const q of r.players) q.ready = false; pushLobby(); }
   }
 
   wss.on("error", (e) => console.error("[puyo wss 오류]", e.message));
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
     ws.on("error", () => {});
+    const ip = req ? ipOf(req) : "?";
+    const nConn = (ipConn.get(ip) || 0) + 1;
+    if (nConn > IP_CONN_MAX) { try { ws.close(1013, "too many"); } catch {} return; }
+    ipConn.set(ip, nConn);
     ws.isAlive = true; ws.on("pong", () => { ws.isAlive = true; });
     ws.cnt = 0; ws.win = Date.now();
     lobby.add(ws);
@@ -94,6 +118,8 @@ module.exports = function createPuyoServer(WebSocketServer) {
         let m; try { m = JSON.parse(raw); } catch { return; }
         if (!m || typeof m !== "object") return;
         const r = ws.room, p = ws.player;
+        // 경기 메시지는 지금 라운드 것만 받는다(늦게 도착한 지난 라운드 메시지가 섞이지 않게)
+        const cur = r && r.state === "play" && m.round === r.round;
 
         switch (m.t) {
           case "create": {
@@ -108,34 +134,51 @@ module.exports = function createPuyoServer(WebSocketServer) {
           }
           case "join": {
             if (r) return;
-            const room = rooms.get(clean(m.code, 4, "").toUpperCase());
-            if (!room) return send(ws, { t: "err", msg: "그 방이 없어요. 코드를 확인해 주세요." });
+            const room = rooms.get(clean(m.code, 4, ""));
+            if (!room) return send(ws, { t: "err", msg: "그 방이 없어요. 방 번호를 확인해 주세요." });
             if (room.players.length >= 2) return send(ws, { t: "err", msg: "이미 두 명이 있어요." });
-            if (room.pw && m.pw !== room.pw) return send(ws, { t: "err", msg: m.pw ? "비밀번호가 달라요." : "비밀번호 4자리를 넣어 주세요.", need: "pw", code: room.code });
+            if (room.pw && m.pw !== room.pw) {
+              const f = (pwFail.get(ip) || []).filter(t => now - t < PW_FAIL_WIN);
+              if (f.length >= PW_FAIL_MAX) return send(ws, { t: "err", msg: "비밀번호를 너무 많이 틀렸어요. 1분 뒤에 다시 해 주세요." });
+              if (m.pw) { f.push(now); pwFail.set(ip, f); }
+              return send(ws, { t: "err", msg: m.pw ? "비밀번호가 달라요." : "비밀번호 4자리를 넣어 주세요.", need: "pw", code: room.code });
+            }
             join(ws, room, m);
             return;
           }
           case "resume": {
             // 잠깐 끊겼다 다시 붙은 경우 — 같은 토큰이면 자리를 돌려준다
-            const room = rooms.get(clean(m.code, 4, "").toUpperCase());
-            const q = room && room.players.find(x => x.token === m.token && typeof m.token === "string");
-            if (!q) return send(ws, { t: "resumeFail" });
+            if (r) return;
+            const room = rooms.get(clean(m.code, 4, ""));
+            const q = room && typeof m.token === "string" && room.players.find(x => x.token === m.token);
+            if (!q) return send(ws, { t: "resumeFail", code: room ? room.code : "" });
             clearTimeout(q.graceT);
-            if (q.ws && q.ws !== ws) { try { q.ws.room = null; q.ws.close(); } catch {} }
+            if (q.ws && q.ws !== ws) { try { q.ws.room = null; q.ws.player = null; q.ws.close(); } catch {} }
             q.ws = ws; ws.room = room; ws.player = q; lobby.delete(ws);
-            send(ws, { t: "joined", id: q.id, token: q.token });
+            send(ws, { t: "joined", id: q.id, token: q.token, resumed: true });
             bcast(room, roomState(room));
-            const o = other(room, q); if (o && o.snap) send(ws, o.snap);
+            const o = other(room, q);
+            if (room.state === "play" && m.round !== room.round) {
+              // 끊긴 사이 라운드가 시작됐다 → 시작 신호를 다시 준다
+              send(ws, { t: "start", seed: room.seed, colors: room.colors, round: room.round, at: 1500 });
+            } else if (room.state === "play" && (q.missAtk || q.missDone)) {
+              // 끊긴 사이 온 방해뿌요를 한 번에 넘긴다
+              send(ws, { t: "atk", n: q.missAtk, done: true, ch: 0, round: room.round });
+            }
+            if ((room.state === "between" || room.state === "over") && room.lastEnd && !(m.round === room.round && m.ended)) send(ws, room.lastEnd);
+            q.missAtk = 0; q.missDone = false;
+            if (o && o.snap && room.state === "play") sendSnap(ws, o.snap);
             if (o) send(o.ws, { t: "oppBack" });
+            if (room.waitStart) tryStart(room);
             return;
           }
           case "leave": if (r) { leave(r, p); lobby.add(ws); send(ws, { t: "rooms", list: listRooms() }); } return;
           case "ready": {
             if (!r || (r.state !== "wait" && r.state !== "over")) return;
-            if (r.state === "over") { r.state = "wait"; r.round = 0; for (const q of r.players) q.wins = 0; }
+            if (r.state === "over") { r.state = "wait"; r.round = 0; r.lastEnd = null; for (const q of r.players) q.wins = 0; }
             p.ready = !!m.v;
-            if (r.players.length === 2 && r.players.every(q => q.ready)) startRound(r);
-            else bcast(r, roomState(r));
+            if (r.players.length === 2 && r.players.every(q => q.ready)) tryStart(r);
+            bcast(r, roomState(r));
             return;
           }
           case "ft": {
@@ -144,42 +187,42 @@ module.exports = function createPuyoServer(WebSocketServer) {
             return;
           }
           case "s": {
-            // 내 판 모습 → 상대에게. 판 문자열은 모양만 검사하고 그대로 넘긴다
-            if (!r || r.state !== "play") return;
+            // 내 판 모습 → 상대에게. 모양·범위를 칸별로 검사한다
+            if (!cur) return;
             if (typeof m.f !== "string" || m.f.length !== 78 || !/^[.RGBYPOrgbypo]+$/.test(m.f)) return;
-            const snap = { t: "s", f: m.f,
-              a: Array.isArray(m.a) && m.a.length === 5 && m.a.every(v => Number.isInteger(v) && v >= -2 && v <= 40) ? m.a : null,
-              sc: int(m.sc, 0, 99999999) || 0, p: int(m.p, 0, 99999) || 0, ch: int(m.ch, 0, 40) || 0, n: Array.isArray(m.n) && m.n.length <= 4 && m.n.every(v => int(v, 0, 4) !== null) ? m.n : [] };
+            const a = Array.isArray(m.a) && m.a.length === 5 && int(m.a[0], 0, 5) !== null && int(m.a[1], 0, 27) !== null
+              && int(m.a[2], 0, 3) !== null && int(m.a[3], 0, 4) !== null && int(m.a[4], 0, 4) !== null ? m.a : null;
+            const snap = { t: "s", f: m.f, a,
+              sc: int(m.sc, 0, 99999999) || 0, p: int(m.p, 0, 99999) || 0, ch: int(m.ch, 0, 40) || 0,
+              n: Array.isArray(m.n) && m.n.length === 4 && m.n.every(v => int(v, 0, 4) !== null) ? m.n : [] };
             p.snap = snap;
-            const o = other(r, p); if (o) send(o.ws, snap);
+            const o = other(r, p); if (o) sendSnap(o.ws, snap);
             return;
           }
           case "atk": {
             // 방해뿌요 전송. done=연쇄 끝(이때 상대 쪽 예고가 확정되어 떨어질 수 있게 된다)
-            if (!r || r.state !== "play") return;
-            const n = int(m.n, 0, 2000); if (n === null) return;
-            const o = other(r, p); if (o) send(o.ws, { t: "atk", n, done: !!m.done, ch: int(m.ch, 0, 40) || 0 });
+            if (!cur || p.dead) return;
+            let n = int(m.n, 0, ATK_MSG_MAX); if (n === null) return;
+            n = Math.min(n, Math.max(0, ATK_ROUND_MAX - (p.atkSum || 0))); p.atkSum = (p.atkSum || 0) + n;
+            const o = other(r, p); if (!o) return;
+            if (o.ws) send(o.ws, { t: "atk", n, done: !!m.done, ch: int(m.ch, 0, 40) || 0, round: r.round });
+            else { o.missAtk = (o.missAtk || 0) + n; if (m.done) o.missDone = true; } // 끊긴 쪽은 모아 두었다가 돌아오면 넘긴다
             return;
           }
-          case "dead": if (r) onDead(r, p); return;
-          case "emo": {
-            if (!r) return; const v = int(m.v, 0, 5); if (v === null) return;
-            if (now - (p.emoAt || 0) < 800) return; p.emoAt = now;
-            const o = other(r, p); if (o) send(o.ws, { t: "emo", v });
-            return;
-          }
+          case "dead": if (cur) onDead(r, p); return;
         }
       } catch (e) { console.error("[puyo 메시지 오류]", e && e.stack || e); }
     });
 
     ws.on("close", () => {
+      const c = (ipConn.get(ip) || 1) - 1; if (c > 0) ipConn.set(ip, c); else ipConn.delete(ip);
       lobby.delete(ws);
       const r = ws.room, p = ws.player;
       if (!r || !p || p.ws !== ws) return;
       p.ws = null;
       bcast(r, roomState(r));
       const o = other(r, p); if (o) send(o.ws, { t: "oppAway" });
-      p.graceT = setTimeout(() => { if (!p.ws && rooms.get(r.code) === r) leave(r, p, "away"); }, GRACE_MS);
+      p.graceT = setTimeout(() => { if (!p.ws && rooms.get(r.code) === r && r.players.includes(p)) leave(r, p, "away"); }, GRACE_MS);
     });
   });
 
@@ -189,18 +232,19 @@ module.exports = function createPuyoServer(WebSocketServer) {
     room.players.push(p);
     ws.room = room; ws.player = p; lobby.delete(ws);
     send(ws, { t: "joined", id: p.id, token: p.token });
-    if (room.state === "over") { room.state = "wait"; for (const q of room.players) { q.wins = 0; q.ready = false; } }
     bcast(room, roomState(room));
     pushLobby();
   }
 
-  // 죽은 연결 정리
+  // 죽은 연결 정리(반쯤 끊긴 소켓을 빨리 알아채도록 10초)
   const hb = setInterval(() => {
     for (const ws of wss.clients) {
       if (!ws.isAlive) { try { ws.terminate(); } catch {} continue; }
       ws.isAlive = false; try { ws.ping(); } catch {}
     }
-  }, 20000);
+    const now = Date.now();
+    for (const [k, v] of pwFail) if (!v.some(t => now - t < PW_FAIL_WIN)) pwFail.delete(k);
+  }, 10000);
   hb.unref && hb.unref();
 
   return wss;
