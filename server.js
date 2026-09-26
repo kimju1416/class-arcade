@@ -1296,8 +1296,6 @@ const server = http.createServer((req, res) => {
   if (url === '/fps') { res.writeHead(302, { Location: '/fps/' }); res.end(); return; }
   if (url === '/kart') { res.writeHead(302, { Location: '/kart/' }); res.end(); return; }
   if (url === '/kart/') url = '/kart/index.html';
-  if (url === '/mallang-7xq4') { res.writeHead(302, { Location: '/mallang-7xq4/' }); res.end(); return; }
-  if (url === '/mallang-7xq4/') url = '/mallang-7xq4/index.html';
   if (url === '/fps/') url = '/fps/index.html';
   if (url === '/') url = '/index.html';
   const safe = path.normalize(url).replace(/^(\.\.[\/\\])+/, '');
@@ -4443,7 +4441,7 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 16384 });
 const fpsWss = require('./fps-server')(WebSocketServer);
 const nexusWss = require('./nexus-server')(WebSocketServer);
 const kartWss = require('./kart-server')(WebSocketServer);
-const puyoWss = require('./puyo-server')(WebSocketServer); // 말랑 대전(숨김 주소)
+const puyoWss = require('./puyo-server')(WebSocketServer); // 말랑 대전 대전 통로(게임 화면은 kimju.kr/bbu)
 server.on('upgrade', (req, socket, head) => {
   let pathname;
   try { pathname = new URL(req.url, 'http://localhost').pathname; } catch { socket.destroy(); return; }
