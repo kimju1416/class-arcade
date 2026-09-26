@@ -44,7 +44,7 @@ module.exports = function createPuyoServer(WebSocketServer) {
     }, 150);
   }
   function roomState(r) {
-    return { t: "room", code: r.code, name: r.name, ft: r.ft, pw: r.pw || "", state: r.state, round: r.round,
+    return { t: "room", code: r.code, name: r.name, ft: r.ft, qd: !!r.qd, pw: r.pw || "", state: r.state, round: r.round,
       players: r.players.map(p => ({ id: p.id, name: p.name, ready: p.ready, wins: p.wins, on: !!p.ws })) };
   }
   const bcast = (r, o) => { for (const p of r.players) send(p.ws, o); };
@@ -79,7 +79,7 @@ module.exports = function createPuyoServer(WebSocketServer) {
     r.colors = shuffle([0, 1, 2, 3, 4]).slice(0, 4);
     for (const p of r.players) { p.dead = false; p.snap = null; p.atkSum = 0; p.missAtk = 0; p.missDone = false; }
     bcast(r, roomState(r));
-    bcast(r, { t: "start", seed: r.seed, colors: r.colors, round: r.round, at: 3000 });
+    bcast(r, { t: "start", seed: r.seed, colors: r.colors, round: r.round, qd: !!r.qd, at: 3000 });
     pushLobby();
   }
 
@@ -126,7 +126,7 @@ module.exports = function createPuyoServer(WebSocketServer) {
             if (r) return;
             if (rooms.size >= MAX_ROOMS) return send(ws, { t: "err", msg: "방이 너무 많아요. 잠시 후 다시 해 주세요." });
             const code = newCode();
-            const room = { code, name: clean(m.room, 16, "한 판 붙자"), ft: int(m.ft, 1, 7) || 2, players: [], state: "wait", round: 0,
+            const room = { code, name: clean(m.room, 16, "한 판 붙자"), ft: int(m.ft, 1, 7) || 3, qd: false, players: [], state: "wait", round: 0,
               pw: typeof m.pw === "string" && /^[0-9]{4}$/.test(m.pw) ? m.pw : "" };
             rooms.set(code, room);
             join(ws, room, m);
@@ -160,7 +160,7 @@ module.exports = function createPuyoServer(WebSocketServer) {
             const o = other(room, q);
             if (room.state === "play" && m.round !== room.round) {
               // 끊긴 사이 라운드가 시작됐다 → 시작 신호를 다시 준다
-              send(ws, { t: "start", seed: room.seed, colors: room.colors, round: room.round, at: 1500 });
+              send(ws, { t: "start", seed: room.seed, colors: room.colors, round: room.round, qd: !!room.qd, at: 1500 });
             } else if (room.state === "play" && (q.missAtk || q.missDone)) {
               // 끊긴 사이 온 방해뿌요를 한 번에 넘긴다
               send(ws, { t: "atk", n: q.missAtk, done: true, ch: 0, round: room.round });
@@ -181,6 +181,11 @@ module.exports = function createPuyoServer(WebSocketServer) {
             bcast(r, roomState(r));
             return;
           }
+          case "qd": {
+            if (!r || r.players[0] !== p || r.state !== "wait") return;
+            r.qd = !!m.v; bcast(r, roomState(r));
+            return;
+          }
           case "ft": {
             if (!r || r.players[0] !== p || r.state !== "wait") return;
             r.ft = int(m.v, 1, 7) || r.ft; bcast(r, roomState(r)); pushLobby();
@@ -194,7 +199,8 @@ module.exports = function createPuyoServer(WebSocketServer) {
               && int(m.a[2], 0, 3) !== null && int(m.a[3], 0, 4) !== null && int(m.a[4], 0, 4) !== null ? m.a : null;
             const snap = { t: "s", f: m.f, a,
               sc: int(m.sc, 0, 99999999) || 0, p: int(m.p, 0, 99999) || 0, ch: int(m.ch, 0, 40) || 0,
-              n: Array.isArray(m.n) && m.n.length === 4 && m.n.every(v => int(v, 0, 4) !== null) ? m.n : [] };
+              n: Array.isArray(m.n) && m.n.length === 4 && m.n.every(v => int(v, 0, 4) !== null) ? m.n : [],
+              k: Array.isArray(m.k) && m.k.length === 2 && int(m.k[0], 40, 9990) !== null && int(m.k[1], 1, 999) !== null ? m.k : null };
             p.snap = snap;
             const o = other(r, p); if (o) sendSnap(o.ws, snap);
             return;

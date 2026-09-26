@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#2361C4">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="말랑 대전">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <title>말랑 대전</title>
 <meta property="og:title" content="말랑 대전 — 1:1 연쇄 퍼즐 대결">
 <meta property="og:image" content="og.jpg">
@@ -15,7 +23,10 @@
   --ok:#1D7A4D; --err:#C0392B; --r1:10px; --r2:14px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow:hidden}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+@supports (height:100dvh){html,body{height:100dvh}}
+body{-webkit-touch-callout:none}
+canvas{touch-action:none}
 body{font-family:"Pretendard Variable",Pretendard,sans-serif;color:var(--tx);background:#3F8FE6;word-break:keep-all;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 /* 경기장 배경(코드로 그림) — 하늘·빛줄기·관중석·잔디 */
 #bgArt{position:fixed;inset:0;z-index:-1;overflow:hidden;background:linear-gradient(#5DB3F7 0%,#3F8FE6 26%,#2F6FC9 27%,#2A5FB2 58%,#3BAA4F 58.5%,#2E9443 100%)}
@@ -99,7 +110,8 @@ input,select{font:inherit;color:inherit}
 .bar .pn.me{background:#2361C4}
 .bar .pn.op{background:#C8402C;justify-content:flex-end}
 .bar .sc{height:40px;min-width:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1C2340;color:#fff;border-radius:8px;padding:0 14px}
-.bar .sc b{font-size:20px;line-height:1;font-variant-numeric:tabular-nums}
+.bar .sc b{font-size:15px;line-height:1;font-weight:800;letter-spacing:.02em;white-space:nowrap}
+.bar .sc b .st{color:#FFD23F;letter-spacing:0}
 .bar .sc small{font-size:11px;color:#AFC0E6;margin-top:2px}
 .bar .xbtn{height:40px;padding:0 12px;border-radius:8px;background:rgba(20,28,50,.72);color:#fff;font-size:13px;font-weight:600}
 .chainpop{position:absolute;left:50%;transform:translate(-50%,0);font-weight:900;color:#fff;white-space:nowrap;pointer-events:none;
@@ -119,7 +131,7 @@ input,select{font:inherit;color:inherit}
 /* 터치 조작 */
 .pad{display:none;gap:8px;padding:6px 10px calc(10px + env(safe-area-inset-bottom));justify-content:space-between}
 .pad .grp{display:flex;gap:8px}
-.pad button{width:clamp(56px,17vw,78px);height:clamp(56px,17vw,78px);border-radius:50%;background:rgba(255,255,255,.92);color:#1C2340;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 0 rgba(0,0,0,.25);touch-action:none}
+.pad button{width:var(--bs,clamp(56px,17vw,78px));height:var(--bs,clamp(56px,17vw,78px));border-radius:50%;background:rgba(255,255,255,.92);color:#1C2340;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 0 rgba(0,0,0,.25);touch-action:none}
 .pad button.rot{background:#1C2340;color:#fff}
 .pad button:active,.pad button.on{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.25)}
 .pad svg{width:46%;height:46%;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
@@ -137,8 +149,22 @@ body.port .bar .pn{font-size:14px;padding:0 10px}
 body.port .bar .sc{min-width:90px}
 .mini{display:none;flex-direction:column;align-items:center;gap:4px}
 body.port .mini{display:flex}
+body.port.solo .mini{display:none}
+body.port .midinfo{min-width:0;width:100%;padding:6px 8px;font-size:12px}
+body.port .midinfo b{font-size:18px}
+body.port .mid{flex:1;min-width:0;align-items:stretch}
+body.port .mid>*{align-self:center}
 .mini .bwrap{padding:3px}
 .mini .scorebox{font-size:13px}
+/* 세로 폰: 내 점수는 오른쪽 칸(파란 띠), 상대 점수는 작은 판 아래(빨간 띠) — 판 아래 줄을 없애 내 판을 키운다 */
+.pscore{display:none}
+body.port .pscore{display:block;width:100%;text-align:center;border-radius:6px;padding:4px 2px;color:#fff;font:800 14px/1.1 "Pretendard Variable",sans-serif;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+body.port .pscore.me{background:#2361C4}
+body.port .me>.scorebox{display:none}
+body.port .mini .scorebox{background:#C8402C;border-radius:6px;padding:4px 6px;font-size:13px;text-shadow:none;margin-top:0}
+body.port .bar{padding-top:4px;padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+body.port .bar .pn,body.port .bar .sc,body.port .bar .xbtn{height:38px}
+body.port .bar .sc b{font-size:12px}
 </style>
 </head>
 <body>
@@ -171,7 +197,7 @@ body.port .mini{display:flex}
     <div class="status" id="lobbyStatus"></div>
     <button id="btnSolo" class="btn sec full" style="margin-top:8px">혼자 연습하기</button>
     <p class="help">
-      <kbd>←</kbd><kbd>→</kbd> 이동 · <kbd>↓</kbd> 빠르게 내리기 · <kbd>Z</kbd> 왼쪽 회전 · <kbd>X</kbd>/<kbd>↑</kbd> 오른쪽 회전<br>
+      <kbd>←</kbd><kbd>→</kbd> 이동 · <kbd>↓</kbd> 빠르게 내리기 · <kbd>Z</kbd> 왼쪽 회전 · <kbd>X</kbd> 오른쪽 회전 · <kbd>↑</kbd> 한 번에 떨구기(방에서 켰을 때)<br>
       같은 색 4개를 이으면 터집니다. 연쇄가 길수록 상대 판에 방해뿌요가 많이 떨어집니다. 가운데 줄 맨 위(✕)까지 쌓이면 집니다.
     </p>
   </div>
@@ -188,6 +214,8 @@ body.port .mini{display:flex}
     <div class="slots" id="slots"></div>
     <label class="lbl">선승</label>
     <div class="seg" id="ftSeg2"></div>
+    <label class="lbl">한 번에 떨구기 (↑ 키 · 원작 설정의 Quick Drop)</label>
+    <div class="seg" id="qdSeg"></div>
     <div class="status" id="wrStatus"></div>
     <div class="row" style="margin-top:10px">
       <button id="btnLeave" class="btn sec">나가기</button>
@@ -209,6 +237,7 @@ body.port .mini{display:flex}
         <div class="nx" id="nxMeW"><canvas id="nxMe"></canvas></div>
         <div class="nx o" id="nxOpW"><canvas id="nxOp"></canvas></div>
       </div>
+      <div class="pscore me" id="scMeP">00000000</div>
       <div class="mini" id="mini">
         <canvas class="tray" id="trayMini"></canvas>
         <div class="bwrap" style="background:linear-gradient(#E8593F,#C8402C)"><canvas class="board" id="bdMini"></canvas></div>
@@ -224,6 +253,7 @@ body.port .mini{display:flex}
   </div>
   <div class="pad" id="pad">
     <div class="grp">
+      <button data-k="qd" class="qd hide" aria-label="한 번에 떨구기"><svg viewBox="0 0 24 24"><path d="M6 5l6 6 6-6"/><path d="M6 12l6 6 6-6"/><path d="M5 21h14"/></svg></button>
       <button data-k="left" aria-label="왼쪽"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
       <button data-k="down" aria-label="아래"><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>
       <button data-k="right" aria-label="오른쪽"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -236,7 +266,7 @@ body.port .mini{display:flex}
   <div class="bar">
     <button class="xbtn" id="btnQuit">나가기</button>
     <div class="pn me" id="pnMe">나</div>
-    <div class="sc" id="scBox"><b id="wins">0 vs 0</b><small id="ftLbl">First to 2</small></div>
+    <div class="sc" id="scBox"><b id="wins"></b><small id="ftLbl">First to 3</small></div>
     <div class="pn op" id="pnOp">상대</div>
   </div>
   <div class="ov hide" id="ov"></div>
@@ -313,6 +343,14 @@ class Game {
       if (this.state === 'move') this.shift(d);
     } else if (k === 'down'){ this.inp.down = true; }
     else if (k === 'rl' || k === 'rr'){ if (this.state === 'move') this.rotate(k === 'rr' ? 1 : -1); }
+    else if (k === 'qd'){ if (this.state === 'move' && this.quickDrop) this.hardDrop(); }
+  }
+  // 원작의 Quick Drop — 설정에서 켰을 때만. 그 자리에서 바닥까지 바로 내려 고정한다
+  hardDrop(){
+    const p = this.piece; let n = 0;
+    while (this.can(p.x, p.yh - 1, p.r)){ p.yh--; n++; }
+    this.score += n >> 1; this.leftover += n >> 1; this.dirty = true;
+    this.lock();
   }
   release(k){
     if (k === 'left' || k === 'right'){
@@ -397,7 +435,7 @@ class Game {
       const cp = CHAIN_POW[Math.min(this.chain-1, CHAIN_POW.length-1)] + Math.max(0, this.chain-19)*32;
       const mult = Math.min(999, Math.max(1, cp + COLOR_BONUS[cs.size] + gb));
       const pts = 10 * pc * mult;
-      this.score += pts;
+      this.score += pts; this.calc = [10 * pc, mult]; this.calcT = 900;
       const top = Math.max(...[...pop].map(k => k&15)), lx = [...pop].reduce((s,k)=>s+(k>>4),0)/pop.size;
       this.hooks.chain && this.hooks.chain(this.chain, pts, lx, top);
       // 방해뿌요 = (점수 + 지난 나머지) ÷ 목표점
@@ -441,6 +479,7 @@ class Game {
   }
   update(dt){
     for (let x=0; x<W; x++) for (let y=0; y<H; y++) if (this.sq[x][y] > 0) this.sq[x][y] = Math.max(0, this.sq[x][y] - dt);
+    if (this.calcT > 0) this.calcT -= dt;
     if (this.state === 'dead'){ this.deadT += dt; return; }
     if (this.piece){ // 회전은 눈에 보이게 부드럽게 돈다(판정은 즉시)
       const pc = this.piece; let d = pc.r - pc.va; d = ((d % 4) + 6) % 4 - 2;
@@ -503,7 +542,7 @@ class Game {
     }
     const p = this.piece;
     const n1 = this.pair(this.pieces), n2 = this.pair(this.pieces+1);
-    return { f, a: p ? [p.x, p.yh, p.r, p.a, p.c] : null, sc: this.score, ch: this.chain, n: [n1[0], n1[1], n2[0], n2[1]], p: this.incoming + this.incomingU };
+    return { f, a: p ? [p.x, p.yh, p.r, p.a, p.c] : null, sc: this.score, ch: this.chain, n: [n1[0], n1[1], n2[0], n2[1]], p: this.incoming + this.incomingU, k: this.calcT > 0 && this.calc ? this.calc : null };
   }
 }
 
@@ -512,7 +551,7 @@ const spriteCache = new Map();
 function puyoSprite(c, s, flash, blink){
   const key = c + '|' + s + '|' + (flash ? 1 : 0) + (blink ? 'b' : '');
   if (spriteCache.has(key)) return spriteCache.get(key);
-  const cv = document.createElement('canvas'), d = Math.ceil(s * devicePixelRatio);
+  const cv = document.createElement('canvas'), d = Math.ceil(s * DPR());
   cv.width = cv.height = d; const x = cv.getContext('2d'); x.scale(d/s, d/s);
   const r = s * 0.47, cx = s/2, cy = s/2;
   if (c === OJAMA){
@@ -545,8 +584,9 @@ function shade(hex, amt){
   const f = v => Math.round(amt >= 0 ? v + (255 - v) * amt : v * (1 + amt));
   return '#' + [f(r), f(g), f(b)].map(v => v.toString(16).padStart(2, '0')).join('');
 }
+function DPR(){ return Math.min(devicePixelRatio || 1, 2); }
 function setupCanvas(cv, w, h){
-  const d = devicePixelRatio || 1;
+  const d = DPR();
   if (cv._w !== w || cv._h !== h || cv._d !== d){ cv._w = w; cv._h = h; cv._d = d; cv.width = Math.round(w*d); cv.height = Math.round(h*d); cv.style.width = w+'px'; cv.style.height = h+'px'; }
   const x = cv.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); return x;
 }
@@ -754,13 +794,29 @@ function sfx(k, n){
   else if (k === 'count') tone(440, 0.12, 'triangle', 0.07);
 }
 
+// ================= 폰 전용: 진동·화면 꺼짐 방지 =================
+const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+function buzz(v){ if (!isTouch) return; try { navigator.vibrate && navigator.vibrate(v); } catch {} }
+let wakeLock = null;
+async function keepAwake(on){
+  try {
+    if (on && !wakeLock && navigator.wakeLock && document.visibilityState === 'visible'){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+    else if (!on && wakeLock){ await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && mode === 'game') keepAwake(true); });
+// iOS 사파리는 user-scalable=no를 무시하므로 확대 몸짓을 직접 막는다
+document.addEventListener('gesturestart', e => e.preventDefault());
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => { const t = Date.now(); if (t - lastTouchEnd < 320 && e.target.closest && e.target.closest('#game')) e.preventDefault(); lastTouchEnd = t; }, { passive: false });
+
 // ================= 화면·연결 =================
 const $ = id => document.getElementById(id);
 const store = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k, v){ try { localStorage.setItem(k, v); } catch {} } };
 const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/mallang-7xq4/ws';
 let ws = null, wsOk = false, myId = null, token = null, roomCode = null, room = null;
 let game = null, oppSnap = null, oppDead = false, mode = 'lobby', solo = false, reconnectT = null, lastSnapAt = 0;
-let makeFt = 2;
+let makeFt = 3;
 let curRound = 0, roundEnded = false, resultOpen = false;
 const sess = {
   save(){ try { sessionStorage.setItem('ml_sess', JSON.stringify({ roomCode, token })); } catch {} },
@@ -774,7 +830,7 @@ for (const id of ['codeIn', 'pwIn', 'roomPw']) $(id).addEventListener('input', e
 $('nick').addEventListener('input', () => store.set('ml_nick', $('nick').value.trim()));
 const nick = () => ($('nick').value.trim() || '플레이어').slice(0, 10);
 
-function show(id){ for (const s of ['lobby', 'waitRoom', 'game']) $(s).classList.toggle('hide', s !== id); mode = id; if (id === 'game') layout(); }
+function show(id){ for (const s of ['lobby', 'waitRoom', 'game']) $(s).classList.toggle('hide', s !== id); mode = id; if (id === 'game') layout(); keepAwake(id !== 'lobby'); }
 function status(el, t, err){ el.textContent = t || ''; el.classList.toggle('err', !!err); }
 function note(t, ms){ const n = $('note'); n.textContent = t; n.classList.remove('hide'); clearTimeout(note._t); if (ms) note._t = setTimeout(() => n.classList.add('hide'), ms); }
 function hideNote(){ $('note').classList.add('hide'); }
@@ -919,15 +975,29 @@ function onRoom(m){
     const host = m.players[0] && m.players[0].id === myId;
     seg($('ftSeg2'), m.ft, v => { if (host) send({ t:'ft', v }); });
     $('ftSeg2').querySelectorAll('button').forEach(b => b.disabled = !host);
+    const qs = $('qdSeg'); qs.innerHTML = '';
+    for (const [v, t] of [[false, '끔 (원작 기본)'], [true, '켬']]){
+      const b = document.createElement('button'); b.textContent = t; b.className = !!m.qd === v ? 'on' : ''; b.disabled = !host;
+      b.onclick = () => { if (host) send({ t:'qd', v }); }; qs.appendChild(b);
+    }
     $('btnReady').textContent = me && me.ready ? '준비 취소' : '준비';
     status($('wrStatus'), !op ? '상대를 기다리고 있어요.' : (me && me.ready) ? '상대가 준비하면 시작합니다.' : '둘 다 준비하면 시작합니다.');
   }
   // 경기 화면 이름·전적
   if (me) $('pnMe').textContent = me.name;
   if (op) $('pnOp').textContent = op.name;
-  $('wins').textContent = `${me ? me.wins : 0} vs ${op ? op.wins : 0}`;
+  setWins(me ? me.wins : 0, op ? op.wins : 0, m.ft);
   $('ftLbl').textContent = `First to ${m.ft}`;
 }
+
+// 원작처럼 «★★☆ WIN ☆☆☆» — 왼쪽은 내 승수(오른쪽부터 채움), 오른쪽은 상대 승수
+function setWins(a, b, ft){
+  const n = Math.max(1, Math.min(7, ft || 3));
+  const L = '☆'.repeat(Math.max(0, n - a)) + '★'.repeat(Math.min(n, a)), R = '★'.repeat(Math.min(n, b)) + '☆'.repeat(Math.max(0, n - b));
+  $('wins').innerHTML = '<span class="st">' + L + '</span> WIN <span class="st">' + R + '</span>';
+  $('wins').setAttribute('aria-label', a + ' 대 ' + b);
+}
+setWins(0, 0, 3);
 
 // ================= 경기 진행 =================
 let countT = 0, countLeft = 0, roundLive = false, oppDeadAt = 0;
@@ -936,18 +1006,19 @@ function startRound(m){
   solo = false; oppSnap = null; oppDead = false; oppDeadAt = 0; oppPopPt = null; FX.orbs = []; FX.parts = [];
   show('game'); $('sideOp').classList.remove('hide'); $('nxOpW').classList.remove('hide'); $('scBox').classList.remove('hide'); $('pnOp').classList.remove('hide');
   document.body.classList.remove('solo');
-  newGame(m.seed, m.colors, false);
+  newGame(m.seed, m.colors, false); game.quickDrop = !!m.qd;
+  document.querySelector('#pad .qd').classList.toggle('hide', !m.qd); layout();
   countdown(m.at || 3000);
 }
 function newGame(seed, colors, isSolo){
   game = new Game(seed, colors, {
-    chain(ch, pts, lx, top){ myPopPt = cellPt($('bdMe'), cellS, lx, top); chainPop($('wrapMe'), cellS, ch + '연쇄!', lx, top, ch >= 5); $('miVal').textContent = ch; },
+    chain(ch, pts, lx, top){ buzz(Math.min(60, 12 + ch * 8)); myPopPt = cellPt($('bdMe'), cellS, lx, top); chainPop($('wrapMe'), cellS, ch + '연쇄!', lx, top, ch >= 5); $('miVal').textContent = ch; },
     allClear(){ chainPop($('wrapMe'), cellS, '전부 지움!', 2.5, 7, true, true); sfx('allclear'); },
     attack(n, done, ch){ if (!isSolo) send({ t:'atk', n, done, ch, round: curRound }); if (n > 0 && !isSolo) orb(myPopPt, midPt(oppTrayEl()), n >= 30, '#7FD3FF'); },
     offset(n){ orb(myPopPt, midPt($('trayMe')), n >= 30, '#FFE45C'); },
     popped(cells){ burst($('bdMe'), cellS, cells); },
-    garbage(n){ if (n >= 6) shake($('wrapMe')); },
-    dead(){ if (!isSolo) { sendSnap(true); send({ t:'dead', round: curRound }); } else soloOver(); },
+    garbage(n){ if (n >= 6){ shake($('wrapMe')); buzz(45); } },
+    dead(){ buzz([70, 50, 140]); if (!isSolo) { sendSnap(true); send({ t:'dead', round: curRound }); } else soloOver(); },
   });
   $('sideMe').classList.remove('dead'); $('sideOp').classList.remove('dead'); $('mini').classList.remove('dead');
   $('miLabel').textContent = '연쇄'; $('miVal').textContent = '0';
@@ -972,7 +1043,7 @@ function onRoundEnd(m){
   const win = m.winner === myId;
   if (win){ oppDead = true; oppDeadAt = performance.now(); sfx('dead'); }
   const w = new Map(m.wins), me = w.get(myId) || 0, op = [...w.entries()].find(([k]) => k !== myId);
-  $('wins').textContent = `${me} vs ${op ? op[1] : 0}`;
+  setWins(me, op ? op[1] : 0, room ? room.ft : 3);
   const ov = $('ov'); ov.classList.remove('hide');
   if (m.match){
     ov.innerHTML = `<div class="big">${win ? '최종 승리' : '최종 패배'}</div><div class="msg">${me} : ${op ? op[1] : 0}</div>
@@ -1004,6 +1075,7 @@ function startSolo(){
   show('game'); document.body.classList.add('solo');
   $('sideOp').classList.add('hide'); $('nxOpW').classList.add('hide'); $('scBox').classList.add('hide'); $('pnOp').classList.add('hide');
   $('pnMe').textContent = nick(); oppSnap = null;
+  document.querySelector('#pad .qd').classList.add('hide');
   newGame((Math.random() * 2147483646 | 0) + 1, [0,1,2,3,4].sort(() => Math.random() - .5).slice(0, 4), true);
   layout(); countdown(3000);
 }
@@ -1033,7 +1105,7 @@ function sendSnap(force){
 }
 
 // ================= 입력 =================
-const KEYMAP = { ArrowLeft:'left', ArrowRight:'right', ArrowDown:'down', ArrowUp:'rr', KeyX:'rr', KeyZ:'rl', KeyK:'rr', KeyJ:'rl' };
+const KEYMAP = { ArrowLeft:'left', ArrowRight:'right', ArrowDown:'down', ArrowUp:'qd', KeyX:'rr', KeyZ:'rl', KeyK:'rr', KeyJ:'rl' };
 addEventListener('keydown', e => {
   if (mode !== 'game') return;
   const k = KEYMAP[e.code]; if (!k) return;
@@ -1042,10 +1114,25 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k && game) game.release(k); });
 addEventListener('blur', () => { if (game) for (const k of ['left','right','down']) game.release(k); });
+const MOVE_KEYS = new Set(['left', 'down', 'right']);
+const padTouch = new Map();   // 손가락(pointerId) → 누르고 있는 버튼
+const btnOf = k => document.querySelector('#pad button[data-k="' + k + '"]');
+function padPress(k){ const b = btnOf(k); if (b) b.classList.add('on'); if (game && roundLive) game.press(k); }
+function padRelease(k){ const b = btnOf(k); if (b) b.classList.remove('on'); if (game) game.release(k); }
+function keyAt(x, y){ const el = document.elementFromPoint(x, y); const b = el && el.closest && el.closest('#pad button'); return b ? b.dataset.k : null; }
 for (const b of document.querySelectorAll('#pad button')){
-  const k = b.dataset.k;
-  b.addEventListener('pointerdown', e => { e.preventDefault(); ac(); b.classList.add('on'); try { b.setPointerCapture(e.pointerId); } catch {} if (game && roundLive) game.press(k); });
-  const up = () => { b.classList.remove('on'); if (game) game.release(k); };
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); ac();
+    const k = b.dataset.k; padTouch.set(e.pointerId, k);
+    try { b.setPointerCapture(e.pointerId); } catch {}
+    padPress(k); buzz(6);
+  });
+  b.addEventListener('pointermove', e => {
+    const old = padTouch.get(e.pointerId); if (!old || !MOVE_KEYS.has(old)) return;
+    const k = keyAt(e.clientX, e.clientY);
+    if (k && k !== old && MOVE_KEYS.has(k)){ padRelease(old); padTouch.set(e.pointerId, k); padPress(k); buzz(6); }
+  });
+  const up = e => { const k = padTouch.get(e.pointerId); if (!k) return; padTouch.delete(e.pointerId); padRelease(k); };
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
   b.addEventListener('contextmenu', e => e.preventDefault());
 }
@@ -1059,13 +1146,24 @@ function layout(){
   const port = vw < 700 && vh > vw;
   document.body.classList.toggle('port', port);
   document.body.classList.toggle('land', touch && !port);
+  // 세로 폰: 보이는 버튼 수에 맞춰 버튼 크기를 정한다(떨구기 버튼이 켜지면 6개)
+  if (touch && port){
+    const nb = [...document.querySelectorAll('#pad button')].filter(b => !b.classList.contains('hide')).length;
+    const bs = Math.floor(Math.min(78, (vw - 20 - 8 * (nb - 1) - 10) / nb));
+    $('pad').style.setProperty('--bs', bs + 'px');
+  } else $('pad').style.removeProperty('--bs');
   const barEl = document.querySelector('.bar'), barH = (barEl && barEl.offsetHeight) || 56;
   const padH = touch && port ? ($('pad').offsetHeight || Math.min(78, vw * 0.17) + 22) : 0;
   const sideW = touch && !port ? 180 : 0;   // 가로 터치: 왼쪽(이동 3개)·오른쪽(회전 2개) 버튼 자리
   if (port){
     const availH = vh - barH - padH - 16;
-    const s = Math.floor(Math.min((availH - 0) / (VIS + 0.9 + 1.2), (vw - 30) / (W + 3.2)));
-    cellS = Math.max(16, s); miniS = Math.max(8, Math.floor(cellS * 0.42));
+    // 내 판이 우선 — 오른쪽 칸(NEXT·상대 작은 판)은 2.7칸 폭만 남기고 나머지는 전부 내 판
+    const s = Math.floor(Math.min(availH / (VIS + 0.9 + 0.25), (vw - 28) / (W + 2.7)));
+    cellS = Math.max(16, s);
+    const gap = Math.round(cellS * 0.45), rightW = vw - 20 - (W * cellS + 10) - gap;
+    const nextH = cellS * 0.9 * 3.6 + 8, infoH = 64 + 26;
+    const byW = (rightW - 6) / W, byH = (availH - nextH - infoH - 30) / (VIS + 0.9 + 1.4);
+    miniS = Math.max(8, Math.floor(Math.min(byW, byH, cellS * 0.62)));
   } else {
     const availH = vh - barH - 24 - (touch ? 0 : 0);
     const byH = availH / (VIS + 0.9 + 1.3);
@@ -1079,6 +1177,8 @@ function layout(){
   redrawAll(true);
 }
 addEventListener('resize', layout);
+if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (mode === 'game') layout(); });
+addEventListener('orientationchange', () => setTimeout(layout, 250));
 
 let lastT = performance.now();
 function frame(t){
@@ -1102,7 +1202,8 @@ function redrawAll(){
     ghost: g.piece ? (x, yh, r) => g.can(x, yh, r) : null };
   drawBoard($('bdMe'), cellS, myView);
   drawTray($('trayMe'), cellS, g.incoming + g.incomingU, g.incoming === 0 && g.incomingU > 0);
-  $('scMe').textContent = pad8(g.score);
+  const scTxt = g.calcT > 0 && g.calc ? g.calc[0] + ' × ' + g.calc[1] : pad8(g.score);
+  $('scMe').textContent = scTxt; $('scMeP').textContent = scTxt;
   const nn = g.snapshot ? [g.pair(g.pieces)[0], g.pair(g.pieces)[1], g.pair(g.pieces+1)[0], g.pair(g.pieces+1)[1]] : null;
   drawNext($('nxMe'), Math.round(cellS * 0.9), nn);
   if (!solo){
@@ -1111,10 +1212,10 @@ function redrawAll(){
     const oppPend = oppSnap ? (oppSnap.p || 0) : 0;
     if (port){
       drawBoard($('bdMini'), miniS, ov); drawTray($('trayMini'), miniS, oppPend, false);
-      $('scMini').textContent = pad8(oppSnap ? oppSnap.sc : 0);
+      $('scMini').textContent = oppSnap && oppSnap.k ? oppSnap.k[0] + ' × ' + oppSnap.k[1] : pad8(oppSnap ? oppSnap.sc : 0);
     } else {
       drawBoard($('bdOp'), oppS, ov); drawTray($('trayOp'), oppS, oppPend, false);
-      $('scOp').textContent = pad8(oppSnap ? oppSnap.sc : 0);
+      $('scOp').textContent = oppSnap && oppSnap.k ? oppSnap.k[0] + ' × ' + oppSnap.k[1] : pad8(oppSnap ? oppSnap.sc : 0);
     }
     drawNext($('nxOp'), Math.round(cellS * (port ? 0.6 : 0.9)), oppSnap ? oppSnap.n : null);
     if (!g.chain){ $('miLabel').textContent = '보낼 방해'; $('miVal').textContent = Math.floor(g.leftover / g.targetPoint()); }
