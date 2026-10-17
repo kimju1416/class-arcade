@@ -1,0 +1,1071 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>광평중 탐험대</title>
+<meta name="description" content="광평중학교를 미니미로 돌아다니며 도장을 모으는 학교 탐험 게임">
+<meta name="theme-color" content="#24352b">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{--ink:#1f2a24;--paper:#fbf6ea;--line:#2a3a30;--green:#3f8a5c;--green-d:#2c6844;--brick:#b5523b;--gold:#e9b84a;--sky:#7fb3d5;--muted:#6b7a70}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#24352b;color:var(--ink);font-family:Pretendard,system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas#cv{position:fixed;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated}
+[hidden]{display:none!important}
+button{font:inherit;cursor:pointer;color:inherit}
+.btn{border:3px solid var(--line);background:var(--paper);border-radius:12px;padding:10px 16px;font-weight:800;box-shadow:0 4px 0 var(--line);transition:transform .06s}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--line)}
+.btn.go{background:var(--green);color:#fff}
+.btn.gold{background:var(--gold)}
+/* 시작 화면 */
+#start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(20,30,24,.35);overflow:auto}
+.card{background:var(--paper);border:3px solid var(--line);border-radius:18px;box-shadow:0 8px 0 var(--line);width:min(440px,100%);padding:20px 18px;max-height:calc(100% - 8px);overflow:auto}
+.logo{font-size:30px;font-weight:900;letter-spacing:-1px;line-height:1.1;margin:0}
+.logo small{display:block;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:0;margin-top:6px}
+.row{display:flex;gap:10px;align-items:center}
+label.f{display:block;font-weight:800;font-size:14px;margin:14px 0 6px}
+input.t{width:100%;border:3px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:17px;font-weight:700;background:#fff}
+.maker{display:flex;gap:12px;align-items:stretch;margin-top:6px}
+#preview{width:112px;height:140px;border:3px solid var(--line);border-radius:12px;background:#cfe6c4;image-rendering:pixelated;flex:none}
+.parts{flex:1;display:flex;flex-direction:column;gap:4px;justify-content:center}
+.part{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700}
+.part span{flex:1;text-align:center}
+.part button{width:30px;height:28px;border:2px solid var(--line);border-radius:8px;background:#fff;font-weight:900;padding:0}
+.note{font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.5}
+/* 게임 화면 위 */
+#hud{position:fixed;inset:0;pointer-events:none}
+#hud .tl{position:absolute;left:max(10px,env(safe-area-inset-left));top:max(10px,env(safe-area-inset-top));display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.pill{background:rgba(251,246,234,.95);border:3px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:800;font-size:14px;white-space:nowrap}
+.pill.dark{background:rgba(31,42,36,.85);color:#fff;border-color:#0d1410}
+#hud .tr{position:absolute;right:max(10px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;gap:6px;pointer-events:auto}
+.ico{width:46px;height:46px;border:3px solid var(--line);border-radius:12px;background:var(--paper);font-weight:900;font-size:13px;box-shadow:0 3px 0 var(--line);padding:0;line-height:1.05}
+.ico:active{transform:translateY(2px);box-shadow:0 1px 0 var(--line)}
+#timer{position:absolute;top:max(64px,calc(env(safe-area-inset-top) + 56px));left:50%;transform:translateX(-50%);font-size:16px}
+#timer.hot{background:#c0392b;color:#fff;animation:pulse .5s infinite alternate}
+@keyframes pulse{to{transform:translateX(-50%) scale(1.08)}}
+#prompt{position:absolute;left:50%;bottom:calc(185px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:15px}
+#ctl{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));display:grid;grid-template-columns:auto auto;gap:10px;align-items:end;pointer-events:auto}
+.big{width:78px;height:78px;border-radius:50%;border:4px solid var(--line);background:var(--gold);font-weight:900;font-size:17px;box-shadow:0 5px 0 var(--line)}
+.mid{width:58px;height:58px;border-radius:50%;border:3px solid var(--line);background:var(--paper);font-weight:900;font-size:13px;box-shadow:0 4px 0 var(--line)}
+.big:active,.mid:active{transform:translateY(3px);box-shadow:0 1px 0 var(--line)}
+.mid.on{background:#9ad0a8}
+#stick{position:fixed;width:120px;height:120px;border-radius:50%;border:3px solid rgba(255,255,255,.6);background:rgba(0,0,0,.18);pointer-events:none;transform:translate(-50%,-50%)}
+#stick i{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:rgba(255,255,255,.85);border:3px solid var(--line)}
+#toasts{position:fixed;left:50%;top:max(132px,calc(env(safe-area-inset-top) + 124px));transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;width:min(92vw,460px)}
+.toast{background:rgba(31,42,36,.92);color:#fff;border-radius:12px;padding:8px 14px;font-weight:700;font-size:14px;text-align:center;animation:tin .25s ease-out}
+@keyframes tin{from{opacity:0;transform:translateY(-8px)}}
+/* 팝업 */
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,16,12,.55);pointer-events:auto}
+.modal .card{animation:pop .2s ease-out}
+@keyframes pop{from{transform:scale(.92);opacity:0}}
+.modal h2{margin:0 0 4px;font-size:21px;font-weight:900}
+.modal .sub{margin:0 0 12px;color:var(--muted);font-size:13px;font-weight:700}
+.choices{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.choices .btn{text-align:left;font-size:16px}
+.choices .btn.right{background:#9ad0a8}
+.choices .btn.wrong{background:#f0a597}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.grid button{border:3px solid var(--line);border-radius:12px;background:#fff;font-size:26px;padding:8px 0}
+.say button{font-size:14px;font-weight:800;padding:10px 4px}
+.say{grid-template-columns:repeat(2,1fr)}
+.list{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.li{display:flex;align-items:center;gap:8px;border:2px solid var(--line);border-radius:10px;padding:7px 10px;background:#fff;font-weight:700;font-size:14px}
+.li b{flex:1}
+.li.me{background:#fff3c9}
+.li.got{background:#e3f2e6}
+.li .st{font-weight:900}
+.tabs{display:flex;gap:6px;margin:6px 0 10px;flex-wrap:wrap}
+.tabs button{border:2px solid var(--line);border-radius:999px;background:#fff;padding:5px 12px;font-weight:800;font-size:13px}
+.tabs button.on{background:var(--green);color:#fff}
+.mapwrap{overflow:auto;border:3px solid var(--line);border-radius:10px;background:#1b1f24;max-height:58vh;touch-action:pan-x pan-y}
+#mapc{display:block}
+.card.wide{width:min(980px,100%)}
+.cert{text-align:center}
+.cert .big-t{font-size:26px;font-weight:900;margin:6px 0}
+.cert .stamp{display:inline-block;border:4px solid var(--brick);color:var(--brick);border-radius:50%;width:92px;height:92px;line-height:84px;font-weight:900;font-size:18px;transform:rotate(-12deg);margin:8px}
+.foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+@media (max-width:520px){#hud .tr{flex-direction:column}}
+@media (max-height:520px){.big{width:64px;height:64px}.mid{width:50px;height:50px}#prompt{bottom:110px}}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="start">
+  <div class="card">
+    <h1 class="logo">광평중 탐험대<small>우리 학교를 미니미로 돌아다니며 도장 12개를 모아 보세요</small></h1>
+    <label class="f" for="nick">별명 (실명 말고 별명!)</label>
+    <input class="t" id="nick" maxlength="8" placeholder="예: 소나무01" autocomplete="off">
+    <label class="f">내 미니미 꾸미기</label>
+    <div class="maker">
+      <canvas id="preview" width="112" height="140"></canvas>
+      <div class="parts" id="parts"></div>
+    </div>
+    <label class="f" for="room">우리 반 방 코드 <span style="font-weight:600;color:var(--muted)">(비우면 전체 광장)</span></label>
+    <input class="t" id="room" maxlength="12" placeholder="예: 1-3" autocomplete="off">
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="rand" style="flex:none">무작위</button>
+      <button class="btn go" id="go" style="flex:1;font-size:18px">탐험 시작</button>
+    </div>
+    <p class="note">같은 방 코드를 넣은 친구끼리 서로 보여요. 지도는 학교 설계 자료와 위성사진을 바탕으로 만든 것이라 실제 교실 위치와 다를 수 있어요.</p>
+  </div>
+</div>
+
+<div id="hud" hidden>
+  <div class="tl">
+    <div class="pill" id="where">운동장</div>
+    <div class="pill dark" id="score">도장 0/12 · 별 0/40</div>
+    <div class="pill dark" id="net" style="font-size:12px">연결 중…</div>
+  </div>
+  <div class="tr">
+    <button class="ico" id="bMap" title="지도(M)">지도</button>
+    <button class="ico" id="bMis" title="미션(Q)">미션</button>
+    <button class="ico" id="bRank" title="순위(R)">순위</button>
+    <button class="ico" id="bSnd" title="소리">소리<br>켬</button>
+  </div>
+  <div class="pill dark" id="timer" hidden></div>
+  <div class="pill" id="prompt" hidden></div>
+  <div id="ctl">
+    <button class="mid" id="bEmo">표정</button>
+    <button class="mid" id="bSay">말</button>
+    <button class="mid" id="bRun">달리기</button>
+    <button class="big" id="bAct">확인</button>
+  </div>
+</div>
+<div id="stick" hidden><i></i></div>
+<div id="toasts"></div>
+<div class="modal" id="modal" hidden><div class="card" id="mbody"></div></div>
+
+<script>
+"use strict";
+// ================= 기본 =================
+const T = 32;                       // 타일 한 칸(월드 px)
+const $ = (s) => document.querySelector(s);
+const cv = $("#cv"), ctx = cv.getContext("2d");
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ================= 타일 =================
+const K = {
+  VOID: 0, WALL: 1, WOOD: 2, HALL: 3, GRASS: 4, DIRT: 5, ASPH: 6, TREE: 7, FENCE: 8, ROOFG: 9, ROOFD: 10, ROOFW: 11,
+  BRICK: 12, GLASSW: 13, PAVE: 14, SEAT: 15, COURT: 16, TILE: 17, STAIR: 18, DESK: 19, BOARD: 20, SHELF: 21, LAB: 22,
+  PIANO: 23, PC: 24, BED: 25, FLOWER: 26, BENCH: 27, GOAL: 28, LOCKER: 29, TABLE: 30, EASEL: 31, SOFA: 32, CAR: 33,
+  DOOR: 35, WIN: 36, TROPHY: 37, STALL: 38, TDESK: 39, HOOP: 40, STAGE: 41, APT: 42, ROAD: 43, PINE: 44, MAGNO: 45,
+  STAND: 46, MUSIC: 47, SINK: 48, WOODD: 49,
+};
+const SOLID = new Set([K.VOID, K.WALL, K.TREE, K.FENCE, K.ROOFG, K.ROOFD, K.ROOFW, K.BRICK, K.GLASSW, K.SEAT, K.DESK, K.BOARD, K.SHELF, K.LAB,
+  K.PIANO, K.PC, K.BED, K.FLOWER, K.BENCH, K.GOAL, K.LOCKER, K.TABLE, K.EASEL, K.SOFA, K.CAR, K.WIN, K.TROPHY, K.STALL, K.TDESK, K.HOOP,
+  K.STAGE, K.APT, K.ROAD, K.PINE, K.MAGNO, K.STAND, K.SINK]);
+// 바닥처럼 밑에 깔 타일(가구 아래)
+const UNDER = { [K.DESK]: K.WOOD, [K.TDESK]: K.WOOD, [K.SHELF]: K.WOOD, [K.LAB]: K.TILE, [K.PIANO]: K.WOOD, [K.PC]: K.WOOD, [K.BED]: K.TILE,
+  [K.TABLE]: K.TILE, [K.EASEL]: K.WOOD, [K.SOFA]: K.WOOD, [K.LOCKER]: K.WOOD, [K.TROPHY]: K.HALL, [K.STALL]: K.TILE, [K.SINK]: K.TILE,
+  [K.HOOP]: K.COURT, [K.MUSIC]: K.WOOD, [K.STAND]: K.WOOD, [K.CAR]: K.ASPH, [K.BENCH]: K.GRASS, [K.FLOWER]: K.GRASS, [K.TREE]: K.GRASS,
+  [K.PINE]: K.GRASS, [K.MAGNO]: K.GRASS, [K.GOAL]: K.DIRT };
+
+// ================= 지역(지도) 만들기 =================
+const AREAS = [];
+function newArea(id, name, w, h, fill) {
+  const a = { id, name, w, h, t: new Uint8Array(w * h).fill(fill), rooms: [], warps: new Map(), signs: [], objs: [], base: null };
+  AREAS[id] = a; return a;
+}
+const at = (a, x, y) => (x < 0 || y < 0 || x >= a.w || y >= a.h) ? K.VOID : a.t[y * a.w + x];
+const set = (a, x, y, k) => { if (x >= 0 && y >= 0 && x < a.w && y < a.h) a.t[y * a.w + x] = k; };
+const rect = (a, x0, y0, x1, y1, k) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) set(a, x, y, k); };
+const warp = (a, x, y, to, tx, ty, label) => a.warps.set(y * a.w + x, { to, tx, ty, label });
+
+// 방 설명 — 들어가면 위에 뜬다
+const DESC = {
+  "교무실": "선생님들이 일하시는 곳. 들어갈 땐 노크하고 인사!", "행정실": "학교 살림(시설·서류)을 맡는 곳", "교장실": "교장선생님 방",
+  "보건실": "아프거나 다쳤을 때 가는 곳", "메인홀": "모든 건물로 이어지는 학교의 한가운데", "Wee클래스": "고민을 편하게 이야기하는 상담실",
+  "도서관": "책 읽고 빌리는 곳. 쉿, 조용히!", "강당 가는 길": "강당과 급식실로 이어지는 통로", "방송실": "점심 방송·행사 방송을 하는 곳",
+  "과학실": "실험하고 관찰하는 곳. 보안경 필수", "과학 준비실": "실험 도구를 보관하는 곳", "컴퓨터실": "정보 수업을 하는 곳",
+  "음악실": "광평중은 경북 음악중점학교!", "오케스트라 연습실": "학교 오케스트라가 연습하는 곳", "파트 연습실": "악기별로 따로 연습하는 작은 방",
+  "미술실": "그리고 만드는 곳", "가정실": "요리·바느질 실습실", "기술실": "만들고 조립하는 실습실", "수학교실": "수학 수업 전용 교실",
+  "멀티미디어실": "영상 보고 발표하는 곳", "홈베이스": "쉬는 시간에 모이는 학년 휴게 공간", "화장실": "깨끗하게 쓰기!", "교구실": "수업 도구 보관실",
+  "급식실": "점심 먹는 곳. 먹기 전 손 씻기!", "강당": "체육·행사·공연을 하는 다목적 강당", "특수학급": "함께 배우는 교실",
+};
+
+// ---- 건물 층 ----
+// 위성사진: 운동장 북동쪽에 계단식 3개 동(서관·본관·동관)이 이어지고 본관 뒤에 강당.
+// 설계 논문(2004): 지상 4층, 주출입구 쪽 행정, 가운데 메인홀, 1층 도서관, 학년별 교실 블록, 음악중점.
+const WING = { W: { x0: 1, x1: 19, y0: 4, y1: 18, a: [5, 7], b: [12, 17] }, C: { x0: 19, x1: 39, y0: 1, y1: 20, a: [2, 7], b: [12, 19] }, E: { x0: 39, x1: 57, y0: 4, y1: 19, a: [5, 7], b: [12, 18] } };
+const FLOORS = {
+  1: [["W", "a", 2, 5, "계단"], ["W", "a", 7, 10, "화장실"], ["W", "a", 12, 18, "방송실"], ["W", "b", 2, 9, "교무실"], ["W", "b", 11, 14, "행정실"], ["W", "b", 16, 18, "교장실"],
+      ["C", "a", 20, 25, "강당 가는 길"], ["C", "a", 27, 30, "계단"], ["C", "a", 32, 38, "도서관"], ["C", "b", 20, 25, "보건실"], ["C", "b", 27, 32, "메인홀"], ["C", "b", 34, 38, "Wee클래스"],
+      ["E", "a", 40, 44, "화장실"], ["E", "a", 46, 52, "교구실"], ["E", "a", 54, 56, "계단"], ["E", "b", 40, 44, "가정실"], ["E", "b", 46, 50, "기술실"], ["E", "b", 52, 56, "특수학급"]],
+  2: [["W", "a", 2, 5, "계단"], ["W", "a", 7, 10, "화장실"], ["W", "a", 12, 18, "과학 준비실"], ["W", "b", 2, 9, "과학실"], ["W", "b", 11, 18, "과학실 2"],
+      ["C", "a", 20, 25, "컴퓨터실"], ["C", "a", 27, 30, "계단"], ["C", "a", 32, 38, "1학년 교사연구실"], ["C", "b", 20, 25, "멀티미디어실"], ["C", "b", 27, 32, "홈베이스"], ["C", "b", 34, 38, "1학년 4반"],
+      ["E", "a", 40, 44, "화장실"], ["E", "a", 46, 52, "교구실"], ["E", "a", 54, 56, "계단"], ["E", "b", 40, 44, "1학년 1반"], ["E", "b", 46, 50, "1학년 2반"], ["E", "b", 52, 56, "1학년 3반"]],
+  3: [["W", "a", 2, 5, "계단"], ["W", "a", 7, 10, "화장실"], ["W", "a", 12, 18, "파트 연습실"], ["W", "b", 2, 9, "음악실"], ["W", "b", 11, 18, "오케스트라 연습실"],
+      ["C", "a", 20, 25, "파트 연습실"], ["C", "a", 27, 30, "계단"], ["C", "a", 32, 38, "2학년 교사연구실"], ["C", "b", 20, 25, "미술실"], ["C", "b", 27, 32, "홈베이스"], ["C", "b", 34, 38, "2학년 4반"],
+      ["E", "a", 40, 44, "화장실"], ["E", "a", 46, 52, "교구실"], ["E", "a", 54, 56, "계단"], ["E", "b", 40, 44, "2학년 1반"], ["E", "b", 46, 50, "2학년 2반"], ["E", "b", 52, 56, "2학년 3반"]],
+  4: [["W", "a", 2, 5, "계단"], ["W", "a", 7, 10, "화장실"], ["W", "a", 12, 18, "파트 연습실"], ["W", "b", 2, 9, "수학교실"], ["W", "b", 11, 18, "과학실 3"],
+      ["C", "a", 20, 25, "컴퓨터실 2"], ["C", "a", 27, 30, "계단"], ["C", "a", 32, 38, "3학년 교사연구실"], ["C", "b", 20, 25, "미술실 2"], ["C", "b", 27, 32, "홈베이스"], ["C", "b", 34, 38, "3학년 4반"],
+      ["E", "a", 40, 44, "화장실"], ["E", "a", 46, 52, "교구실"], ["E", "a", 54, 56, "계단"], ["E", "b", 40, 44, "3학년 1반"], ["E", "b", 46, 50, "3학년 2반"], ["E", "b", 52, 56, "3학년 3반"]],
+};
+const kindOf = (n) => /반$|학급$/.test(n) ? "class" : /과학실/.test(n) ? "sci" : /컴퓨터|멀티/.test(n) ? "pc" : /음악|오케/.test(n) ? "music" : /파트/.test(n) ? "part"
+  : /미술/.test(n) ? "art" : /도서관/.test(n) ? "lib" : /보건/.test(n) ? "health" : /교무|교사연구|행정/.test(n) ? "office" : /교장|Wee|상담/.test(n) ? "sofa"
+  : /화장실/.test(n) ? "wc" : /계단/.test(n) ? "stair" : /메인홀|홈베이스|강당 가는/.test(n) ? "hall" : /방송/.test(n) ? "pc" : /가정|기술/.test(n) ? "lab2" : "store";
+
+function furnish(a, r) {
+  const { x0, x1, y0, y1, k, side } = r;
+  const W = x1 - x0 + 1, H = y1 - y0 + 1;
+  const floorK = k === "wc" || k === "sci" || k === "lab2" || k === "health" ? K.TILE : k === "hall" || k === "stair" ? K.HALL : K.WOOD;
+  rect(a, x0, y0, x1, y1, floorK);
+  const far = side === "b" ? y1 : y0;           // 복도 반대쪽 끝(창가)
+  const near = side === "b" ? y0 : y1;          // 문 쪽
+  const inn = side === "b" ? 1 : -1;            // 문에서 안쪽으로
+  const free = (x, y) => y !== near && x > x0 - 1 && x < x1 + 1;
+  if (k === "class" || k === "lab2") {
+    // 칠판은 옆벽 대신 문 반대쪽 줄 가운데. 책상은 줄 맞춰서
+    for (let x = x0 + 1; x <= x1 - 1; x++) set(a, x, far, k === "class" ? K.BOARD : K.SINK);
+    for (let y = near + inn * 2; side === "b" ? y <= y1 - 2 : y >= y0 + 2; y += inn * 2) for (let x = x0; x <= x1; x += 2) if (free(x, y)) set(a, x, y, k === "class" ? K.DESK : K.TABLE);
+    if (k === "class") set(a, x1, near, K.LOCKER);
+  } else if (k === "sci") {
+    for (let y = near + inn * 2; side === "b" ? y <= y1 - 1 : y >= y0 + 1; y += inn * 2) for (let x = x0 + 1; x <= x1 - 1; x += 3) { set(a, x, y, K.LAB); set(a, x + 1, y, K.LAB); }
+    set(a, x0, far, K.SHELF); set(a, x1, far, K.SHELF);
+  } else if (k === "pc") {
+    for (let y = near + inn * 2; side === "b" ? y <= y1 : y >= y0; y += inn * 2) for (let x = x0; x <= x1; x++) if ((x - x0) % 3 !== 2) set(a, x, y, K.PC);
+  } else if (k === "music") {
+    set(a, x0 + 1, far, K.PIANO); set(a, x0 + 2, far, K.PIANO);
+    for (let y = near + inn * 2; side === "b" ? y <= y1 - 1 : y >= y0 + 1; y += inn * 2) for (let x = x0 + 1; x <= x1 - 1; x += 2) set(a, x, y, K.MUSIC);
+  } else if (k === "part") {
+    for (let x = x0; x <= x1; x += 2) set(a, x, far, K.STAND);
+    set(a, x1, far, K.PIANO);
+  } else if (k === "art") {
+    for (let y = near + inn * 2; side === "b" ? y <= y1 - 1 : y >= y0 + 1; y += inn * 2) for (let x = x0 + 1; x <= x1; x += 2) set(a, x, y, K.EASEL);
+    for (let x = x0; x <= x1; x++) set(a, x, far, K.SHELF);
+  } else if (k === "lib") {
+    for (let x = x0; x <= x1; x++) set(a, x, far, K.SHELF);
+    for (let x = x0 + 1; x <= x1 - 1; x += 3) { set(a, x, far + inn * -2, K.SHELF); set(a, x + 1, far + inn * -2, K.SHELF); }
+    set(a, x0 + 1, near + inn, K.TABLE); set(a, x0 + 2, near + inn, K.TABLE);
+  } else if (k === "health") {
+    for (let x = x0; x <= x1; x += 2) set(a, x, far, K.BED);
+    set(a, x1, near + inn, K.TDESK);
+  } else if (k === "office") {
+    for (let y = near + inn * 2; side === "b" ? y <= y1 : y >= y0; y += inn * 2) for (let x = x0; x <= x1; x++) if ((x - x0) % 3 !== 2) set(a, x, y, K.TDESK);
+    set(a, x0, far, K.SHELF);
+  } else if (k === "sofa") {
+    set(a, x0, far, K.SOFA); set(a, x0 + 1, far, K.SOFA); set(a, x1, far, K.TDESK); set(a, x1, far - inn, K.SHELF);
+  } else if (k === "wc") {
+    for (let x = x0; x <= x1; x++) set(a, x, far, K.STALL);
+    set(a, x0, near + inn, K.SINK);
+  } else if (k === "store") {
+    for (let x = x0; x <= x1; x++) set(a, x, far, K.SHELF);
+  } else if (k === "hall") {
+    if (H > 4) { set(a, x0, far, K.SOFA); set(a, x1, far, K.SOFA); }
+  }
+}
+
+function buildFloor(fl) {
+  const a = newArea(fl, fl + "층", 58, 22, K.VOID);
+  for (const w of Object.values(WING)) rect(a, w.x0, w.y0, w.x1, w.y1, K.WALL);
+  rect(a, 2, 9, 56, 10, K.HALL);                      // 긴 복도
+  for (const [wk, side, x0, x1, name] of FLOORS[fl]) {
+    const w = WING[wk], [y0, y1] = w[side];
+    const r = { name, x0, x1, y0, y1, side, k: kindOf(name), fl };
+    furnish(a, r);
+    // 문: 복도 쪽 벽 가운데(넓은 방은 둘)
+    const dy = side === "b" ? 11 : 8;
+    const mids = (x1 - x0 >= 7) ? [x0 + 1, x1 - 1] : [Math.floor((x0 + x1) / 2)];
+    if (r.k === "stair" || r.k === "hall") { for (let x = x0; x <= x1; x++) set(a, x, dy, K.HALL); }
+    else for (const x of mids) set(a, x, dy, K.DOOR);
+    r.door = mids;
+    a.rooms.push(r);
+    if (r.k !== "stair" && r.k !== "hall" && r.k !== "wc") a.signs.push({ x: (x0 + x1 + 1) / 2, y: dy + (side === "b" ? 0 : 1), name });
+    if (r.k === "stair") {
+      // 계단: 왼쪽 반은 올라가기, 오른쪽 반은 내려가기
+      const midx = x0 + Math.floor((x1 - x0 + 1) / 2);
+      for (let x = x0; x <= x1; x++) {
+        set(a, x, y0, K.STAIR);
+        const up = x < midx;
+        const to = up ? fl + 1 : fl - 1;
+        if (to >= 1 && to <= 4) warp(a, x, y0, to, x + 0.5, y1 + 0.5, up ? `${to}층으로 올라가기` : `${to}층으로 내려가기`);
+      }
+      a.signs.push({ x: (x0 + x1 + 1) / 2, y: 8 + 1, name: "계단", small: true });
+    }
+  }
+  // 바깥 창문(운동장 쪽·뒤쪽 벽)
+  for (const w of Object.values(WING)) for (let x = w.x0 + 1; x < w.x1; x++) {
+    if (at(a, x, w.y1 - 1) !== K.WALL && x % 2 === 0) set(a, x, w.y1, K.WIN);
+    if (at(a, x, w.y0 + 1) !== K.WALL && x % 2 === 0) set(a, x, w.y0, K.WIN);
+  }
+  // 복도 양 끝 창
+  set(a, 1, 9, K.WIN); set(a, 1, 10, K.WIN);
+  if (fl > 1) { set(a, 57, 9, K.WIN); set(a, 57, 10, K.WIN); }
+  if (fl === 1) {
+    // 메인홀 아래 현관(밖으로), 동쪽 끝 출입문, 강당 통로
+    for (const x of [29, 30]) { set(a, x, 20, K.DOOR); warp(a, x, 20, 0, x - 1.5, 18.6, "운동장으로 나가기"); }
+    for (const y of [9, 10]) { set(a, 57, y, K.DOOR); warp(a, 57, y, 0, 49.5, 18.6, "뒤뜰로 나가기"); }
+    for (const x of [22, 23]) { set(a, x, 1, K.DOOR); warp(a, x, 1, 5, x + 2.5, 19.5, "강당으로 가기"); }
+    set(a, 28, 18, K.TROPHY); set(a, 31, 18, K.TROPHY);
+    a.objs.push({ type: "trophy", x: 28, y: 18 }, { type: "trophy", x: 31, y: 18 });
+  }
+  return a;
+}
+
+// ---- 바깥(운동장) ----
+function buildOutdoor() {
+  const a = newArea(0, "운동장", 64, 46, K.GRASS);
+  rect(a, 0, 0, 1, 45, K.ROAD);
+  rect(a, 2, 0, 63, 0, K.FENCE); rect(a, 2, 45, 63, 45, K.FENCE); rect(a, 63, 0, 63, 45, K.FENCE); rect(a, 2, 0, 2, 45, K.FENCE);
+  // 북서쪽 아파트(울타리 밖 느낌으로 위쪽 줄)
+  rect(a, 3, 1, 18, 2, K.APT);
+  // 주차장
+  rect(a, 3, 4, 7, 17, K.ASPH);
+  for (let y = 5; y <= 16; y += 2) { set(a, 3, y, K.CAR); if (y % 4 === 1) set(a, 7, y, K.CAR); }
+  // 건물 바깥
+  rect(a, 8, 9, 19, 14, K.ROOFD); rect(a, 8, 15, 19, 16, K.BRICK);           // 서관(붉은 벽돌)
+  rect(a, 19, 6, 37, 15, K.ROOFG); rect(a, 19, 16, 37, 17, K.GLASSW);        // 본관(흰 벽·유리, 메인홀)
+  rect(a, 37, 9, 50, 15, K.ROOFD); rect(a, 37, 16, 50, 17, K.BRICK);         // 동관(붉은 벽돌)
+  rect(a, 20, 1, 34, 5, K.ROOFW);                                             // 강당(흰 둥근 지붕)
+  // 앞마당·길
+  rect(a, 3, 17, 50, 19, K.PAVE); rect(a, 8, 17, 18, 17, K.PAVE);
+  for (const x of [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]) set(a, x, 17, K.PAVE);
+  rect(a, 19, 17, 26, 17, K.GLASSW); rect(a, 29, 17, 37, 17, K.GLASSW);
+  rect(a, 38, 17, 48, 17, K.BRICK); set(a, 50, 17, K.BRICK);
+  rect(a, 2, 18, 2, 20, K.PAVE);                                              // 정문
+  for (const x of [27, 28]) { set(a, x, 17, K.DOOR); warp(a, x, 17, 1, x + 2.5, 18.5, "메인홀로 들어가기"); }
+  set(a, 49, 17, K.DOOR); warp(a, 49, 17, 1, 55.5, 9.5, "동관으로 들어가기");
+  // 스탠드(파란 지붕)와 계단
+  rect(a, 10, 20, 46, 21, K.SEAT);
+  for (const x of [17, 28, 39]) { set(a, x, 20, K.PAVE); set(a, x, 21, K.PAVE); }
+  // 운동장
+  rect(a, 4, 22, 50, 43, K.DIRT);
+  rect(a, 4, 31, 4, 34, K.GOAL); rect(a, 50, 31, 50, 34, K.GOAL);
+  // 운동장 둘레 나무, 정문 옆 소나무·목련
+  for (let y = 22; y <= 43; y += 2) set(a, 3, y, K.TREE);
+  for (let x = 4; x <= 50; x += 3) set(a, x, 44, K.TREE);
+  set(a, 4, 16, K.MAGNO); set(a, 6, 16, K.MAGNO); set(a, 5, 21, K.PINE); set(a, 8, 21, K.FLOWER); set(a, 9, 21, K.FLOWER);
+  rect(a, 20, 18, 26, 18, K.PAVE); set(a, 21, 19, K.FLOWER); set(a, 33, 19, K.FLOWER); set(a, 34, 19, K.FLOWER);
+  // 동쪽 숲(산책길)과 쉼터
+  rect(a, 51, 1, 62, 44, K.TREE); rect(a, 38, 1, 50, 8, K.TREE); rect(a, 3, 3, 19, 3, K.TREE); rect(a, 8, 4, 19, 8, K.TREE);
+  for (let y = 0; y < 46; y++) for (let x = 35; x < 63; x++) if (at(a, x, y) === K.TREE && hash(x, y) < .22) set(a, x, y, K.GRASS);
+  const path = [[52, 19], [53, 19], [53, 18], [54, 17], [54, 16], [55, 15], [55, 14], [55, 13], [56, 12], [56, 11]];
+  for (const [x, y] of path) { set(a, x, y, K.PAVE); set(a, x + 1, y, K.PAVE); }
+  rect(a, 51, 18, 52, 19, K.PAVE);
+  for (let y = 4; y <= 10; y++) for (let x = 52; x <= 61; x++) if ((x - 56.5) ** 2 + (y - 7) ** 2 < 11) set(a, x, y, (x - 56.5) ** 2 + (y - 7) ** 2 < 3 ? K.PAVE : K.GRASS);
+  set(a, 54, 5, K.BENCH); set(a, 59, 9, K.BENCH);
+  for (let y = 22; y <= 44; y++) for (let x = 51; x <= 52; x++) set(a, x, y, K.TREE);
+  a.signs.push({ x: 28, y: 18, name: "메인홀" }, { x: 2.5, y: 18, name: "정문", small: true }, { x: 27.5, y: 1, name: "강당" }, { x: 13.5, y: 15, name: "서관" }, { x: 43.5, y: 15, name: "동관" }, { x: 56.5, y: 3.6, name: "숲속 쉼터", small: true });
+  return a;
+}
+
+// ---- 강당·급식실 ----
+function buildGym() {
+  const a = newArea(5, "강당", 36, 22, K.WALL);
+  rect(a, 1, 1, 13, 20, K.TILE); rect(a, 15, 1, 34, 20, K.COURT);
+  for (let y = 3; y <= 18; y += 3) for (let x = 2; x <= 11; x += 1) if (x !== 6 && x !== 7) set(a, x, y, K.TABLE);
+  set(a, 14, 10, K.DOOR); set(a, 14, 11, K.DOOR);
+  rect(a, 19, 1, 30, 3, K.STAGE);
+  set(a, 15, 11, K.HOOP); set(a, 34, 11, K.HOOP);
+  for (const x of [24, 25]) { set(a, x, 21, K.DOOR); warp(a, x, 21, 1, x - 1.5, 2.6, "1층 메인홀로 가기"); }
+  for (let x = 2; x < 34; x += 2) set(a, x, 0, K.WIN);
+  a.rooms.push({ name: "급식실", x0: 1, x1: 13, y0: 1, y1: 20, k: "store", fl: 5 }, { name: "강당", x0: 15, x1: 34, y0: 1, y1: 20, k: "hall", fl: 5 });
+  a.signs.push({ x: 14.5, y: 10, name: "급식실", small: true });
+  return a;
+}
+
+buildOutdoor(); for (let f = 1; f <= 4; f++) buildFloor(f); buildGym();
+AREAS[0].rooms.push({ name: "운동장", x0: 4, x1: 50, y0: 22, y1: 43 }, { name: "숲속 쉼터", x0: 52, x1: 61, y0: 4, y1: 10 }, { name: "정문", x0: 2, x1: 6, y0: 17, y1: 20 }, { name: "주차장", x0: 3, x1: 7, y0: 4, y1: 16 });
+const AREA_NAME = (id) => id === 0 ? "바깥" : id === 5 ? "강당·급식실" : id + "층";
+
+// ================= 도장(미션) =================
+const find = (fl, name) => AREAS[fl].rooms.find((r) => r.name === name);
+function inRoomSpot(fl, name, dx = 0) {
+  const r = find(fl, name); const y = r.side === "a" ? r.y1 : r.y0; // 문 쪽 줄 바로 안
+  let x = Math.floor((r.x0 + r.x1) / 2) + dx;
+  for (let i = 0; i < 8 && SOLID.has(at(AREAS[fl], x, y)); i++) x++;
+  return { a: fl, x, y };
+}
+const STAMPS = [
+  { id: "gate", name: "정문", a: 0, x: 4, y: 19, q: "광평중 주소의 도로 이름은?", c: ["화신로10길", "구미대로", "금오산로"], ans: 0 },
+  { id: "pine", name: "소나무", a: 0, x: 6, y: 21, q: "광평중의 교목(학교 나무)은?", c: ["벚나무", "소나무", "은행나무"], ans: 1 },
+  { id: "field", name: "운동장 스탠드", a: 0, x: 28, y: 22, q: "광평중 제1회 입학식은 몇 년이었을까?", c: ["1998년", "2018년", "2008년"], ans: 2 },
+  { id: "forest", name: "숲속 쉼터", a: 0, x: 56, y: 7, q: "광평중이 있는 도시는?", c: ["김천", "구미", "대구"], ans: 1 },
+  { id: "gym", name: "강당", a: 5, x: 25, y: 11, q: "강당에서 운동할 때 신는 것은?", c: ["깨끗한 실내 운동화", "슬리퍼", "양말만"], ans: 0 },
+  { id: "meal", name: "급식실", a: 5, x: 7, y: 10, q: "급식 먹기 전에 꼭 할 일은?", c: ["손 씻기", "뛰어가기", "줄 새치기"], ans: 0 },
+  { id: "health", ...inRoomSpot(1, "보건실"), name: "보건실", q: "다쳤을 때 가장 먼저 할 일은?", c: ["그냥 참는다", "선생님께 알린다", "친구에게만 말한다"], ans: 1 },
+  { id: "office", ...inRoomSpot(1, "교무실"), name: "교무실", q: "광평중 교훈: 슬기롭게 배우며 ___ 행하자", c: ["바르게", "빠르게", "크게"], ans: 0 },
+  { id: "lib", ...inRoomSpot(1, "도서관"), name: "도서관", q: "도서관에서 지킬 일은?", c: ["크게 통화하기", "조용히 하기", "책 접어 두기"], ans: 1 },
+  { id: "sci", ...inRoomSpot(2, "과학실"), name: "과학실", q: "실험할 때 눈을 지키려면?", c: ["보안경 쓰기", "눈 감기", "멀리서 보기"], ans: 0 },
+  { id: "music", ...inRoomSpot(3, "음악실"), name: "음악실", q: "광평중은 경북의 무슨 중점학교일까?", c: ["체육", "음악", "과학"], ans: 1 },
+  { id: "pc", ...inRoomSpot(2, "컴퓨터실"), name: "컴퓨터실", q: "내 비밀번호는 어떻게 할까?", c: ["친구랑 같이 쓴다", "칠판에 적어 둔다", "아무에게도 안 알려 준다"], ans: 2 },
+];
+for (const s of STAMPS) { s.x += 0.5; s.y += 0.5; }
+
+// 별 40개 — 모두에게 같은 자리(고정 시드)
+const STARS = [];
+(function () {
+  const plan = [[0, 12], [1, 6], [2, 6], [3, 6], [4, 6], [5, 4]];
+  for (const [ai, n] of plan) {
+    const a = AREAS[ai], R = rng(77 + ai * 131); let got = 0, tries = 0;
+    while (got < n && tries++ < 5000) {
+      const x = Math.floor(R() * a.w), y = Math.floor(R() * a.h), k = at(a, x, y);
+      if (SOLID.has(k) || k === K.STAIR || k === K.DOOR || a.warps.has(y * a.w + x)) continue;
+      if (ai === 0 && (k === K.ROAD || (x > 50 && y > 11))) continue;
+      if (STARS.some((s) => s.a === ai && Math.abs(s.x - x - .5) + Math.abs(s.y - y - .5) < 5)) continue;
+      STARS.push({ id: STARS.length, a: ai, x: x + .5, y: y + .5 }); got++;
+    }
+  }
+})();
+
+// ================= 미니미 =================
+const SKIN = ["#ffd9b8", "#f2c294", "#d9a066", "#a8714a"];
+const HAIRC = ["#2b2220", "#5a3a22", "#8a5a2b", "#d9a640", "#b8b8c8", "#c0504d", "#3b5ba5", "#e58fb0"];
+const TOPC = ["#2f4a7a", "#3f8a5c", "#c0504d", "#e9b84a", "#ffffff", "#7a4fa0", "#e07a3f", "#3a3a3a"];
+const BOTC = ["#2b3442", "#555b66", "#3f5f8a", "#6b4a3a", "#2a2a2a"];
+const HAIRS = ["짧은 머리", "단발", "긴 머리", "묶은 머리", "까까머리", "곱슬"];
+const ACCS = ["없음", "안경", "모자", "리본", "헤드폰", "왕관"];
+const PARTS = [["피부", SKIN.length], ["머리 모양", HAIRS.length], ["머리 색", HAIRC.length], ["윗옷", TOPC.length], ["바지", BOTC.length], ["꾸미기", ACCS.length]];
+const PART_LABEL = (i, v) => i === 1 ? HAIRS[v] : i === 5 ? ACCS[v] : `${v + 1}번`;
+
+// 12x18 픽셀 격자, u = 한 칸 크기
+function drawMinimi(c, cx, cy, look, dir, step, u) {
+  const [sk, hs, hc, tp, bt, ac] = look;
+  const P = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(Math.round(cx + (x - 6) * u), Math.round(cy + (y - 18) * u), Math.ceil(w * u), Math.ceil(h * u)); };
+  const S = SKIN[sk % 4], H = HAIRC[hc % 8], TP = TOPC[tp % 8], B = BOTC[bt % 5];
+  c.fillStyle = "rgba(0,0,0,.22)"; c.beginPath(); c.ellipse(cx, cy - u * .3, u * 4.2, u * 1.4, 0, 0, 7); c.fill();
+  const bob = step ? 1 : 0;
+  // 다리
+  const l1 = step === 1 ? 1 : 0, l2 = step === 2 ? 1 : 0;
+  P(3.5, 15 - l1, 2, 3 + l1 - bob * 0, B); P(6.5, 15 - l2, 2, 3 + l2, B);
+  P(3.5, 17.5 - l1 * 0, 2, .5, "#222"); P(6.5, 17.5, 2, .5, "#222");
+  // 몸
+  P(3, 10 - bob * .5, 6, 5.5, TP);
+  if (tp % 8 === 4) { P(5.5, 10.5 - bob * .5, 1, 4, "#c0504d"); } // 흰 셔츠엔 넥타이
+  if (dir === 1) P(5, 11, 2, 3.5, S); else if (dir === 2) P(5, 11, 2, 3.5, S);
+  else { P(2, 10.5 - bob * .5, 1, 3.5, TP); P(9, 10.5 - bob * .5, 1, 3.5, TP); P(2, 13.5, 1, 1, S); P(9, 13.5, 1, 1, S); }
+  // 머리(크게)
+  const hy = -bob * .5;
+  P(1.5, 1.5 + hy, 9, 9, S);
+  // 머리카락
+  const hair = (x, y, w, h) => P(x, y + hy, w, h, H);
+  const style = hs % 6;
+  if (dir === 3) { hair(1, 1, 10, 7); if (style === 2 || style === 3) hair(2, 8, 8, 3); }
+  else {
+    if (style === 4) { hair(1.5, 1, 9, 1.5); }
+    else if (style === 5) { hair(0.5, 0, 11, 3.5); hair(0.5, 3, 2, 3); hair(9.5, 3, 2, 3); }
+    else { hair(1, .5, 10, 3); if (dir !== 2) hair(1, 3, 1.5, style === 0 ? 2 : 6); if (dir !== 1) hair(9.5, 3, 1.5, style === 0 ? 2 : 6); }
+    if (style === 2 && dir === 0) { hair(1, 3, 1.5, 7.5); hair(9.5, 3, 1.5, 7.5); }
+    if (style === 3) { const sx = dir === 1 ? 10 : dir === 2 ? 0 : 9.5; hair(sx, 4, 2, 4); }
+  }
+  // 얼굴
+  if (dir !== 3) {
+    const ex = dir === 1 ? -1.2 : dir === 2 ? 1.2 : 0;
+    P(3.8 + ex, 5.5 + hy, 1, 1.6, "#1d1d1d"); P(7.2 + ex, 5.5 + hy, 1, 1.6, "#1d1d1d");
+    P(3 + ex, 7.6 + hy, 1.2, .7, "rgba(230,110,110,.55)"); P(7.8 + ex, 7.6 + hy, 1.2, .7, "rgba(230,110,110,.55)");
+    P(5.4 + ex, 8.2 + hy, 1.2, .5, "#8a3b2f");
+  }
+  // 꾸미기
+  const acc = ac % 6;
+  if (acc === 1 && dir !== 3) { const ex = dir === 1 ? -1.2 : dir === 2 ? 1.2 : 0; P(3 + ex, 5.2 + hy, 2.6, 2.2, "rgba(255,255,255,.25)"); P(6.4 + ex, 5.2 + hy, 2.6, 2.2, "rgba(255,255,255,.25)"); P(2.8 + ex, 5 + hy, 6.4, .5, "#222"); }
+  if (acc === 2) { P(1, 0 + hy, 10, 2.4, "#c0504d"); P(dir === 1 ? -1 : dir === 2 ? 8 : 2, 2 + hy, 5, 1, "#a03c39"); }
+  if (acc === 3) { P(8, 0 + hy, 2.4, 2, "#e85d8a"); P(10, .4 + hy, 1.4, 1.2, "#e85d8a"); P(6.8, .4 + hy, 1.4, 1.2, "#e85d8a"); }
+  if (acc === 4) { P(1, 1 + hy, 10, 1, "#333"); P(0, 4 + hy, 2, 3, "#333"); P(10, 4 + hy, 2, 3, "#333"); }
+  if (acc === 5) { P(3, -1.5 + hy, 6, 2, "#e9b84a"); P(3, -2.5 + hy, 1, 1, "#e9b84a"); P(5.5, -2.5 + hy, 1, 1, "#e9b84a"); P(8, -2.5 + hy, 1, 1, "#e9b84a"); }
+}
+
+// ================= 타일 그리기 =================
+function drawTile(c, k, tx, ty, a) {
+  const X = tx * T, Y = ty * T, h = hash(tx, ty), h2 = hash(ty + 99, tx);
+  const R = (x, y, w, hh, col) => { c.fillStyle = col; c.fillRect(X + x, Y + y, w, hh); };
+  const base = UNDER[k];
+  if (base !== undefined) drawTile(c, base, tx, ty, a);
+  switch (k) {
+    case K.VOID: R(0, 0, T, T, "#1b1f24"); break;
+    case K.WALL: {
+      const below = at(a, tx, ty + 1);
+      R(0, 0, T, T, "#8f877a");
+      if (!SOLID.has(below) || below === K.DOOR) { R(0, 0, T, 22, "#d8d0c2"); R(0, 22, T, 10, "#b7ad9c"); R(0, 30, T, 2, "#7d7466"); }
+      else { R(0, 0, T, T, "#9d9585"); R(1, 1, T - 2, T - 2, "#a59d8d"); }
+      break;
+    }
+    case K.WIN: R(0, 0, T, T, "#d8d0c2"); R(3, 4, T - 6, 16, "#8cc4e6"); R(3, 4, T - 6, 4, "#c4e4f6"); R(15, 4, 2, 16, "#d8d0c2"); R(0, 26, T, 6, "#b7ad9c"); break;
+    case K.WOOD: R(0, 0, T, T, h < .5 ? "#c99a62" : "#c4955d"); for (let i = 0; i < 4; i++) R(0, i * 8 + 7, T, 1, "#a87b48"); R(((tx * 13) % 4) * 8, 0, 1, T, "#b5864f"); break;
+    case K.WOODD: R(0, 0, T, T, "#8a5a33"); break;
+    case K.HALL: R(0, 0, T, T, "#ddd6c8"); R(0, 0, T, 1, "#c9c1b2"); R(0, 0, 1, T, "#c9c1b2"); if (h < .3) R(h * 90 % 26 + 3, h2 * 26 + 3, 2, 2, "#b9b1a2"); break;
+    case K.TILE: R(0, 0, T, T, "#e9eef0"); R(0, 15, T, 2, "#c9d3d8"); R(15, 0, 2, T, "#c9d3d8"); break;
+    case K.GRASS: R(0, 0, T, T, h < .5 ? "#76b24f" : "#70ab4a"); for (let i = 0; i < 3; i++) R((h * 97 + i * 11) % 28, (h2 * 83 + i * 9) % 28, 2, 4, "#5e9a3e"); break;
+    case K.DIRT: R(0, 0, T, T, h < .5 ? "#d8bc8d" : "#d6ba8a"); if (h < .4) R(h * 80 % 28, h2 * 28, 3, 2, "#c4a674"); break;
+    case K.ASPH: R(0, 0, T, T, "#5d6166"); if (h < .2) R(h * 120 % 28, h2 * 28, 2, 2, "#6c7076"); break;
+    case K.ROAD: R(0, 0, T, T, "#4b4f54"); if (tx === 1 && ty % 3 === 0) R(14, 4, 4, 16, "#e8d36a"); break;
+    case K.PAVE: R(0, 0, T, T, "#cfc4b2"); R(0, 15, T, 2, "#b8ad99"); R(ty % 2 ? 8 : 24, 0, 2, 15, "#b8ad99"); R(ty % 2 ? 24 : 8, 17, 2, 15, "#b8ad99"); break;
+    case K.TREE: case K.PINE: case K.MAGNO: {
+      R(13, 18, 6, 12, "#6b4a2b");
+      const col = k === K.PINE ? ["#2f6b3a", "#3d8048"] : k === K.MAGNO ? ["#5d9a4c", "#7cb35d"] : (h < .5 ? ["#3e7d3a", "#4f9446"] : ["#45853b", "#5a9c48"]);
+      c.fillStyle = col[0]; c.beginPath(); c.arc(X + 16, Y + 13, 14, 0, 7); c.fill();
+      c.fillStyle = col[1]; c.beginPath(); c.arc(X + 12, Y + 9, 8, 0, 7); c.fill();
+      if (k === K.PINE) { c.fillStyle = "#24532c"; c.beginPath(); c.moveTo(X + 16, Y - 2); c.lineTo(X + 29, Y + 22); c.lineTo(X + 3, Y + 22); c.fill(); }
+      if (k === K.MAGNO) for (let i = 0; i < 6; i++) R(5 + (i * 7) % 20, 4 + (i * 5) % 16, 4, 4, "#fbf6ff");
+      break;
+    }
+    case K.FENCE: R(0, 0, T, T, "#76b24f"); R(0, 12, T, 3, "#7a8088"); R(0, 22, T, 3, "#7a8088"); for (let i = 2; i < T; i += 10) R(i, 6, 3, 22, "#5a6068"); break;
+    case K.APT: R(0, 0, T, T, "#b9b2a6"); R(0, 0, T, 4, "#8e877b"); if (tx % 2) R(6, 10, 8, 8, "#7fa9c4"); break;
+    case K.ROOFD: R(0, 0, T, T, "#5c6168"); R(0, 0, T, 2, "#6c7178"); if (ty % 2 === 0) R(0, 16, T, 1, "#51565c"); break;
+    case K.ROOFG: R(0, 0, T, T, "#5b9671"); R(0, 0, T, 2, "#6aa780"); if ((tx + ty) % 5 === 0) R(6, 6, 20, 20, "#a7c7d6"); break;
+    case K.ROOFW: R(0, 0, T, T, "#e8eef2"); R(0, (ty % 2) * 16, T, 3, "#cdd6dc"); break;
+    case K.BRICK: R(0, 0, T, T, "#b5523b"); for (let i = 0; i < 4; i++) R(0, i * 8, T, 1, "#93402d"); if (tx % 2 === 0) { R(6, 6, 20, 14, "#8cc4e6"); R(6, 6, 20, 4, "#c4e4f6"); } break;
+    case K.GLASSW: R(0, 0, T, T, "#eef1f2"); R(3, 3, T - 6, T - 8, "#8cc4e6"); R(3, 3, T - 6, 6, "#c4e4f6"); R(15, 3, 2, T - 8, "#eef1f2"); break;
+    case K.SEAT: R(0, 0, T, T, ty % 2 ? "#3b77b8" : "#4a89cc"); R(0, 0, T, 3, "#2d5f95"); break;
+    case K.COURT: R(0, 0, T, T, h < .5 ? "#d9a660" : "#d5a15b"); R(0, 0, T, 1, "#c08d4b"); if (tx === 25) R(0, 0, 2, T, "#fff"); if (ty === 1 || ty === 20) R(0, ty === 1 ? 0 : 30, T, 2, "#fff"); break;
+    case K.STAIR: R(0, 0, T, T, "#b9b2a4"); for (let i = 0; i < 4; i++) R(0, i * 8, T, 3, "#9c9586"); break;
+    case K.DESK: R(6, 6, 20, 12, "#e2c48f"); R(6, 16, 20, 2, "#a8875a"); R(10, 20, 12, 8, "#6d7c8c"); break;
+    case K.TDESK: R(2, 6, 28, 16, "#8a6a4a"); R(2, 20, 28, 2, "#5e4630"); R(8, 9, 10, 7, "#dfe6ea"); break;
+    case K.BOARD: R(0, 0, T, T, "#d8d0c2"); R(0, 4, T, 20, "#2f5a46"); R(0, 22, T, 4, "#9c8a6a"); if (h < .3) R(8, 10, 12, 2, "#e8f0e8"); break;
+    case K.SHELF: R(2, 2, 28, 28, "#7a5232"); for (let i = 0; i < 3; i++) for (let j = 0; j < 6; j++) R(4 + j * 4, 4 + i * 9, 3, 7, ["#c0504d", "#3b5ba5", "#e9b84a", "#3f8a5c", "#7a4fa0"][(tx + ty + i + j) % 5]); break;
+    case K.LAB: R(0, 4, T, 22, "#2f3438"); R(0, 4, T, 3, "#454b50"); if ((tx + ty) % 2 === 0) { c.fillStyle = "#9aa4aa"; c.beginPath(); c.arc(X + 16, Y + 15, 5, 0, 7); c.fill(); } break;
+    case K.SINK: R(2, 4, 28, 20, "#c9d3d8"); c.fillStyle = "#9fb0b8"; c.beginPath(); c.arc(X + 16, Y + 14, 7, 0, 7); c.fill(); break;
+    case K.PIANO: R(0, 2, T, 26, "#1d1d22"); R(2, 18, 28, 8, "#f5f5f5"); for (let i = 4; i < 30; i += 5) R(i, 18, 2, 5, "#1d1d22"); break;
+    case K.MUSIC: R(10, 16, 12, 10, "#3a3a3a"); R(14, 4, 4, 14, "#555"); R(8, 4, 16, 6, "#eee"); break;
+    case K.STAND: R(15, 10, 2, 18, "#333"); R(7, 6, 18, 8, "#444"); break;
+    case K.PC: R(2, 8, 28, 16, "#dcdcdc"); R(8, 2, 16, 12, "#2a2f36"); R(10, 4, 12, 8, "#6fb0e0"); break;
+    case K.BED: R(2, 2, 28, 28, "#ffffff"); R(4, 4, 24, 7, "#e6eef3"); R(2, 13, 28, 17, "#8fb8d8"); break;
+    case K.FLOWER: R(4, 8, 24, 18, "#7a5232"); for (let i = 0; i < 6; i++) R(6 + i * 4, 6 + (i % 2) * 6, 4, 4, ["#e85d8a", "#f2d04a", "#ffffff"][i % 3]); break;
+    case K.BENCH: R(2, 10, 28, 8, "#a87b48"); R(4, 18, 3, 6, "#6b4a2b"); R(25, 18, 3, 6, "#6b4a2b"); break;
+    case K.GOAL: R(0, 0, T, T, "#d9bd8e"); R(4, 0, 4, T, "#fff"); R(8, 0, 20, T, "rgba(255,255,255,.35)"); break;
+    case K.LOCKER: R(0, 2, T, 28, "#6f8aa3"); R(15, 2, 2, 28, "#55708a"); R(10, 14, 3, 3, "#ddd"); R(19, 14, 3, 3, "#ddd"); break;
+    case K.TABLE: R(0, 6, T, 18, "#e1e4e6"); R(0, 22, T, 2, "#a9b0b5"); break;
+    case K.EASEL: R(14, 2, 4, 28, "#8a5a33"); R(6, 6, 20, 16, "#fff"); R(9, 9, 8, 6, h < .5 ? "#e9b84a" : "#7fb3d5"); break;
+    case K.SOFA: R(2, 6, 28, 20, "#a0533f"); R(2, 6, 28, 6, "#7f3f2f"); break;
+    case K.CAR: { const cc = ["#c0504d", "#f2f2f2", "#3b5ba5", "#333", "#e9b84a"][Math.floor(h * 5)]; R(3, 2, 26, 28, cc); R(6, 7, 20, 7, "#26303a"); R(6, 20, 20, 5, "#26303a"); break; }
+    case K.DOOR: { const out = a.id === 0; R(0, 0, T, T, out ? "#c9c1b2" : "#ddd6c8"); R(0, 0, 3, T, "#7d6a52"); R(T - 3, 0, 3, T, "#7d6a52"); if (a.warps.has(ty * a.w + tx)) { R(6, 8, 20, 16, "#3f8a5c"); c.fillStyle = "#fff"; c.beginPath(); c.moveTo(X + 16, Y + 10); c.lineTo(X + 23, Y + 18); c.lineTo(X + 9, Y + 18); c.fill(); } break; }
+    case K.TROPHY: R(2, 2, 28, 28, "#7d6a52"); R(4, 4, 24, 22, "#bfe0f0"); R(8, 12, 6, 10, "#e9b84a"); R(18, 10, 6, 12, "#c0c0c8"); break;
+    case K.STALL: R(0, 0, T, T, "#9fb3bf"); R(0, 0, 2, T, "#7c929e"); R(12, 20, 8, 3, "#666"); break;
+    case K.HOOP: R(0, 6, T, 20, "#f5f5f5"); R(6, 10, 20, 12, "#c0504d"); R(10, 13, 12, 6, "#f5f5f5"); break;
+    case K.STAGE: R(0, 0, T, T, "#7a4a2a"); R(0, 0, T, 2, "#93603a"); if (ty === 3) R(0, 26, T, 6, "#5a361e"); break;
+  }
+}
+
+function prerender(a) {
+  const cnv = document.createElement("canvas"); cnv.width = a.w * T; cnv.height = a.h * T;
+  const c = cnv.getContext("2d");
+  for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) drawTile(c, a.t[y * a.w + x], x, y, a);
+  if (a.id === 0) {
+    // 운동장 트랙과 중앙선
+    c.strokeStyle = "rgba(255,255,255,.85)"; c.lineWidth = 3;
+    const cx = 27.5 * T, cy = 33 * T;
+    for (const [rx, ry] of [[20, 9.5], [17.5, 7]]) { c.beginPath(); c.ellipse(cx, cy, rx * T, ry * T, 0, 0, 7); c.stroke(); }
+    c.beginPath(); c.moveTo(cx, 26.5 * T); c.lineTo(cx, 39.5 * T); c.stroke();
+    c.beginPath(); c.arc(cx, cy, 2.2 * T, 0, 7); c.stroke();
+  }
+  a.base = cnv;
+}
+
+// ================= 상태 =================
+const save = (() => { try { return JSON.parse(localStorage.getItem("kpCampus") || "{}"); } catch { return {}; } })();
+const me = {
+  nick: save.nick || "", look: Array.isArray(save.look) && save.look.length === 6 ? save.look : [0, 0, 0, 0, 0, 0],
+  a: 0, x: 5.5, y: 19.5, dir: 2, moving: false, run: false, anim: 0,
+  stamps: save.stamps || {}, stars: new Set(save.stars || []), startedAt: save.startedAt || 0, doneAt: save.doneAt || 0, wins: save.wins || 0,
+};
+const persist = () => { try { localStorage.setItem("kpCampus", JSON.stringify({ nick: me.nick, look: me.look, stamps: me.stamps, stars: [...me.stars], startedAt: me.startedAt, doneAt: me.doneAt, wins: me.wins, room: save.room || "", sound: soundOn })); } catch {} };
+const stampCount = () => Object.keys(me.stamps).length;
+const others = new Map();    // id -> {nick, look, a, x, y, tx, ty, dir, m, n, s, bubble}
+let myId = null, roster = [], playing = false, roomCode = "광평";
+const parts = [];             // 효과 입자
+const floats = [];            // 떠오르는 글자
+let shake = 0, fade = 0, fadeTo = null;
+let ball = { a: 0, x: 27.5, y: 33, vx: 0, vy: 0 };
+let challenge = null;         // {room, a, until}
+
+// ================= 소리 =================
+let AC = null, soundOn = save.sound !== false;
+function beep(f, d = .1, type = "square", vol = .06, slide = 0) {
+  if (!soundOn) return;
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+    o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(f * slide, t + d);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+    o.connect(g).connect(AC.destination); o.start(t); o.stop(t + d + .02);
+  } catch {}
+}
+const sfx = {
+  star() { beep(988, .07); setTimeout(() => beep(1319, .12), 60); },
+  stamp() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, .14, "square", .07), i * 80)); },
+  wrong() { beep(220, .25, "sawtooth", .05, .6); },
+  warp() { beep(440, .18, "triangle", .07, 2); },
+  kick() { beep(160, .08, "square", .08, .5); },
+  goal() { [392, 523, 659, 784, 1047, 1319].forEach((f, i) => setTimeout(() => beep(f, .16, "square", .07), i * 70)); },
+  pop() { beep(660, .05, "triangle", .06); },
+  note(i) { beep([262, 294, 330, 349, 392, 440, 494, 523][i % 8], .35, "triangle", .1); },
+};
+
+// ================= 입력 =================
+const keys = new Set();
+let stick = { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  keys.add(e.key.toLowerCase());
+  if (!playing) return;
+  const k = e.key.toLowerCase();
+  if (k === " " || k === "e" || k === "enter") { e.preventDefault(); if ($("#modal").hidden) act(); }
+  if (k === "m") openMap(); if (k === "q") openMissions(); if (k === "r") openRank();
+  if (k === "escape") closeModal();
+  if (/^[1-9]$/.test(k) && $("#modal").hidden) sendEmo(+k - 1);
+});
+addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => keys.clear());
+cv.addEventListener("pointerdown", (e) => {
+  if (!playing || !$("#modal").hidden) return;
+  if (stick.on) return;
+  stick = { on: true, id: e.pointerId, ox: e.clientX, oy: e.clientY, dx: 0, dy: 0 };
+  const s = $("#stick"); s.hidden = false; s.style.left = e.clientX + "px"; s.style.top = e.clientY + "px"; s.firstElementChild.style.transform = "";
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener("pointermove", (e) => {
+  if (!stick.on || e.pointerId !== stick.id) return;
+  let dx = e.clientX - stick.ox, dy = e.clientY - stick.oy; const L = Math.hypot(dx, dy), M = 50;
+  if (L > M) { dx = dx / L * M; dy = dy / L * M; }
+  stick.dx = dx / M; stick.dy = dy / M;
+  $("#stick").firstElementChild.style.transform = `translate(${dx}px,${dy}px)`;
+});
+const endStick = (e) => { if (e.pointerId !== stick.id) return; stick = { on: false, id: null, dx: 0, dy: 0 }; $("#stick").hidden = true; };
+cv.addEventListener("pointerup", endStick); cv.addEventListener("pointercancel", endStick);
+
+// ================= 이동·충돌 =================
+const solidAt = (a, x, y) => SOLID.has(at(a, Math.floor(x), Math.floor(y)));
+function blocked(a, x, y) { const r = .28; return solidAt(a, x - r, y - .2) || solidAt(a, x + r, y - .2) || solidAt(a, x - r, y + .12) || solidAt(a, x + r, y + .12); }
+function roomAt(ai, x, y) { for (const r of AREAS[ai].rooms) if (x >= r.x0 && x < r.x1 + 1 && y >= r.y0 && y < r.y1 + 1) return r; return null; }
+
+let lastWarpKey = -1, curRoomName = "";
+function update(dt) {
+  if (!playing || fadeTo) { stepFx(dt); return; }
+  let ix = 0, iy = 0;
+  if (keys.has("arrowleft") || keys.has("a")) ix -= 1; if (keys.has("arrowright") || keys.has("d")) ix += 1;
+  if (keys.has("arrowup") || keys.has("w")) iy -= 1; if (keys.has("arrowdown") || keys.has("s")) iy += 1;
+  if (stick.on && Math.hypot(stick.dx, stick.dy) > .2) { ix = stick.dx; iy = stick.dy; }
+  const L = Math.hypot(ix, iy);
+  const a = AREAS[me.a];
+  me.moving = L > .1 && $("#modal").hidden;
+  if (me.moving) {
+    ix /= Math.max(1, L); iy /= Math.max(1, L);
+    const sp = (me.run || keys.has("shift") ? 7 : 4.3) * Math.min(1, L) * dt;
+    const nx = me.x + ix * sp, ny = me.y + iy * sp;
+    if (!blocked(a, nx, me.y)) me.x = nx;
+    if (!blocked(a, me.x, ny)) me.y = ny;
+    me.dir = Math.abs(ix) > Math.abs(iy) ? (ix < 0 ? 1 : 2) : (iy < 0 ? 3 : 0);
+    me.anim += dt * (me.run ? 12 : 8);
+    if ((me.run || keys.has("shift")) && Math.random() < .3) parts.push({ a: me.a, x: me.x - ix * .3, y: me.y, vx: (Math.random() - .5) * .5, vy: -.3, life: .4, max: .4, col: "rgba(200,190,170,.8)", r: 4 });
+    if (!me.startedAt) { me.startedAt = Date.now(); persist(); }
+  }
+  // 문·계단
+  const key = Math.floor(me.y) * a.w + Math.floor(me.x);
+  const w = a.warps.get(key);
+  if (w && key !== lastWarpKey) { lastWarpKey = key; goWarp(w); }
+  else if (!w) lastWarpKey = -1;
+  // 별 줍기
+  for (const s of STARS) if (s.a === me.a && !me.stars.has(s.id) && Math.hypot(s.x - me.x, s.y - me.y + .3) < .7) {
+    me.stars.add(s.id); persist(); sfx.star(); burst(s.a, s.x, s.y, ["#ffe066", "#fff3b0", "#f2b134"], 16);
+    floatText(s.a, s.x, s.y - .5, `+별 ${me.stars.size}`, "#f2b134"); sendProg(); updateHud();
+    if (me.stars.size === STARS.length) toast("별 40개를 전부 모았어요! 대단해요!");
+  }
+  // 공
+  if (ball.a === me.a) {
+    const d = Math.hypot(ball.x - me.x, ball.y - me.y + .2);
+    if (d < .55 && me.moving) { const sp = (me.run || keys.has("shift")) ? 11 : 7; ball.vx = ix * sp + (ball.x - me.x) * 2; ball.vy = iy * sp + (ball.y - me.y) * 2; sfx.kick(); }
+  }
+  stepBall(dt);
+  // 지금 있는 방
+  const r = roomAt(me.a, me.x, me.y);
+  const nm = r ? r.name : (me.a === 0 ? "" : "복도");
+  if (nm !== curRoomName) { curRoomName = nm; updateHud(); if (r && DESC[r.name.replace(/ \d$/, "")]) toastRoom(r.name, DESC[r.name.replace(/ \d$/, "")]); }
+  // 도전 미션 도착
+  if (challenge && r && r.name === challenge.room && me.a === challenge.a) {
+    me.wins++; persist(); sfx.goal(); burst(me.a, me.x, me.y - .5, ["#e9b84a", "#3f8a5c", "#fff", "#c0504d"], 40); shake = .4;
+    const left = Math.ceil((challenge.until - performance.now()) / 1000);
+    toast(`미션 성공! ${left}초 남기고 도착 (성공 ${me.wins}번)`); challenge = null; $("#timer").hidden = true;
+  }
+  if (challenge && performance.now() > challenge.until) { sfx.wrong(); toast(`땡! 시간 초과 — ${challenge.where}`); challenge = null; $("#timer").hidden = true; }
+  if (challenge) { const s = Math.max(0, Math.ceil((challenge.until - performance.now()) / 1000)); const tEl = $("#timer"); tEl.textContent = `${challenge.where}까지 ${s}초`; tEl.classList.toggle("hot", s <= 10); }
+  updatePrompt();
+  stepFx(dt);
+  netTick();
+}
+
+function goWarp(w) {
+  sfx.warp(); fadeTo = w; fade = 0;
+}
+function finishWarp() {
+  const w = fadeTo; me.a = w.to; me.x = w.tx; me.y = w.ty; fadeTo = null;
+  lastWarpKey = Math.floor(me.y) * AREAS[me.a].w + Math.floor(me.x);
+  curRoomName = "~"; camSnap = true; updateHud(); sendPose(true);
+}
+
+function stepBall(dt) {
+  if (!ball.vx && !ball.vy) return;
+  const a = AREAS[ball.a];
+  let nx = ball.x + ball.vx * dt, ny = ball.y + ball.vy * dt;
+  if (solidAt(a, nx, ball.y)) { ball.vx *= -.6; nx = ball.x; }
+  if (solidAt(a, ball.x, ny)) { ball.vy *= -.6; ny = ball.y; }
+  ball.x = nx; ball.y = ny;
+  const f = Math.pow(.25, dt); ball.vx *= f; ball.vy *= f;
+  if (Math.hypot(ball.vx, ball.vy) < .05) ball.vx = ball.vy = 0;
+  if (ball.a === 0 && ball.y > 31 && ball.y < 35 && (ball.x < 5.6 || ball.x > 49.4)) {
+    sfx.goal(); burst(0, ball.x, ball.y, ["#fff", "#e9b84a", "#3f8a5c", "#c0504d"], 50); shake = .5;
+    floatText(0, ball.x, ball.y - 1, "골!!!", "#fff"); toast("골인! 운동장 한가운데로 공이 돌아가요");
+    ball = { a: 0, x: 27.5, y: 33, vx: 0, vy: 0 };
+  }
+}
+
+// ================= 상호작용 =================
+function nearby() {
+  for (const s of STAMPS) if (s.a === me.a && Math.hypot(s.x - me.x, s.y - me.y) < 1.3) return { type: "stamp", s };
+  const a = AREAS[me.a];
+  for (const [dx, dy] of [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1]]) {
+    const k = at(a, Math.floor(me.x) + dx, Math.floor(me.y - .3) + dy);
+    if (k === K.PIANO) return { type: "piano" };
+    if (k === K.TROPHY) return { type: "trophy" };
+    if (k === K.BOARD) return { type: "board" };
+  }
+  return null;
+}
+function updatePrompt() {
+  const n = nearby(), el = $("#prompt");
+  if (!n) { el.hidden = true; return; }
+  el.hidden = false;
+  el.textContent = n.type === "stamp" ? (me.stamps[n.s.id] ? `${n.s.name} 도장 — 이미 찍었어요` : `확인: ${n.s.name} 도장 찍기`) : n.type === "piano" ? "확인: 피아노 치기" : n.type === "trophy" ? "확인: 학교 소개 보기" : "확인: 칠판 보기";
+}
+let pianoIdx = 0;
+const BOARD_MSG = ["오늘의 한마디: 슬기롭게 배우며 바르게 행하자", "쉬는 시간 10분, 다음 시간 준비 먼저!", "복도에서는 사뿐사뿐 걷기", "떠든 사람: (비어 있음)", "칠판 지우개 당번은 누구?"];
+function act() {
+  const n = nearby();
+  if (!n) { sendEmo(0); return; }
+  if (n.type === "stamp") return openStamp(n.s);
+  if (n.type === "piano") { sfx.note(pianoIdx); floatText(me.a, me.x, me.y - 1.6, ["도", "레", "미", "파", "솔", "라", "시", "도"][pianoIdx % 8], "#fff"); pianoIdx++; return; }
+  if (n.type === "board") return toast(BOARD_MSG[Math.floor(Math.random() * BOARD_MSG.length)]);
+  if (n.type === "trophy") return openInfo();
+}
+
+// ================= 효과 =================
+function burst(a, x, y, cols, n) { for (let i = 0; i < n; i++) { const an = Math.random() * 7, sp = 1 + Math.random() * 4; parts.push({ a, x, y, vx: Math.cos(an) * sp, vy: Math.sin(an) * sp - 2, life: .6 + Math.random() * .5, max: 1.1, col: cols[i % cols.length], r: 3 + Math.random() * 3, g: 6 }); } }
+function floatText(a, x, y, text, col) { floats.push({ a, x, y, text, col, life: 1.2 }); }
+function stepFx(dt) {
+  for (let i = parts.length - 1; i >= 0; i--) { const p = parts[i]; p.life -= dt; if (p.life <= 0) { parts.splice(i, 1); continue; } p.x += p.vx * dt; p.y += p.vy * dt; if (p.g) p.vy += p.g * dt; }
+  for (let i = floats.length - 1; i >= 0; i--) { const f = floats[i]; f.life -= dt; f.y -= dt * .8; if (f.life <= 0) floats.splice(i, 1); }
+  shake = Math.max(0, shake - dt);
+  if (fadeTo) { fade += dt * 4; if (fade >= 1) { finishWarp(); fade = 1; } } else if (fade > 0) fade = Math.max(0, fade - dt * 4);
+  for (const o of others.values()) { o.x += (o.tx - o.x) * Math.min(1, dt * 10); o.y += (o.ty - o.y) * Math.min(1, dt * 10); if (o.m) o.anim = (o.anim || 0) + dt * 8; if (o.bubble && performance.now() > o.bubble.until) o.bubble = null; }
+  if (me.bubble && performance.now() > me.bubble.until) me.bubble = null;
+}
+
+// ================= 그리기 =================
+let VW = 0, VH = 0, DPR = 1, SC = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1); VW = innerWidth; VH = innerHeight;
+  cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR);
+  SC = clamp(Math.min(VW, VH) / (12.5 * T), .85, 1.5);
+}
+addEventListener("resize", resize); resize();
+
+let camX = 0, camY = 0, titleT = 0, camSnap = true;
+function draw(now) {
+  const a = AREAS[playing ? me.a : 0];
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = a.id === 0 ? "#2f4a33" : "#1b1f24"; ctx.fillRect(0, 0, cv.width, cv.height);
+  let fx, fy;
+  if (playing) { fx = me.x * T; fy = me.y * T; }
+  else { titleT += 1 / 60; fx = (27 + Math.sin(titleT * .12) * 16) * T; fy = (20 + Math.cos(titleT * .09) * 7) * T; }
+  const vw = VW / SC, vh = VH / SC;
+  const cf = playing && !camSnap ? .2 : 1; camSnap = false;
+  camX += (clamp(fx - vw / 2, -T, a.w * T - vw + T) - camX) * cf;
+  camY += (clamp(fy - vh / 2, -T, a.h * T - vh + T) - camY) * cf;
+  if (a.w * T < vw) camX = (a.w * T - vw) / 2; if (a.h * T < vh) camY = (a.h * T - vh) / 2;
+  const sx = shake > 0 ? (Math.random() - .5) * 8 * shake : 0, sy = shake > 0 ? (Math.random() - .5) * 8 * shake : 0;
+  const k = DPR * SC;
+  ctx.setTransform(k, 0, 0, k, Math.round((-camX + sx) * k), Math.round((-camY + sy) * k));
+  ctx.drawImage(a.base, 0, 0);
+  const t = now / 1000;
+  // 도장 받침대
+  for (const s of STAMPS) if (s.a === a.id) {
+    const got = me.stamps[s.id], X = s.x * T, Y = s.y * T, bob = Math.sin(t * 3 + s.x) * 3;
+    ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(X, Y + 10, 13, 5, 0, 0, 7); ctx.fill();
+    if (!got) { ctx.fillStyle = `rgba(255,224,102,${.25 + Math.sin(t * 4) * .15})`; ctx.beginPath(); ctx.arc(X, Y - 4, 20, 0, 7); ctx.fill(); }
+    ctx.fillStyle = got ? "#7d8a80" : "#c0504d"; ctx.fillRect(X - 9, Y - 14 + (got ? 0 : bob), 18, 16);
+    ctx.fillStyle = got ? "#5d6a60" : "#93402d"; ctx.fillRect(X - 9, Y + (got ? 0 : bob), 18, 3);
+    ctx.fillStyle = "#fff"; ctx.font = "900 11px Pretendard,sans-serif"; ctx.textAlign = "center"; ctx.fillText(got ? "완" : "도장", X, Y - 3 + (got ? 0 : bob));
+  }
+  // 별
+  for (const s of STARS) if (s.a === a.id && !me.stars.has(s.id)) {
+    const X = s.x * T, Y = s.y * T - 6 + Math.sin(t * 4 + s.id) * 3, r = 9 + Math.sin(t * 6 + s.id) * 1.5;
+    ctx.fillStyle = "rgba(255,230,120,.35)"; ctx.beginPath(); ctx.arc(X, Y, r + 5, 0, 7); ctx.fill();
+    star(X, Y, r, "#ffd43b", "#e8a317");
+  }
+  // 공
+  if (ball.a === a.id) { const X = ball.x * T, Y = ball.y * T; ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(X, Y + 6, 8, 3, 0, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(X, Y, 8, 0, 7); ctx.fill(); ctx.fillStyle = "#222"; ctx.beginPath(); ctx.arc(X + 2, Y - 1, 3, 0, 7); ctx.fill(); }
+  // 간판
+  ctx.textAlign = "center";
+  for (const s of a.signs) {
+    const X = s.x * T, Y = s.y * T;
+    if (X < camX - 100 || X > camX + vw + 100 || Y < camY - 40 || Y > camY + vh + 40) continue;
+    ctx.font = (s.small ? "800 11px " : "900 12px ") + "Pretendard,sans-serif";
+    const w = ctx.measureText(s.name).width + 12;
+    ctx.fillStyle = "#24352b"; rr(X - w / 2, Y - 10, w, 17, 4); ctx.fill();
+    ctx.fillStyle = "#fbf6ea"; ctx.fillText(s.name, X, Y + 3);
+  }
+  // 사람들(아래에 있는 사람이 앞에)
+  const ppl = [];
+  for (const [id, o] of others) if (o.a === a.id && o.look) ppl.push({ o, me: false });
+  if (playing) ppl.push({ o: me, me: true });
+  ppl.sort((p, q) => p.o.y - q.o.y);
+  for (const p of ppl) {
+    const o = p.o, step = (p.me ? me.moving : o.m) ? 1 + (Math.floor(o.anim || 0) % 2) : 0;
+    drawMinimi(ctx, o.x * T, o.y * T + 4, o.look, o.dir || 0, step, 2.2);
+    ctx.font = "800 11px Pretendard,sans-serif"; ctx.textAlign = "center";
+    const tw = ctx.measureText(o.nick).width + 10;
+    ctx.fillStyle = p.me ? "rgba(233,184,74,.95)" : "rgba(31,42,36,.8)"; rr(o.x * T - tw / 2, o.y * T - 58, tw, 15, 6); ctx.fill();
+    ctx.fillStyle = p.me ? "#1f2a24" : "#fff"; ctx.fillText(o.nick, o.x * T, o.y * T - 47);
+    if (o.bubble) bubble(o.x * T, o.y * T - 64, o.bubble.text, o.bubble.big);
+  }
+  // 입자·글자
+  for (const p of parts) if (p.a === a.id) { ctx.globalAlpha = clamp(p.life / (p.max || 1), 0, 1); ctx.fillStyle = p.col; ctx.fillRect(p.x * T - p.r / 2, p.y * T - p.r / 2, p.r, p.r); }
+  ctx.globalAlpha = 1;
+  for (const f of floats) if (f.a === a.id) { ctx.globalAlpha = clamp(f.life, 0, 1); ctx.font = "900 16px Pretendard,sans-serif"; ctx.lineWidth = 4; ctx.strokeStyle = "#1f2a24"; ctx.strokeText(f.text, f.x * T, f.y * T); ctx.fillStyle = f.col; ctx.fillText(f.text, f.x * T, f.y * T); }
+  ctx.globalAlpha = 1;
+  // 장면 바뀔 때 어둡게
+  if (fade > 0) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(10,14,12,${fade})`; ctx.fillRect(0, 0, cv.width, cv.height); }
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function star(x, y, r, fill, stroke) {
+  ctx.beginPath(); for (let i = 0; i < 10; i++) { const an = -Math.PI / 2 + i * Math.PI / 5, rr2 = i % 2 ? r * .45 : r; ctx.lineTo(x + Math.cos(an) * rr2, y + Math.sin(an) * rr2); } ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
+}
+function bubble(x, y, text, big) {
+  ctx.font = (big ? "26px " : "800 12px ") + "Pretendard,sans-serif";
+  const w = Math.max(30, ctx.measureText(text).width + 14), h = big ? 32 : 20;
+  ctx.fillStyle = "#fff"; ctx.strokeStyle = "#1f2a24"; ctx.lineWidth = 2; rr(x - w / 2, y - h, w, h, 8); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 4, y); ctx.lineTo(x, y + 5); ctx.lineTo(x + 4, y); ctx.fill();
+  ctx.fillStyle = "#1f2a24"; ctx.textAlign = "center"; ctx.fillText(text, x, y - (big ? 7 : 6));
+}
+
+// ================= 화면 글자(HUD) =================
+function updateHud() {
+  const r = roomAt(me.a, me.x, me.y);
+  $("#where").textContent = `${AREA_NAME(me.a)}${r ? " · " + r.name : me.a ? " · 복도" : ""}`;
+  $("#score").textContent = `도장 ${stampCount()}/${STAMPS.length} · 별 ${me.stars.size}/${STARS.length}`;
+}
+function toast(text, ms = 2600) {
+  const el = document.createElement("div"); el.className = "toast"; el.textContent = text; $("#toasts").appendChild(el);
+  while ($("#toasts").children.length > 3) $("#toasts").firstChild.remove();
+  setTimeout(() => el.remove(), ms);
+}
+let lastRoomToast = 0;
+function toastRoom(name, desc) { if (performance.now() - lastRoomToast < 900) return; lastRoomToast = performance.now(); toast(`${name} — ${desc}`, 2200); }
+
+// ================= 팝업 =================
+function openModal(html, wide) { $("#mbody").className = "card" + (wide ? " wide" : ""); $("#mbody").innerHTML = html; $("#modal").hidden = false; stick = { on: false, id: null, dx: 0, dy: 0 }; $("#stick").hidden = true; }
+function closeModal() { $("#modal").hidden = true; }
+$("#modal").addEventListener("pointerdown", (e) => { if (e.target.id === "modal") closeModal(); });
+
+function openStamp(s) {
+  if (me.stamps[s.id]) { toast(`${s.name} 도장은 이미 찍었어요 (${me.stamps[s.id] === 2 ? "금도장" : "은도장"})`); return; }
+  openModal(`<h2>${esc(s.name)} 도장</h2><p class="sub">맞히면 금도장, 틀리면 은도장이에요</p><div style="font-size:18px;font-weight:800">${esc(s.q)}</div>
+    <div class="choices">${s.c.map((c, i) => `<button class="btn" data-i="${i}">${esc(c)}</button>`).join("")}</div>`);
+  $("#mbody").querySelectorAll(".choices .btn").forEach((b) => b.onclick = () => {
+    const i = +b.dataset.i, ok = i === s.ans;
+    $("#mbody").querySelectorAll(".choices .btn").forEach((x) => { x.disabled = true; if (+x.dataset.i === s.ans) x.classList.add("right"); });
+    if (!ok) b.classList.add("wrong");
+    me.stamps[s.id] = ok ? 2 : 1; persist();
+    if (ok) sfx.stamp(); else sfx.wrong();
+    setTimeout(() => {
+      closeModal(); sfx.stamp(); shake = .35;
+      burst(s.a, s.x, s.y - .5, ok ? ["#e9b84a", "#fff3b0", "#c0504d", "#3f8a5c"] : ["#c8ccd0", "#ffffff", "#9aa4aa"], 36);
+      floatText(s.a, s.x, s.y - 1.4, ok ? "금도장!" : "은도장", ok ? "#ffd43b" : "#e6e9ec");
+      updateHud(); sendProg();
+      const n = stampCount();
+      if (n === STAMPS.length && !me.doneAt) { me.doneAt = Date.now(); persist(); sendProg(); setTimeout(openCert, 900); }
+      else toast(`도장 ${n}/${STAMPS.length} — ${ok ? "정답!" : "아쉽지만 도장은 찍었어요"}`);
+    }, 900);
+  });
+}
+function openInfo() {
+  openModal(`<h2>광평중학교</h2><p class="sub">메인홀 진열장</p>
+    <div class="list">
+      <div class="li"><b>교훈</b>슬기롭게 배우며 바르게 행하자</div>
+      <div class="li"><b>교목 · 교화</b>소나무 · 목련</div>
+      <div class="li"><b>첫 입학식</b>2008년 3월 (341명)</div>
+      <div class="li"><b>자랑</b>경북 음악중점학교 · 오케스트라</div>
+      <div class="li"><b>주소</b>구미시 화신로10길 11-12</div>
+    </div><p class="note">학교 홈페이지·설계 자료를 보고 만들었어요.</p><div class="foot"><button class="btn" onclick="closeModal()">닫기</button></div>`);
+}
+function openMissions() {
+  const rows = STAMPS.map((s) => { const g = me.stamps[s.id]; return `<div class="li ${g ? "got" : ""}"><b>${esc(s.name)}</b><span class="st">${g === 2 ? "금도장" : g === 1 ? "은도장" : "?"}</span></div>`; }).join("");
+  openModal(`<h2>미션</h2><p class="sub">도장 ${stampCount()}/${STAMPS.length} · 별 ${me.stars.size}/${STARS.length} · 시간 미션 성공 ${me.wins}번</p>
+    <button class="btn gold" id="bChal" style="width:100%">종 치기 전에! 시간 안에 교실 찾아가기</button>
+    <div class="list" style="margin-top:10px">${rows}</div>
+    <p class="note">도장이 어디 있는지는 직접 찾아보세요. 지도를 보면 교실 이름이 나와요.</p>
+    <div class="foot"><button class="btn" id="bReset">처음부터</button><button class="btn" onclick="closeModal()">닫기</button></div>`);
+  $("#bChal").onclick = startChallenge;
+  $("#bReset").onclick = () => { if (!confirm("도장과 별을 모두 지우고 처음부터 할까요?")) return; me.stamps = {}; me.stars = new Set(); me.startedAt = 0; me.doneAt = 0; persist(); sendProg(); updateHud(); closeModal(); toast("처음부터 다시 시작!"); };
+}
+function startChallenge() {
+  const pool = [];
+  for (let f = 1; f <= 4; f++) for (const r of AREAS[f].rooms) if (!/계단|화장실|교구|준비|홈베이스|메인홀|가는 길/.test(r.name)) pool.push({ a: f, r });
+  pool.push({ a: 5, r: AREAS[5].rooms[0] }, { a: 5, r: AREAS[5].rooms[1] });
+  let pick; do { pick = pool[Math.floor(Math.random() * pool.length)]; } while (pick.a === me.a && pool.length > 1 && Math.random() < .8);
+  const dist = (pick.a === me.a ? 0 : 20) + Math.abs(pick.a - me.a) * 10;
+  challenge = { a: pick.a, room: pick.r.name, where: `${AREA_NAME(pick.a)} ${pick.r.name}`, until: performance.now() + (45 + dist) * 1000 };
+  closeModal(); $("#timer").hidden = false; sfx.warp(); toast(`종 치기 전에 ${challenge.where}(으)로!`);
+}
+function openCert() {
+  const sec = me.doneAt && me.startedAt ? Math.round((me.doneAt - me.startedAt) / 1000) : 0;
+  const gold = Object.values(me.stamps).filter((v) => v === 2).length;
+  burst(me.a, me.x, me.y - 1, ["#e9b84a", "#c0504d", "#3f8a5c", "#7fb3d5", "#fff"], 80); sfx.goal();
+  openModal(`<div class="cert"><p class="sub" style="margin:0">광평중학교 탐험 인증서</p><div class="big-t">${esc(me.nick)}</div>
+    <div>학교 구석구석 도장 12개를 모두 찍었습니다</div><div class="stamp">탐험 완료</div>
+    <div class="list"><div class="li"><b>금도장</b>${gold}개</div><div class="li"><b>별</b>${me.stars.size}/${STARS.length}</div><div class="li"><b>걸린 시간</b>${Math.floor(sec / 60)}분 ${sec % 60}초</div></div>
+    <div class="foot"><button class="btn go" onclick="closeModal()">계속 구경하기</button></div></div>`);
+}
+function openRank() {
+  const list = roster.slice().sort((p, q) => (q.n - p.n) || (q.s - p.s));
+  const rows = list.length ? list.map((p, i) => `<div class="li ${p.id === myId ? "me" : ""}"><span class="st">${i + 1}</span><b>${esc(p.nick)}${p.done ? " · 완료" : ""}</b>도장 ${p.n} · 별 ${p.s || 0}</div>`).join("") : `<div class="li">서버에 연결되면 같은 방 친구들이 보여요</div>`;
+  openModal(`<h2>순위</h2><p class="sub">방 «${esc(roomCode)}» · ${list.length}명</p><div class="list">${rows}</div><div class="foot"><button class="btn" onclick="closeModal()">닫기</button></div>`);
+}
+let mapFloor = 0;
+function openMap() {
+  mapFloor = me.a;
+  openModal(`<h2>학교 지도</h2><div class="tabs" id="mtabs">${[0, 1, 2, 3, 4, 5].map((i) => `<button data-a="${i}">${AREA_NAME(i)}</button>`).join("")}</div><div class="mapwrap" id="mapwrap"><canvas id="mapc"></canvas></div><p class="note">빨간 점이 나예요. 노란 점은 같은 층 친구. 지도는 손가락으로 밀어 볼 수 있어요.</p><div class="foot"><button class="btn" onclick="closeModal()">닫기</button></div>`, true);
+  $("#mtabs").querySelectorAll("button").forEach((b) => b.onclick = () => { mapFloor = +b.dataset.a; drawMap(); });
+  drawMap();
+}
+function drawMap() {
+  const a = AREAS[mapFloor], c = $("#mapc"); if (!c) return;
+  $("#mtabs").querySelectorAll("button").forEach((b) => b.classList.toggle("on", +b.dataset.a === mapFloor));
+  const s = 16; c.width = a.w * s; c.height = a.h * s; c.style.width = (a.w * s) + "px"; const g = c.getContext("2d");
+  g.imageSmoothingEnabled = true; g.drawImage(a.base, 0, 0, c.width, c.height);
+  g.textAlign = "center"; g.font = "800 13px Pretendard,sans-serif";
+  for (const r of a.rooms) { if (r.k === "wc") continue; const cx = (r.x0 + r.x1 + 1) / 2 * s, cy = (r.y0 + r.y1 + 1) / 2 * s; const w = g.measureText(r.name).width + 8; g.fillStyle = "rgba(31,42,36,.82)"; g.fillRect(cx - w / 2, cy - 9, w, 16); g.fillStyle = "#fff"; g.fillText(r.name, cx, cy + 3); }
+  for (const o of others.values()) if (o.a === mapFloor) { g.fillStyle = "#ffd43b"; g.beginPath(); g.arc(o.x * s, o.y * s, 5, 0, 7); g.fill(); }
+  if (me.a === mapFloor) { g.fillStyle = "#e03131"; g.strokeStyle = "#fff"; g.lineWidth = 3; g.beginPath(); g.arc(me.x * s, me.y * s, 8, 0, 7); g.fill(); g.stroke(); const w = $("#mapwrap"); w.scrollLeft = me.x * s - w.clientWidth / 2; w.scrollTop = me.y * s - w.clientHeight / 2; }
+}
+const EMO = ["👋", "😀", "😂", "😍", "😮", "😢", "😡", "👍", "🎉", "❤️", "⭐", "💯"];
+const SAY = ["안녕!", "여기야!", "같이 가자", "어디야?", "찾았다!", "도와줘!", "고마워", "잘했어!", "따라와", "잠깐만", "이쪽 아니야", "빨리 와!", "도장 몇 개야?", "과학실 어디?", "강당 가자", "다 모았다!"];
+function openEmo() {
+  openModal(`<h2>표정</h2><p class="sub">키보드 숫자 1~9로도 돼요</p><div class="grid">${EMO.map((e, i) => `<button data-i="${i}">${e}</button>`).join("")}</div>`);
+  $("#mbody").querySelectorAll(".grid button").forEach((b) => b.onclick = () => { sendEmo(+b.dataset.i); closeModal(); });
+}
+function openSay() {
+  openModal(`<h2>말하기</h2><p class="sub">정해진 말만 할 수 있어요</p><div class="grid say">${SAY.map((e, i) => `<button data-i="${i}">${esc(e)}</button>`).join("")}</div>`);
+  $("#mbody").querySelectorAll(".grid button").forEach((b) => b.onclick = () => { sendSay(+b.dataset.i); closeModal(); });
+}
+
+// ================= 네트워크 =================
+let ws = null, wsOk = false, retry = 0, lastPose = 0, lastPoseKey = "";
+function wsUrl() {
+  const local = /game\.kimju\.kr$|onrender\.com$|^localhost$|^127\.0\.0\.1$/.test(location.hostname);
+  const base = local ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}` : "wss://game.kimju.kr";
+  return `${base}/campus/ws?room=${encodeURIComponent(roomCode)}`;
+}
+function connect() {
+  try { ws = new WebSocket(wsUrl()); } catch { return schedule(); }
+  $("#net").textContent = "연결 중…";
+  ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ t: "hi", nick: me.nick, look: me.look, n: stampCount(), s: me.stars.size })); };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.t === "hi") { myId = m.id; wsOk = true; sendPose(true); sendProg(); }
+    else if (m.t === "ro") {
+      const had = new Set(others.keys());
+      roster = m.list;
+      for (const p of m.list) {
+        if (p.id === myId) continue;
+        let o = others.get(p.id);
+        if (!o) { o = { a: -1, x: 0, y: 0, tx: 0, ty: 0, dir: 0, m: 0 }; others.set(p.id, o); if (playing && had.size) toast(`${p.nick} 님이 들어왔어요`, 1800); }
+        o.nick = p.nick; o.look = p.look && p.look.length === 6 ? p.look : [0, 0, 0, 0, 0, 0]; o.n = p.n; o.s = p.s;
+        had.delete(p.id);
+      }
+      for (const id of had) others.delete(id);
+      $("#net").textContent = `방 «${roomCode}» · ${m.list.length}명 접속`;
+    } else if (m.t === "st") {
+      for (const [id, a, x, y, d, mv] of m.p) {
+        if (id === myId) continue; const o = others.get(id); if (!o) continue;
+        const nx = x / 10, ny = y / 10;
+        if (o.a !== a) { o.x = nx; o.y = ny; }
+        o.a = a; o.tx = nx; o.ty = ny; o.dir = d; o.m = mv;
+      }
+    } else if (m.t === "e" || m.t === "s") {
+      const o = m.id === myId ? me : others.get(m.id); if (!o) return;
+      o.bubble = m.t === "e" ? { text: EMO[m.e], big: true, until: performance.now() + 2600 } : { text: SAY[m.s], until: performance.now() + 3200 };
+      if (m.id !== myId && o.a === me.a) sfx.pop();
+    } else if (m.t === "win") {
+      const p = roster.find((r) => r.id === m.id); if (m.id !== myId && p) { toast(`${p.nick} 님이 학교 탐험을 끝냈어요!`); burst(me.a, me.x, me.y - 2, ["#e9b84a", "#fff", "#c0504d"], 30); }
+    }
+  };
+  ws.onclose = () => { wsOk = false; myId = null; others.clear(); roster = []; $("#net").textContent = "혼자 탐험 중 (다시 연결하는 중)"; schedule(); };
+  ws.onerror = () => {};
+}
+function schedule() { retry++; setTimeout(connect, Math.min(15000, 1000 * 2 ** Math.min(retry, 4))); }
+const sendRaw = (o) => { if (ws && wsOk && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+function sendPose(force) {
+  const key = `${me.a},${me.x.toFixed(1)},${me.y.toFixed(1)},${me.dir},${me.moving ? 1 : 0}`;
+  if (!force && key === lastPoseKey) return;
+  lastPoseKey = key; lastPose = performance.now();
+  sendRaw({ t: "p", a: me.a, x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, d: me.dir, m: me.moving ? 1 : 0 });
+}
+function netTick() { const now = performance.now(); if (now - lastPose > 100) sendPose(now - lastPose > 3000); }
+function sendProg() { sendRaw({ t: "g", n: stampCount(), s: me.stars.size, done: stampCount() === STAMPS.length }); }
+let lastEmo = 0;
+function sendEmo(i) {
+  if (performance.now() - lastEmo < 700) return; lastEmo = performance.now();
+  me.bubble = { text: EMO[i], big: true, until: performance.now() + 2600 };
+  sendRaw({ t: "e", e: i });
+}
+function sendSay(i) {
+  if (performance.now() - lastEmo < 700) return; lastEmo = performance.now();
+  me.bubble = { text: SAY[i], until: performance.now() + 3200 };
+  sendRaw({ t: "s", s: i });
+}
+
+// ================= 시작 화면(미니미 꾸미기) =================
+function renderParts() {
+  $("#parts").innerHTML = PARTS.map(([n], i) => `<div class="part"><button data-i="${i}" data-d="-1">◀</button><span>${n}: ${PART_LABEL(i, me.look[i])}</span><button data-i="${i}" data-d="1">▶</button></div>`).join("");
+  $("#parts").querySelectorAll("button").forEach((b) => b.onclick = () => { const i = +b.dataset.i; me.look[i] = (me.look[i] + (+b.dataset.d) + PARTS[i][1]) % PARTS[i][1]; renderParts(); });
+  drawPreview();
+}
+let pvDir = 0;
+function drawPreview() {
+  const c = $("#preview").getContext("2d"); c.imageSmoothingEnabled = false;
+  c.fillStyle = "#cfe6c4"; c.fillRect(0, 0, 112, 140);
+  c.fillStyle = "#b9d7ab"; c.fillRect(0, 108, 112, 32);
+  drawMinimi(c, 56, 124, me.look, pvDir, 0, 6);
+}
+setInterval(() => { if (!playing) { pvDir = (pvDir + 1) % 4; drawPreview(); } }, 1200);
+$("#rand").onclick = () => { me.look = PARTS.map(([, n]) => Math.floor(Math.random() * n)); renderParts(); };
+$("#nick").value = me.nick;
+const qRoom = new URLSearchParams(location.search).get("room");
+$("#room").value = qRoom || save.room || "";
+$("#go").onclick = () => {
+  const nick = $("#nick").value.replace(/[<>&"'`]/g, "").trim().slice(0, 8);
+  if (!nick) { $("#nick").focus(); toast("별명을 적어 주세요"); return; }
+  me.nick = nick;
+  roomCode = ($("#room").value.replace(/[<>&"'`]/g, "").trim().slice(0, 12)) || "광평";
+  save.room = $("#room").value.trim();
+  persist();
+  $("#start").hidden = true; $("#hud").hidden = false; playing = true;
+  sfx.warp(); updateHud(); connect();
+  toast(stampCount() ? `다시 왔군요! 도장 ${stampCount()}개에서 이어서` : "정문에서 출발! 메인홀로 들어가 보세요");
+};
+$("#bAct").onclick = act;
+$("#bRun").onclick = () => { me.run = !me.run; $("#bRun").classList.toggle("on", me.run); };
+$("#bEmo").onclick = openEmo; $("#bSay").onclick = openSay;
+$("#bMap").onclick = openMap; $("#bMis").onclick = openMissions; $("#bRank").onclick = openRank;
+$("#bSnd").onclick = () => { soundOn = !soundOn; persist(); $("#bSnd").innerHTML = `소리<br>${soundOn ? "켬" : "끔"}`; };
+$("#bSnd").innerHTML = `소리<br>${soundOn ? "켬" : "끔"}`;
+for (const b of document.querySelectorAll("#ctl button,#hud .tr button")) b.addEventListener("pointerdown", (e) => e.stopPropagation());
+
+// ================= 시작 =================
+function boot() {
+  for (const a of AREAS) prerender(a);
+  renderParts();
+  let last = performance.now();
+  const loop = (now) => { const dt = Math.min(.05, (now - last) / 1000); last = now; update(dt); draw(now); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+(document.fonts && document.fonts.load ? document.fonts.load("800 12px Pretendard").catch(() => {}) : Promise.resolve()).then(boot);
+window.__campus = { me, AREAS, STAMPS, STARS, others, act, at, SOLID, get ws() { return ws; } };
+</script>
+</body>
+</html>

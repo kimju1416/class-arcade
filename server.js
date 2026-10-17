@@ -1296,6 +1296,8 @@ const server = http.createServer((req, res) => {
   if (url === '/fps') { res.writeHead(302, { Location: '/fps/' }); res.end(); return; }
   if (url === '/kart') { res.writeHead(302, { Location: '/kart/' }); res.end(); return; }
   if (url === '/kart/') url = '/kart/index.html';
+  if (url === '/campus') { res.writeHead(302, { Location: '/campus/' }); res.end(); return; }
+  if (url === '/campus/') url = '/campus/index.html';
   if (url === '/fps/') url = '/fps/index.html';
   if (url === '/') url = '/index.html';
   const safe = path.normalize(url).replace(/^(\.\.[\/\\])+/, '');
@@ -4442,10 +4444,11 @@ const fpsWss = require('./fps-server')(WebSocketServer);
 const nexusWss = require('./nexus-server')(WebSocketServer);
 const kartWss = require('./kart-server')(WebSocketServer);
 const puyoWss = require('./puyo-server')(WebSocketServer); // 말랑 대전 대전 통로(게임 화면은 kimju.kr/bbu)
+const campusWss = require('./campus-server')(WebSocketServer); // 광평중 탐험대(학교 구경) 위치 중계
 server.on('upgrade', (req, socket, head) => {
   let pathname;
   try { pathname = new URL(req.url, 'http://localhost').pathname; } catch { socket.destroy(); return; }
-  const target = pathname === '/nexus/ws' ? nexusWss : pathname === '/fps/ws' ? fpsWss : pathname === '/kart/ws' ? kartWss : pathname === '/mallang-7xq4/ws' ? puyoWss : wss;
+  const target = pathname === '/nexus/ws' ? nexusWss : pathname === '/fps/ws' ? fpsWss : pathname === '/kart/ws' ? kartWss : pathname === '/mallang-7xq4/ws' ? puyoWss : pathname === '/campus/ws' ? campusWss : wss;
   target.handleUpgrade(req, socket, head, (client) => target.emit('connection', client, req));
 });
 wss.on('error', (e) => console.error('[wss 오류]', e.message));
